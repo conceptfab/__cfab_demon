@@ -234,26 +234,27 @@ use timeflow_shared::sync::merge::{
 
 /// Daemon-side defensive schema guard: the dashboard owns migrations (m23),
 /// but the daemon may touch a not-yet-migrated DB right after an upgrade.
-/// Idempotent — "duplicate column" errors are expected and ignored.
-pub(crate) fn ensure_project_merge_columns(conn: &rusqlite::Connection) {
-    for sql in [
-        "ALTER TABLE projects ADD COLUMN merged_into TEXT",
-        "ALTER TABLE projects ADD COLUMN merged_at TEXT",
-    ] {
+/// Idempotent — "duplicate column" errors are expected and silently skipped;
+/// any other ALTER error aborts so merge does not proceed on a broken schema (finding #79).
+pub(crate) fn ensure_project_merge_columns(conn: &rusqlite::Connection) -> Result<(), String> {
+    for sql in ["ALTER TABLE projects ADD COLUMN merged_into TEXT",
+                "ALTER TABLE projects ADD COLUMN merged_at TEXT"] {
         if let Err(e) = conn.execute(sql, []) {
             let msg = e.to_string();
             if !msg.contains("duplicate column name") {
-                lan_common::sync_log(&format!("ensure_project_merge_columns: {}", msg));
+                return Err(format!("ensure_project_merge_columns: {msg}"));
             }
         }
     }
+    Ok(())
 }
 
 /// Daemon-side defensive schema guard for the m24 client entity/columns.
 /// Mirrors `ensure_project_merge_columns` — the dashboard owns the migration,
 /// but the daemon may export/merge against a DB upgraded a moment earlier.
-/// Idempotent: "duplicate column"/"already exists" are expected and ignored.
-pub(crate) fn ensure_project_client_columns(conn: &rusqlite::Connection) {
+/// Idempotent: "duplicate column"/"already exists" are expected and silently skipped;
+/// any other error aborts (finding #79).
+pub(crate) fn ensure_project_client_columns(conn: &rusqlite::Connection) -> Result<(), String> {
     for sql in [
         "ALTER TABLE projects ADD COLUMN client_name TEXT",
         "ALTER TABLE projects ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
@@ -261,12 +262,12 @@ pub(crate) fn ensure_project_client_columns(conn: &rusqlite::Connection) {
         if let Err(e) = conn.execute(sql, []) {
             let msg = e.to_string();
             if !msg.contains("duplicate column name") {
-                lan_common::sync_log(&format!("ensure_project_client_columns: {}", msg));
+                return Err(format!("ensure_project_client_columns: {msg}"));
             }
         }
     }
     // Clients entity (m24). Created if missing so export/merge never fail on it.
-    if let Err(e) = conn.execute_batch(
+    conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -280,9 +281,9 @@ pub(crate) fn ensure_project_client_columns(conn: &rusqlite::Connection) {
             created_at TEXT,
             updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
         );",
-    ) {
-        lan_common::sync_log(&format!("ensure_project_client_columns (clients table): {}", e));
-    }
+    )
+    .map_err(|e| format!("ensure_project_client_columns (clients table): {e}"))?;
+    Ok(())
 }
 
 // ── Merge ──
@@ -291,8 +292,8 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     let _merge_guard = MERGE_MUTEX
         .lock()
         .map_err(|_| "merge mutex poisoned".to_string())?;
-    ensure_project_merge_columns(conn);
-    ensure_project_client_columns(conn);
+    ensure_project_merge_columns(conn)?;
+    ensure_project_client_columns(conn)?;
     const MAX_PAYLOAD_SIZE: usize = 200 * 1024 * 1024; // 200 MB
     if slave_data.len() > MAX_PAYLOAD_SIZE {
         return Err(format!(
@@ -921,9 +922,8 @@ mod tests {
         let result = rx
             .recv_timeout(std::time::Duration::from_secs(1))
             .expect("merge finishes after mutex release");
-        assert!(result
-            .expect_err("invalid JSON should fail after mutex release")
-            .contains("Failed to parse slave data"));
+        // merge_incoming_data may fail at schema-guard or JSON-parse stage — both are Err.
+        assert!(result.is_err(), "merge should fail after mutex release (no schema or bad JSON)");
         handle.join().expect("merge thread joins");
     }
 

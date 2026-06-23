@@ -1547,8 +1547,8 @@ fn build_delta_for_pull(
     // Defensive: the merged_* columns come from a dashboard migration (m23) and
     // client_name/status + the clients entity from m24; make sure they exist
     // before SELECT-ing them (no-op when already migrated).
-    crate::sync_common::ensure_project_merge_columns(conn);
-    crate::sync_common::ensure_project_client_columns(conn);
+    crate::sync_common::ensure_project_merge_columns(conn)?;
+    crate::sync_common::ensure_project_client_columns(conn)?;
 
     // Normalize ISO timestamp for SQLite comparison
     let since_norm = since.replace('T', " ");
