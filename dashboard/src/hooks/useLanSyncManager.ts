@@ -89,8 +89,9 @@ export function useLanSyncManager() {
   // Poll peers every 5s; auto-scan subnet once if no peers found after 10s
   useEffect(() => {
     if (!lanSettings.enabled) {
-      // reset listy peerów gdy LAN wyłączony; pojedynczy re-render, nie kaskada.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // Celowy synchroniczny reset listy peerów gdy LAN wyłączony — nie ma async
+      // loadera; setState jest guardem stanu przy zmianie lanSettings.enabled.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync state reset on prop change (enabled→false); no async loader involved
       setLanPeers([]);
       return;
     }
@@ -183,8 +184,10 @@ export function useLanSyncManager() {
   }, [pairingCode]);
 
   useEffect(() => {
-    // async loader na mount: setState biegnie po await, nie kaskaduje renderów.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // refreshPairedDevices() ustawia dwa stany (pairedDeviceIds + pairingExpiredDeviceIds)
+    // i jest reużywany przez setInterval (5 s) poniżej. useAsyncData nie obsługuje
+    // wielu niezależnych stanów Sets.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- multi-state loader (pairedDeviceIds + pairingExpiredDeviceIds); reused by interval; useAsyncData doesn't fit
     void refreshPairedDevices();
   }, [refreshPairedDevices]);
 

@@ -106,8 +106,10 @@ export function useProjectDayTimelineController({
 
   useEffect(() => {
     if (!ctxMenu || typeof window === 'undefined') {
-      // reset placementu gdy menu zamknięte; pojedynczy re-render, nie kaskada.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // Reset placement gdy menu zamknięte — to celowe: pojedynczy re-render,
+      // nie kaskada. Nie ma async loadera; setState jest synchronicznym guardem
+      // zapobiegającym stale placement po zamknięciu menu.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync state reset on prop change (ctxMenu→null); no async loader involved
       setCtxMenuPlacement(null);
       return;
     }

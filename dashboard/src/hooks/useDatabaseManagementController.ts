@@ -35,8 +35,11 @@ export function useDatabaseManagementController() {
   }, [showError]);
 
   useEffect(() => {
-    // async loader na mount: setState biegnie po await, nie kaskaduje renderów.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // loadAll() ustawia 3 stany (info/settings/folderStats) i jest reużywany
+    // przez handleVacuum/handleOptimize/handleManualBackup/handleBrowseBackup/
+    // handleToggleSetting/saveSettings/handleCleanup. useAsyncData nie obsługuje
+    // wielu niezależnych pól danych ani callbacków reużywanych w handlerach.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- multi-state loader reused in multiple event handlers; useAsyncData doesn't fit
     void loadAll();
   }, [loadAll]);
 

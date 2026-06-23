@@ -45,9 +45,13 @@ export function PmTemplateManager({ open, onClose }: Props) {
     }
   }, []);
 
-  // async loader na mount: setState biegnie po await, nie kaskaduje renderów.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // load() jest useCallback reużywanym w handleSetDefault/handleDelete/handleSave —
+    // nie można wynieść do useAsyncData bez duplikowania logiki. setState biegnie po
+    // await (fetch-on-mount), nie kaskaduje renderów synchronicznie.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount; callback reused in event handlers, can't cleanly extract to useAsyncData
+    load();
+  }, [load]);
 
   const handleSetDefault = async (id: string) => {
     try {

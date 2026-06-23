@@ -109,8 +109,11 @@ export function useApplicationsPageController() {
   });
 
   useEffect(() => {
-    // async loadery na mount: setState biegnie po await, nie kaskaduje renderów.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Dwa niezależne loadery (apps + monitored) w jednym efekcie — reużywane przez
+    // usePageRefreshListener i event handlery. useAsyncData obsługuje jeden loader
+    // naraz; rozbicie na dwa hooki nie zmienia struktury efektu i nie eliminuje
+    // wyciszenia.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- two independent loaders (apps + monitored) reused in pageRefreshListener; splitting to two useAsyncData calls wouldn't remove the violation
     void loadApplications();
     void loadMonitored();
   }, [loadApplications, loadMonitored]);
