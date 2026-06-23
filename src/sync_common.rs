@@ -3100,4 +3100,309 @@ mod tests {
             .expect("tombstone zapisany");
         assert_eq!(stored, "2026-04-20 08:00:00", "RFC3339 +02:00 → kanoniczny UTC");
     }
+
+    // ── Testy charakteryzacyjne: merge per encja (pre-ekstrakcja) ──
+    //
+    // Celem jest utrwalenie AKTUALNEGO zachowania merge_incoming_data dla każdego
+    // typu encji, zanim zostanie wydzielona do wspólnego kratka. Testy muszą
+    // przechodzić ZAWSZE przeciwko bieżącemu kodowi produkcyjnemu.
+    // Każde odstępstwo od oczekiwań jest opisane komentarzem // CHARACTERIZATION:.
+
+    #[test]
+    fn merge_roundtrip_applications_lww() {
+        // Tworzy master z aplikacją foo.exe, eksportuje, scala do świeżego slave.
+        // Następnie testuje ścieżkę LWW (Last-Writer-Wins) dla display_name.
+
+        let t1 = "2026-06-20 10:00:00";
+
+        let master = open_test_db();
+        master
+            .execute(
+                "INSERT INTO applications (executable_name, display_name, updated_at) \
+                 VALUES ('foo.exe', 'Foo', ?1)",
+                rusqlite::params![t1],
+            )
+            .unwrap();
+
+        let export = build_full_export(&master).expect("export master");
+
+        // ── INSERT path: aplikacja nowa na slave ──
+        let mut slave = open_test_db();
+        merge_incoming_data(&mut slave, &export).expect("merge into slave");
+
+        let display_name: String = slave
+            .query_row(
+                "SELECT display_name FROM applications WHERE executable_name = 'foo.exe'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("aplikacja powinna byc obecna na slave");
+        assert_eq!(display_name, "Foo", "display_name musi dojechac przez INSERT path");
+
+        // ── UPDATE/LWW path: lokalny rekord starszy niz remote → remote wygrywa ──
+        // Ustaw lokalny updated_at wcześniejszy niż T1 (master).
+        slave
+            .execute(
+                "UPDATE applications SET display_name = 'OldFoo', updated_at = '2026-06-19 10:00:00' \
+                 WHERE executable_name = 'foo.exe'",
+                [],
+            )
+            .unwrap();
+
+        merge_incoming_data(&mut slave, &export).expect("re-merge into slave");
+
+        let display_name2: String = slave
+            .query_row(
+                "SELECT display_name FROM applications WHERE executable_name = 'foo.exe'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        // CHARACTERIZATION: gdy remote.updated_at > local.updated_at, UPDATE applications
+        // SET display_name = remote.display_name (linia ~894 sync_common.rs). Nowszy peer wygrywa.
+        assert_eq!(
+            display_name2, "Foo",
+            "LWW: nowszy peer (master) nadpisuje display_name starszego slave"
+        );
+
+        // ── Reverse LWW: lokalny rekord NOWSZY niż remote → local wygrywa ──
+        slave
+            .execute(
+                "UPDATE applications SET display_name = 'LocalNewer', updated_at = '2026-06-21 10:00:00' \
+                 WHERE executable_name = 'foo.exe'",
+                [],
+            )
+            .unwrap();
+
+        merge_incoming_data(&mut slave, &export).expect("re-merge reverse");
+
+        let display_name3: String = slave
+            .query_row(
+                "SELECT display_name FROM applications WHERE executable_name = 'foo.exe'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        // CHARACTERIZATION: gdy local.updated_at > remote.updated_at, merge POMIJA UPDATE
+        // (branch Some(_) z warunkiem `normalize_ts(updated_at) > normalize_ts(local)`).
+        // Lokalny rekord nowszy wygrywa — nie jest nadpisany.
+        assert_eq!(
+            display_name3, "LocalNewer",
+            "LWW: lokalny rekord nowszy niz remote nie jest nadpisywany"
+        );
+    }
+
+    #[test]
+    fn merge_roundtrip_sessions_lww() {
+        // Tworzy master z aplikacją i sesją, eksportuje, scala do świeżego slave.
+        // Testuje INSERT path (komentarz musi dojechac) i UPDATE/LWW (comment).
+
+        let t1 = "2026-06-20 10:00:00";
+
+        let master = open_test_db();
+        master
+            .execute(
+                "INSERT INTO applications (executable_name, display_name, updated_at) \
+                 VALUES ('bar.exe', 'Bar', ?1)",
+                rusqlite::params![t1],
+            )
+            .unwrap();
+        let app_id: i64 = master
+            .query_row(
+                "SELECT id FROM applications WHERE executable_name = 'bar.exe'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        master
+            .execute(
+                "INSERT INTO sessions \
+                 (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, comment, updated_at) \
+                 VALUES (?1, '2026-06-20 09:00:00', '2026-06-20 09:30:00', 1800, '2026-06-20', 1.0, 'hello', ?2)",
+                rusqlite::params![app_id, t1],
+            )
+            .unwrap();
+
+        let export = build_full_export(&master).expect("export master");
+
+        // ── INSERT path: sesja nowa na slave ──
+        let mut slave = open_test_db();
+        merge_incoming_data(&mut slave, &export).expect("merge into slave");
+
+        // Na slave aplikacja musi być wstawiona (przez merge apps), potem sesja.
+        let comment: Option<String> = slave
+            .query_row(
+                "SELECT s.comment FROM sessions s \
+                 JOIN applications a ON a.id = s.app_id \
+                 WHERE a.executable_name = 'bar.exe' AND s.start_time = '2026-06-20 09:00:00'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("sesja powinna byc obecna na slave");
+        // CHARACTERIZATION: comment musi dojechać przez INSERT path.
+        assert_eq!(comment.as_deref(), Some("hello"), "comment sesji musi dojechac przez INSERT path");
+
+        // ── UPDATE/LWW: lokalny rekord STARSZY niz remote → remote wygrywa ──
+        slave
+            .execute(
+                "UPDATE sessions SET comment = 'old-comment', updated_at = '2026-06-19 10:00:00' \
+                 WHERE start_time = '2026-06-20 09:00:00'",
+                [],
+            )
+            .unwrap();
+
+        merge_incoming_data(&mut slave, &export).expect("re-merge into slave");
+
+        let comment2: Option<String> = slave
+            .query_row(
+                "SELECT s.comment FROM sessions s \
+                 JOIN applications a ON a.id = s.app_id \
+                 WHERE a.executable_name = 'bar.exe' AND s.start_time = '2026-06-20 09:00:00'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        // CHARACTERIZATION: UPDATE sessions SET comment = remote.comment gdy remote > local.
+        assert_eq!(
+            comment2.as_deref(),
+            Some("hello"),
+            "LWW: nowszy peer (master) nadpisuje comment starszego slave"
+        );
+
+        // ── Reverse LWW: lokalny NOWSZY niz remote → local wygrywa ──
+        slave
+            .execute(
+                "UPDATE sessions SET comment = 'local-fresh', updated_at = '2026-06-21 10:00:00' \
+                 WHERE start_time = '2026-06-20 09:00:00'",
+                [],
+            )
+            .unwrap();
+
+        merge_incoming_data(&mut slave, &export).expect("re-merge reverse");
+
+        let comment3: Option<String> = slave
+            .query_row(
+                "SELECT s.comment FROM sessions s \
+                 JOIN applications a ON a.id = s.app_id \
+                 WHERE a.executable_name = 'bar.exe' AND s.start_time = '2026-06-20 09:00:00'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        // CHARACTERIZATION: gdy local.updated_at > remote.updated_at, merge POMIJA UPDATE sesji.
+        assert_eq!(
+            comment3.as_deref(),
+            Some("local-fresh"),
+            "LWW: lokalny rekord sesji nowszy niz remote nie jest nadpisywany"
+        );
+    }
+
+    #[test]
+    fn merge_roundtrip_manual_sessions_lww() {
+        // Tworzy master z projektem i sesją manualną, eksportuje do slave.
+        // Testuje INSERT path (duration_seconds musi dojechac) i UPDATE/LWW.
+
+        let t1 = "2026-06-20 10:00:00";
+
+        let master = open_test_db();
+        master
+            .execute(
+                "INSERT INTO projects (name, color, updated_at) VALUES ('TestProject', '#aabbcc', ?1)",
+                rusqlite::params![t1],
+            )
+            .unwrap();
+        let proj_id: i64 = master
+            .query_row(
+                "SELECT id FROM projects WHERE name = 'TestProject'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        master
+            .execute(
+                "INSERT INTO manual_sessions \
+                 (title, session_type, project_id, start_time, end_time, duration_seconds, date, created_at, updated_at) \
+                 VALUES ('MyTask', 'work', ?1, '2026-06-20 08:00:00', '2026-06-20 09:00:00', 3600, '2026-06-20', ?2, ?2)",
+                rusqlite::params![proj_id, t1],
+            )
+            .unwrap();
+
+        let export = build_full_export(&master).expect("export master");
+
+        // ── INSERT path: sesja manualna nowa na slave ──
+        let mut slave = open_test_db();
+        merge_incoming_data(&mut slave, &export).expect("merge into slave");
+
+        let duration: i64 = slave
+            .query_row(
+                "SELECT duration_seconds FROM manual_sessions WHERE title = 'MyTask' AND start_time = '2026-06-20 08:00:00'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("sesja manualna powinna byc obecna na slave");
+        // CHARACTERIZATION: duration_seconds (i cały rekord) musi dojechać przez INSERT path.
+        assert_eq!(duration, 3600, "duration_seconds sesji manualnej musi dojechac przez INSERT path");
+
+        // Weryfikacja project_id: projekt 'TestProject' jest na masterze i eksportowany,
+        // merge slave musi wstawić projekt (przez merge projects) i rozwiązać ID.
+        // CHARACTERIZATION: project_id na slave jest > 0 (projekt był eksportowany i wstawiony).
+        let slave_pid: i64 = slave
+            .query_row(
+                "SELECT project_id FROM manual_sessions WHERE title = 'MyTask'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(slave_pid > 0, "project_id sesji manualnej musi byc rozwiazany na slave (projekt przyszedl w eksporcie)");
+
+        // ── UPDATE/LWW: lokalny rekord STARSZY niz remote → remote wygrywa ──
+        slave
+            .execute(
+                "UPDATE manual_sessions SET duration_seconds = 999, end_time = '2026-06-20 08:16:39', \
+                 updated_at = '2026-06-19 10:00:00' \
+                 WHERE title = 'MyTask' AND start_time = '2026-06-20 08:00:00'",
+                [],
+            )
+            .unwrap();
+
+        merge_incoming_data(&mut slave, &export).expect("re-merge into slave");
+
+        let duration2: i64 = slave
+            .query_row(
+                "SELECT duration_seconds FROM manual_sessions WHERE title = 'MyTask' AND start_time = '2026-06-20 08:00:00'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        // CHARACTERIZATION: UPDATE manual_sessions SET duration_seconds = remote gdy remote > local.
+        assert_eq!(
+            duration2, 3600,
+            "LWW: nowszy peer (master) nadpisuje duration_seconds starszego slave"
+        );
+
+        // ── Reverse LWW: lokalny NOWSZY niz remote → local wygrywa ──
+        slave
+            .execute(
+                "UPDATE manual_sessions SET duration_seconds = 7200, end_time = '2026-06-20 10:00:00', \
+                 updated_at = '2026-06-21 10:00:00' \
+                 WHERE title = 'MyTask' AND start_time = '2026-06-20 08:00:00'",
+                [],
+            )
+            .unwrap();
+
+        merge_incoming_data(&mut slave, &export).expect("re-merge reverse");
+
+        let duration3: i64 = slave
+            .query_row(
+                "SELECT duration_seconds FROM manual_sessions WHERE title = 'MyTask' AND start_time = '2026-06-20 08:00:00'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        // CHARACTERIZATION: gdy local.updated_at > remote.updated_at, merge POMIJA UPDATE sesji manualnej.
+        assert_eq!(
+            duration3, 7200,
+            "LWW: lokalny rekord sesji manualnej nowszy niz remote nie jest nadpisywany"
+        );
+    }
 }
