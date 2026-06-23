@@ -120,6 +120,38 @@ def main() -> None:
 
     # Kopiuj wynik do wspólnego dist/
     DIST.mkdir(parents=True, exist_ok=True)
+
+    if sys.platform == "darwin":
+        # macOS: artefakt to TIMEFLOW.app (+ opcjonalnie .dmg), bez .exe. Natywny
+        # `tauri build` trafia do target/release/bundle; build z --target do
+        # target/aarch64-apple-darwin/release/bundle. Kopiujemy do dist/
+        # (build_all_macos.py oczekuje tam TIMEFLOW.app / TIMEFLOW*.dmg).
+        bundle_dirs = [
+            ROOT / "target" / "release" / "bundle",
+            ROOT / "target" / "aarch64-apple-darwin" / "release" / "bundle",
+        ]
+        copied = False
+        for bundle in bundle_dirs:
+            app_src = bundle / "macos" / "TIMEFLOW.app"
+            if not app_src.exists():
+                continue
+            app_dst = DIST / "TIMEFLOW.app"
+            if app_dst.exists():
+                shutil.rmtree(app_dst)
+            shutil.copytree(app_src, app_dst, symlinks=True)
+            print(f"\n   Skopiowano: {app_src} -> {app_dst}")
+            copied = True
+            for dmg in (bundle / "dmg").glob("TIMEFLOW*.dmg"):
+                if dmg.name.startswith("rw."):
+                    continue  # artefakt z tymczasowego mount (nieudany bundle)
+                shutil.copy2(dmg, DIST / dmg.name)
+                print(f"   Skopiowano: {dmg.name} -> dist/{dmg.name}")
+            break
+        if not copied:
+            print(f"\n   UWAGA: Nie znaleziono TIMEFLOW.app w: {[str(b) for b in bundle_dirs]}")
+            sys.exit(1)
+        return
+
     # Workspace Cargo buduje do root/target/, nie dashboard/src-tauri/target/
     release_dirs = [
         ROOT / "target" / "release",
