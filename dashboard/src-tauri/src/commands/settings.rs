@@ -79,7 +79,11 @@ pub async fn refresh_today(app: AppHandle) -> Result<RefreshResult, CommandError
         let mut daily: Option<DailyData> = None;
         let mut last_err = String::new();
         for attempt in 1..=3 {
-            match std::fs::read_to_string(&data_path) {
+            let path_clone = data_path.clone();
+            match tokio::task::spawn_blocking(move || std::fs::read_to_string(&path_clone))
+                .await
+                .map_err(|e| format!("spawn_blocking join error: {e}"))?
+            {
                 Ok(content) => match serde_json::from_str::<DailyData>(&content) {
                     Ok(parsed) => {
                         daily = Some(parsed);

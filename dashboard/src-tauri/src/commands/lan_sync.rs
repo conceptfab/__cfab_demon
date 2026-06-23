@@ -97,7 +97,10 @@ pub async fn get_lan_peers() -> Result<Vec<LanPeer>, String> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let content = tokio::task::spawn_blocking(move || std::fs::read_to_string(&path))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+        .map_err(|e| e.to_string())?;
     let file: LanPeersFile = serde_json::from_str(&content).map_err(|e| e.to_string())?;
     Ok(file.peers)
 }
