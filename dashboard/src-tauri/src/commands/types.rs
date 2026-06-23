@@ -685,7 +685,7 @@ pub struct AssignmentAutoRunRow {
     pub finished_at: Option<String>,
     pub sessions_scanned: i64,
     pub sessions_assigned: i64,
-    pub sessions_skipped: i64,
+    pub sessions_suggested: i64,
     pub rolled_back_at: Option<String>,
 }
 

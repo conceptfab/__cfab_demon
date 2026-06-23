@@ -584,14 +584,14 @@ fn import_archive_into_tx(
 
         if !exists {
             tx.execute(
-                "INSERT INTO assignment_auto_runs (started_at, finished_at, sessions_scanned, sessions_assigned, sessions_skipped, rolled_back_at)
+                "INSERT INTO assignment_auto_runs (started_at, finished_at, sessions_scanned, sessions_assigned, sessions_suggested, rolled_back_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 rusqlite::params![
                     run.started_at,
                     run.finished_at,
                     run.sessions_scanned,
                     run.sessions_assigned,
-                    run.sessions_skipped,
+                    run.sessions_suggested,
                     run.rolled_back_at,
                 ],
             ).ok();

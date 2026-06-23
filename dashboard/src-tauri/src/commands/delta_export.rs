@@ -255,7 +255,7 @@ pub fn build_delta_archive(
 
     // Assignment Auto Runs (delta — only rows started after `since`)
     let mut stmt = conn
-        .prepare("SELECT id, started_at, finished_at, sessions_scanned, sessions_assigned, sessions_skipped, rolled_back_at
+        .prepare("SELECT id, started_at, finished_at, sessions_scanned, sessions_assigned, sessions_suggested, rolled_back_at
                   FROM assignment_auto_runs WHERE started_at > ?1")
         .map_err(|e| e.to_string())?;
 
@@ -267,7 +267,7 @@ pub fn build_delta_archive(
                 finished_at: row.get(2)?,
                 sessions_scanned: row.get(3)?,
                 sessions_assigned: row.get(4)?,
-                sessions_skipped: row.get(5)?,
+                sessions_suggested: row.get(5)?,
                 rolled_back_at: row.get(6)?,
             })
         })
@@ -408,5 +408,71 @@ mod tests {
     fn normalize_tz_offset_to_utc() {
         let result = normalize_datetime_for_sqlite("2026-03-29T10:00:00+02:00");
         assert_eq!(result, "2026-03-29 08:00:00");
+    }
+
+    // Test 5 (regression): delta-export SELECT na assignment_auto_runs używa kolumny
+    // `sessions_suggested` (a nie nieistniejącej `sessions_skipped`).
+    // Tworzy in-memory DB z minimalnym schematem, wstawia wiersz i wykonuje dokładnie
+    // to samo zapytanie co build_delta_archive — assert że zwraca 1 wiersz bez błędu SQL.
+    #[test]
+    fn assignment_auto_runs_select_uses_sessions_suggested() {
+        let conn = Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             CREATE TABLE assignment_auto_runs (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 started_at TEXT NOT NULL,
+                 finished_at TEXT,
+                 mode TEXT NOT NULL,
+                 min_confidence_auto REAL NOT NULL,
+                 min_evidence_auto INTEGER NOT NULL,
+                 sessions_scanned INTEGER NOT NULL DEFAULT 0,
+                 sessions_suggested INTEGER NOT NULL DEFAULT 0,
+                 sessions_assigned INTEGER NOT NULL DEFAULT 0,
+                 error TEXT,
+                 rolled_back_at TEXT,
+                 rollback_reverted INTEGER NOT NULL DEFAULT 0,
+                 rollback_skipped INTEGER NOT NULL DEFAULT 0
+             );",
+        )
+        .expect("create assignment_auto_runs table");
+
+        conn.execute(
+            "INSERT INTO assignment_auto_runs
+             (started_at, finished_at, mode, min_confidence_auto, min_evidence_auto,
+              sessions_scanned, sessions_suggested, sessions_assigned, rolled_back_at)
+             VALUES ('2026-01-01 10:00:00', '2026-01-01 10:01:00', 'auto', 0.8, 3,
+                     5, 2, 1, NULL)",
+            [],
+        )
+        .expect("insert auto run");
+
+        // Dokładne zapytanie produkcyjne z build_delta_archive
+        let since = "2026-01-01 00:00:00";
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, started_at, finished_at, sessions_scanned, sessions_assigned, sessions_suggested, rolled_back_at
+                 FROM assignment_auto_runs WHERE started_at > ?1",
+            )
+            .expect("prepare");
+
+        let rows: Vec<AssignmentAutoRunRow> = stmt
+            .query_map([since], |row| {
+                Ok(AssignmentAutoRunRow {
+                    id: row.get(0)?,
+                    started_at: row.get(1)?,
+                    finished_at: row.get(2)?,
+                    sessions_scanned: row.get(3)?,
+                    sessions_assigned: row.get(4)?,
+                    sessions_suggested: row.get(5)?,
+                    rolled_back_at: row.get(6)?,
+                })
+            })
+            .expect("query_map")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect");
+
+        assert_eq!(rows.len(), 1, "powinien zwrócić dokładnie 1 wiersz");
+        assert_eq!(rows[0].sessions_suggested, 2i64);
     }
 }
