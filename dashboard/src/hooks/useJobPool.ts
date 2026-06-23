@@ -49,7 +49,6 @@ export function useJobPool() {
   // zaplanowane. Delaye (30/120/60 s + 90 s niżej) liczone od mountu, by
   // 'startup' sync biegł pierwszy, bez duplikatów z interwału/pollu.
   const nextSyncIntervalRef = useRef(Infinity);
-  const nextSyncPollRef = useRef(Infinity);
   const nextLanSyncRef = useRef(Infinity);
   const isLanSyncingRef = useRef(false);
 
@@ -133,30 +132,6 @@ export function useJobPool() {
 
   // Periodically trigger daemon online sync (handles async delta pull from SFTP).
   // Deadline init w efekcie mount-only (patrz wyżej; react-hooks/purity).
-  const nextDaemonOnlineSyncRef = useRef(Infinity);
-  const isDaemonOnlineSyncingRef = useRef(false);
-
-  const runDaemonOnlineSyncInterval = useCallback(async () => {
-    if (isDaemonOnlineSyncingRef.current || !isDocumentVisible()) return;
-    const settings = syncSettingsRef.current;
-    if (!settings.enabled) {
-      nextDaemonOnlineSyncRef.current = Date.now() + 300_000;
-      return;
-    }
-    isDaemonOnlineSyncingRef.current = true;
-
-    // Reschedule for next interval (60s)
-    nextDaemonOnlineSyncRef.current = Date.now() + 60_000;
-
-    try {
-      await triggerDaemonOnlineSync();
-    } catch {
-      // Daemon unreachable or sync not configured — ignore
-    } finally {
-      isDaemonOnlineSyncingRef.current = false;
-    }
-  }, []);
-
   const runLanSyncInterval = useCallback(async () => {
     if (isLanSyncingRef.current || !isDocumentVisible()) return;
     const lanSettings = loadLanSyncSettings();
@@ -252,7 +227,7 @@ export function useJobPool() {
           30 * Math.pow(2, syncFailCountRef.current - 1),
         );
         logger.log(`Sync backoff: retry assigned in ${backoffSec}s`);
-        nextSyncPollRef.current = Date.now() + backoffSec * 1000;
+        nextSyncIntervalRef.current = Date.now() + backoffSec * 1000;
       } finally {
         isSyncingRef.current = false;
       }
@@ -305,8 +280,6 @@ export function useJobPool() {
       nextRefreshRef.current = 0;
       nextSigCheckRef.current = 0;
       nextAutoSplitRef.current = Date.now() + AUTO_SPLIT_INTERVAL_MS;
-      nextSyncIntervalRef.current = 0;
-      nextSyncPollRef.current = Date.now() + 120_000;
       void runRefresh();
     }, 500);
   };
@@ -351,10 +324,12 @@ export function useJobPool() {
   // Init deadline'ów schedulera raz na mount (Date.now() poza renderem).
   useEffect(() => {
     const now = Date.now();
-    nextSyncIntervalRef.current = now + 30_000;
-    nextSyncPollRef.current = now + 120_000;
+    // Online sync: jedyny okresowy trigger to autoSyncIntervalMinutes.
+    // Sync po starcie obsługuje osobny efekt (runSync('startup')) bramkowany
+    // przez autoSyncOnStartup — tu pierwszy interwał liczymy od mountu.
+    nextSyncIntervalRef.current =
+      now + Math.max(1, syncSettingsRef.current.autoSyncIntervalMinutes) * 60_000;
     nextLanSyncRef.current = now + 60_000;
-    nextDaemonOnlineSyncRef.current = now + 90_000;
   }, []);
 
   useEffect(() => {
@@ -377,7 +352,6 @@ export function useJobPool() {
         nextSigCheckRef,
         nextAutoSplitRef,
         nextSyncIntervalRef,
-        nextSyncPollRef,
         nextLanSyncRef,
         syncSettingsRef,
         refreshDiagnostics: handleDiagnosticsRefresh,
@@ -387,11 +361,6 @@ export function useJobPool() {
         runSync,
         runLanSyncInterval,
       });
-
-      // Daemon async delta pull (SFTP) — triggers independently of dashboard sync
-      if (autoImportDone && now >= nextDaemonOnlineSyncRef.current) {
-        void runDaemonOnlineSyncInterval();
-      }
 
       // Periodic AI status refresh — keeps sidebar training badge up to date
       if (isDocumentVisible() && now >= nextAiStatusRef.current) {
@@ -412,7 +381,6 @@ export function useJobPool() {
     runRefresh,
     runSync,
     runLanSyncInterval,
-    runDaemonOnlineSyncInterval,
     refreshAiStatus,
   ]);
 

@@ -137,7 +137,6 @@ export function runJobPoolTick(options: {
   nextSigCheckRef: MutableRefObject<number>;
   nextAutoSplitRef: MutableRefObject<number>;
   nextSyncIntervalRef: MutableRefObject<number>;
-  nextSyncPollRef: MutableRefObject<number>;
   nextLanSyncRef: MutableRefObject<number>;
   syncSettingsRef: MutableRefObject<OnlineSyncSettings>;
   refreshDiagnostics: () => void | Promise<unknown>;
@@ -155,7 +154,6 @@ export function runJobPoolTick(options: {
     nextSigCheckRef,
     nextAutoSplitRef,
     nextSyncIntervalRef,
-    nextSyncPollRef,
     nextLanSyncRef,
     syncSettingsRef,
     refreshDiagnostics,
@@ -204,11 +202,6 @@ export function runJobPoolTick(options: {
     nextSyncIntervalRef.current =
       now + Math.max(1, syncSettings.autoSyncIntervalMinutes) * 60_000;
     void runSync('interval');
-  }
-
-  if (now >= nextSyncPollRef.current) {
-    nextSyncPollRef.current = now + 120_000;
-    void runSync('poll');
   }
 }
 
