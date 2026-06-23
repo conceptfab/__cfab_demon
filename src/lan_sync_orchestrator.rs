@@ -348,82 +348,100 @@ pub fn run_sync_as_master_with_options(
         sync_state.set_progress(1, "starting", "local");
         let _start = Instant::now();
 
-        let mut last_err = String::new();
-        for attempt in 1..=MAX_RETRIES {
-            if stop_signal.load(Ordering::Relaxed) {
-                sync_log("[!] Stop signal — przerywam sync");
-                break;
-            }
-            if attempt > 1 {
-                sync_log(&format!("[!] Ponowna proba {}/{}", attempt, MAX_RETRIES));
-            }
-            match execute_master_sync(&peer, &sync_state, &stop_signal, force) {
-                Ok(()) => {
-                    last_err.clear();
-                    // Sync completed end-to-end — any prior auth-error badge
-                    // for this peer is stale, clear it so the UI recovers.
-                    crate::lan_pairing::clear_auth_error(&peer.device_id);
-                    break;
-                }
-                Err(e) => {
-                    sync_log(&format!("[!] Proba {}/{} nieudana: {}", attempt, MAX_RETRIES, e));
-                    // Unfreeze DB but keep sync_in_progress = true to prevent
-                    // another thread from starting a concurrent sync during backoff.
-                    sync_state.db_frozen.store(false, Ordering::SeqCst);
-                    // Unfreeze slave too — otherwise slave stays frozen until auto-unfreeze (AUTO_UNFREEZE_TIMEOUT).
-                    // Skip the unfreeze call when peer is not paired (no secret available) —
-                    // without a matching secret it would just loop on 401.
-                    if let Some(retry_secret) = resolve_peer_secret(&peer.device_id) {
-                        let slave_unfreeze_url = format!("http://{}:{}/lan/unfreeze", peer.ip, peer.port);
-                        if let Err(ue) = http_post(&slave_unfreeze_url, "{}", &retry_secret) {
-                            sync_log(&format!("[!] Nie udalo sie odmrozic slave: {}", ue));
-                        }
-                    }
-                    sync_state.reset_progress();
-                    last_err = e;
+        // Clone Arcs so they can be moved into the AssertUnwindSafe closure passed
+        // to guarded_then_cleanup. The cleanup closure captures the originals.
+        let peer_body = peer.clone();
+        let sync_state_body = Arc::clone(&sync_state);
+        let stop_signal_body = Arc::clone(&stop_signal);
 
-                    if attempt < MAX_RETRIES {
-                        let backoff = Duration::from_secs(5 * 3u64.pow(attempt - 1));
-                        sync_log(&format!("[!] Ponowienie za {:?}...", backoff));
-                        let deadline = Instant::now() + backoff;
-                        while Instant::now() < deadline {
-                            if stop_signal.load(Ordering::Relaxed) {
-                                sync_log("[!] Stop signal podczas backoff — przerywam");
-                                break;
-                            }
-                            thread::sleep(Duration::from_secs(1));
-                        }
-                        if stop_signal.load(Ordering::Relaxed) {
+        // guarded_then_cleanup: runs the panic-prone body under catch_unwind and
+        // ALWAYS calls the cleanup closure — even when the body panics. This is the
+        // core mechanism that prevents the "stuck in syncing" state.
+        guarded_then_cleanup(
+            // ── panic-prone body: retry loop + circuit-breaker outcome ─────────────
+            std::panic::AssertUnwindSafe(move || {
+                let mut last_err = String::new();
+                for attempt in 1..=MAX_RETRIES {
+                    if stop_signal_body.load(Ordering::Relaxed) {
+                        sync_log("[!] Stop signal — przerywam sync");
+                        break;
+                    }
+                    if attempt > 1 {
+                        sync_log(&format!("[!] Ponowna proba {}/{}", attempt, MAX_RETRIES));
+                    }
+                    match execute_master_sync(&peer_body, &sync_state_body, &stop_signal_body, force) {
+                        Ok(()) => {
+                            last_err.clear();
+                            // Sync completed end-to-end — any prior auth-error badge
+                            // for this peer is stale, clear it so the UI recovers.
+                            crate::lan_pairing::clear_auth_error(&peer_body.device_id);
                             break;
                         }
+                        Err(e) => {
+                            sync_log(&format!("[!] Proba {}/{} nieudana: {}", attempt, MAX_RETRIES, e));
+                            // Unfreeze DB but keep sync_in_progress = true to prevent
+                            // another thread from starting a concurrent sync during backoff.
+                            sync_state_body.db_frozen.store(false, Ordering::SeqCst);
+                            // Unfreeze slave too — otherwise slave stays frozen until auto-unfreeze (AUTO_UNFREEZE_TIMEOUT).
+                            // Skip the unfreeze call when peer is not paired (no secret available) —
+                            // without a matching secret it would just loop on 401.
+                            if let Some(retry_secret) = resolve_peer_secret(&peer_body.device_id) {
+                                let slave_unfreeze_url = format!("http://{}:{}/lan/unfreeze", peer_body.ip, peer_body.port);
+                                if let Err(ue) = http_post(&slave_unfreeze_url, "{}", &retry_secret) {
+                                    sync_log(&format!("[!] Nie udalo sie odmrozic slave: {}", ue));
+                                }
+                            }
+                            sync_state_body.reset_progress();
+                            last_err = e;
+
+                            if attempt < MAX_RETRIES {
+                                let backoff = Duration::from_secs(5 * 3u64.pow(attempt - 1));
+                                sync_log(&format!("[!] Ponowienie za {:?}...", backoff));
+                                let deadline = Instant::now() + backoff;
+                                while Instant::now() < deadline {
+                                    if stop_signal_body.load(Ordering::Relaxed) {
+                                        sync_log("[!] Stop signal podczas backoff — przerywam");
+                                        break;
+                                    }
+                                    thread::sleep(Duration::from_secs(1));
+                                }
+                                if stop_signal_body.load(Ordering::Relaxed) {
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        }
 
-        if !last_err.is_empty() {
-            sync_log(&format!("=== SYNC NIEUDANY po {} probach: {} ===", MAX_RETRIES, last_err));
-        }
+                if !last_err.is_empty() {
+                    sync_log(&format!("=== SYNC NIEUDANY po {} probach: {} ===", MAX_RETRIES, last_err));
+                }
 
-        // Feed this cycle's outcome to the circuit breaker. A stop-signal abort is
-        // neither success nor failure — leave the breaker untouched in that case.
-        if let Some(success) =
-            breaker_outcome(stop_signal.load(Ordering::Relaxed), last_err.is_empty())
-        {
-            sync_state.note_sync_outcome(success);
-        }
+                // Feed this cycle's outcome to the circuit breaker. A stop-signal abort is
+                // neither success nor failure — leave the breaker untouched in that case.
+                if let Some(success) =
+                    breaker_outcome(stop_signal_body.load(Ordering::Relaxed), last_err.is_empty())
+                {
+                    sync_state_body.note_sync_outcome(success);
+                }
 
-        // Guarantee cleanup: always unfreeze + reset progress when thread exits.
-        // This prevents the "stuck in syncing" state if any step panics or errors
-        // without proper cleanup.
-        sync_state.unfreeze();
-        if last_err.is_empty() {
-            sync_state.mark_sync_completed();
-        }
-        // Small delay so UI can see "completed" phase before reset
-        thread::sleep(Duration::from_secs(3));
-        sync_state.reset_progress();
-        sync_state.set_role("undecided");
+                last_err.is_empty()
+            }),
+            // ── cleanup: ALWAYS runs (panic was caught above) ──────────────────────
+            // Preserve exact order: unfreeze → mark_completed → sleep → reset → set_role.
+            // Note: thread::sleep(3s) stays here in production only (not in the tested
+            // guarded_then_cleanup helper itself), keeping unit tests fast.
+            move |succeeded| {
+                sync_state.unfreeze();
+                if succeeded {
+                    sync_state.mark_sync_completed();
+                }
+                // Small delay so UI can see "completed" phase before reset
+                thread::sleep(Duration::from_secs(3));
+                sync_state.reset_progress();
+                sync_state.set_role("undecided");
+            },
+        );
     })
 }
 
@@ -814,6 +832,25 @@ fn get_local_marker_hash_with_conn(conn: &rusqlite::Connection) -> Option<String
     get_latest_marker(conn).map(|(hash, _)| hash)
 }
 
+/// Generic helper: run `body` under catch_unwind, then ALWAYS call `cleanup(succeeded)`.
+/// Used in production by `run_sync_as_master_with_options` and directly testable
+/// without network dependencies.
+///
+/// - `body` returns `true` on success, `false` on logical failure.
+/// - On panic, logs the panic payload (if `log_fn` is Some) and treats it as `false`.
+/// - `cleanup` is called unconditionally with the success flag.
+fn guarded_then_cleanup<B, C>(body: B, cleanup: C)
+where
+    B: FnOnce() -> bool + std::panic::UnwindSafe,
+    C: FnOnce(bool),
+{
+    let succeeded = std::panic::catch_unwind(body).unwrap_or_else(|e| {
+        sync_log(&format!("=== GUARDED PANIC (przechwycony): {:?} ===", e));
+        false
+    });
+    cleanup(succeeded);
+}
+
 /// Co podać circuit breakerowi po cyklu sync.
 /// `None` = nie ruszaj breakera (cykl przerwany stopem — to nie porażka).
 fn breaker_outcome(stopped: bool, last_err_empty: bool) -> Option<bool> {
@@ -858,6 +895,7 @@ mod tests {
     use super::version_compat_error;
     use super::resolve_pull_since;
     use super::breaker_outcome;
+    use super::guarded_then_cleanup;
 
     #[test]
     fn pull_since_prefers_slave_clock() {
@@ -922,5 +960,68 @@ mod tests {
     fn breaker_ignores_stop_abort() {
         assert_eq!(breaker_outcome(true, false), None);
         assert_eq!(breaker_outcome(true, true), None);
+    }
+
+    /// Panic-safety contract: when the sync body panics, cleanup MUST still run
+    /// and clear BOTH db_frozen AND sync_in_progress. This is the core invariant
+    /// that prevents the "stuck in syncing" state after a panic.
+    #[test]
+    fn master_sync_cleanup_runs_after_panic() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use crate::lan_server::LanSyncState;
+
+        let state = Arc::new(LanSyncState::new());
+        // Simulate the state that exists when the master thread is mid-sync.
+        state.db_frozen.store(true, Ordering::SeqCst);
+        state.sync_in_progress.store(true, Ordering::SeqCst);
+
+        let state_for_cleanup = Arc::clone(&state);
+        guarded_then_cleanup(
+            // body: panics — simulates execute_master_sync or merge panicking
+            || panic!("simulated sync body panic"),
+            // cleanup: unfreeze clears both flags — must run unconditionally
+            move |_succeeded| {
+                state_for_cleanup.unfreeze();
+            },
+        );
+
+        // After catch_unwind + cleanup, both flags must be cleared regardless of panic.
+        assert!(
+            !state.db_frozen.load(Ordering::SeqCst),
+            "db_frozen must be cleared after a panic in the sync body"
+        );
+        assert!(
+            !state.sync_in_progress.load(Ordering::SeqCst),
+            "sync_in_progress must be cleared after a panic in the sync body"
+        );
+    }
+
+    /// Non-panic path: cleanup still runs and marks succeeded when body returns true.
+    #[test]
+    fn master_sync_cleanup_runs_on_success() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use crate::lan_server::LanSyncState;
+
+        let state = Arc::new(LanSyncState::new());
+        state.db_frozen.store(true, Ordering::SeqCst);
+        state.sync_in_progress.store(true, Ordering::SeqCst);
+
+        let succeeded_flag = Arc::new(AtomicBool::new(false));
+        let succeeded_flag_for_cleanup = Arc::clone(&succeeded_flag);
+        let state_for_cleanup = Arc::clone(&state);
+
+        guarded_then_cleanup(
+            || true,
+            move |succeeded| {
+                state_for_cleanup.unfreeze();
+                succeeded_flag_for_cleanup.store(succeeded, Ordering::SeqCst);
+            },
+        );
+
+        assert!(!state.db_frozen.load(Ordering::SeqCst), "db_frozen cleared on success");
+        assert!(!state.sync_in_progress.load(Ordering::SeqCst), "sync_in_progress cleared on success");
+        assert!(succeeded_flag.load(Ordering::SeqCst), "cleanup receives succeeded=true");
     }
 }
