@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Loader2, CheckCircle2, XCircle, RotateCw } from 'lu
 import { useTranslation } from 'react-i18next';
 import { lanSyncApi } from '@/lib/tauri';
 import { getDaemonOnlineSyncProgress } from '@/lib/tauri/online-sync';
+import { shouldShowFrozenNotice } from './sync-overlay-helpers';
 import type { SyncProgress } from '@/lib/lan-sync-types';
 
 const POLL_MS = 500;
@@ -125,6 +126,7 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
   const isTransfer = progress.direction === 'upload' || progress.direction === 'download';
   const isCompleted = progress.phase === 'completed' || progress.phase === 'not_needed';
   const isError = progress.phase.startsWith('error');
+  const showFrozenNotice = shouldShowFrozenNotice(progress.phase, progress.step);
 
   const phaseLabel = t(`sync_progress.${progress.phase}`, progress.phase);
 
@@ -187,12 +189,14 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
           </div>
         )}
 
-        {/* Freeze notice + cancel */}
+        {/* Freeze notice (only while the DB is actually frozen) + cancel (always while active) */}
         {!isCompleted && !isError && (
           <>
-            <p className="text-[11px] text-amber-400/80 mb-2">
-              {t('sync_progress.frozen_notice', 'Recording is paused. Please do not close the application.')}
-            </p>
+            {showFrozenNotice && (
+              <p className="text-[11px] text-amber-400/80 mb-2">
+                {t('sync_progress.frozen_notice', 'Recording is paused. Please do not close the application.')}
+              </p>
+            )}
             {onCancel && (
               <button type="button"
                 onClick={onCancel}
