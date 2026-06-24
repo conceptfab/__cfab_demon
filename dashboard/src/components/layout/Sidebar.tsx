@@ -55,12 +55,15 @@ export function Sidebar({
       aria-controls="app-sidebar"
       onClick={toggleSidebarCollapsed}
       onMouseDown={stopToggleMouseDown}
-      className="hidden size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground md:flex [app-region:no-drag] [-webkit-app-region:no-drag]"
+      className={cn(
+        'hidden items-center justify-center border-0 bg-transparent text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground md:flex [app-region:no-drag] [-webkit-app-region:no-drag]',
+        onMac ? 'size-[22px] rounded-[5px]' : 'size-7 rounded-md',
+      )}
     >
       {collapsed ? (
-        <PanelLeftOpen className="size-4" />
+        <PanelLeftOpen className={onMac ? 'size-[13px]' : 'size-4'} />
       ) : (
-        <PanelLeftClose className="size-4" />
+        <PanelLeftClose className={onMac ? 'size-[13px]' : 'size-4'} />
       )}
     </button>
   );
@@ -68,7 +71,7 @@ export function Sidebar({
   return (
     <>
       {onMac && (
-        <div className="fixed left-20 top-0 z-50 hidden h-12 items-center md:flex [app-region:no-drag] [-webkit-app-region:no-drag]">
+        <div className="fixed left-[77px] top-[4px] z-50 hidden h-[22px] items-center md:flex [app-region:no-drag] [-webkit-app-region:no-drag]">
           {collapseToggle}
         </div>
       )}
