@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use suppaftp::rustls::{ClientConfig, RootCertStore};
+use suppaftp::types::FileType;
 use suppaftp::{RustlsConnector, RustlsFtpStream};
 
 use crate::lan_common::sync_log;
@@ -63,6 +64,8 @@ fn connect_login(target: &FtpTarget, want_tls: bool) -> Result<RustlsFtpStream, 
     }
     ftp.login(&target.username, &target.password)
         .map_err(|e| format!("FTP login ({}): {e}", target.username))?;
+    ftp.transfer_type(FileType::Binary)
+        .map_err(|e| format!("FTP set binary mode {}: {e}", target.host))?;
     Ok(ftp)
 }
 
@@ -75,6 +78,18 @@ fn connect(target: &FtpTarget) -> Result<RustlsFtpStream, String> {
             sync_log(&format!("[ftp] FTPS nieudane ({tls_err}) — próba plain FTP"));
             connect_login(target, false)
         }),
+    }
+}
+
+/// Czysta decyzja po próbie SIZE: Ok(true)=zweryfikowane, Ok(false)=OK bez
+/// weryfikacji (SIZE niedostępne), Err=niepełny zapis (rozmiar nie zgadza się).
+fn classify_upload_confirm(local_len: usize, size: Result<usize, String>) -> Result<bool, String> {
+    match size {
+        Ok(remote_len) if remote_len == local_len => Ok(true),
+        Ok(remote_len) => Err(format!(
+            "rozmiar po zapisie {remote_len} B ≠ wysłane {local_len} B (niepełny zapis)"
+        )),
+        Err(_) => Ok(false),
     }
 }
 
@@ -98,30 +113,22 @@ pub fn upload_bytes(target: &FtpTarget, remote_path: &str, data: &[u8]) -> Resul
         sync_log(&format!("[ftp] UMIESZCZENIE BŁĄD: {msg}"));
         return Err(msg);
     }
-    // Czytelne potwierdzenie UMIESZCZENIA: weryfikujemy rozmiar pliku po stronie FTP
-    // (komenda SIZE). Best-effort — gdy backend nie wspiera SIZE, logujemy bez
-    // twardej weryfikacji, ale nie wywracamy synca.
-    let confirm = ftp.size(remote_path);
+    let confirm = ftp.size(remote_path).map_err(|e| e.to_string());
     let _ = ftp.quit();
-    match confirm {
-        Ok(remote_len) if remote_len == local_len => {
-            sync_log(&format!(
-                "[ftp] UMIESZCZENIE OK: {remote_path} ({remote_len} B potwierdzone na FTP)"
-            ));
+    let size_unavailable_reason = confirm.as_ref().err().cloned();
+    match classify_upload_confirm(local_len, confirm) {
+        Ok(true) => {
+            sync_log(&format!("[ftp] UMIESZCZENIE OK: {remote_path} ({local_len} B potwierdzone na FTP)"));
             Ok(())
         }
-        Ok(remote_len) => {
-            let msg = format!(
-                "FTP upload {remote_path}: rozmiar po zapisie {remote_len} B ≠ wysłane {local_len} B (niepełny zapis)"
-            );
-            sync_log(&format!("[ftp] UMIESZCZENIE NIEPEŁNE: {msg}"));
-            Err(msg)
-        }
-        Err(e) => {
-            sync_log(&format!(
-                "[ftp] UMIESZCZENIE OK (bez weryfikacji SIZE): {remote_path} ({local_len} B wysłane) — SIZE niedostępne: {e}"
-            ));
+        Ok(false) => {
+            let reason = size_unavailable_reason.unwrap_or_else(|| "brak".into());
+            sync_log(&format!("[ftp] UMIESZCZENIE OK (bez weryfikacji SIZE): {remote_path} ({local_len} B wysłane) — SIZE: {reason}"));
             Ok(())
+        }
+        Err(msg) => {
+            sync_log(&format!("[ftp] UMIESZCZENIE NIEPEŁNE: FTP upload {remote_path}: {msg}"));
+            Err(format!("FTP upload {remote_path}: {msg}"))
         }
     }
 }
@@ -182,6 +189,16 @@ mod tests {
         let a = resolve_addr("127.0.0.1", 21).expect("loopback");
         assert_eq!(a.port(), 21);
         assert!(a.ip().is_loopback());
+    }
+
+    #[test]
+    fn classify_upload_confirm_branches() {
+        // Rozmiar zgodny → zweryfikowane (true)
+        assert_eq!(classify_upload_confirm(100, Ok(100)), Ok(true));
+        // Rozmiar różny → niepełny zapis (Err)
+        assert!(classify_upload_confirm(100, Ok(90)).is_err());
+        // SIZE niedostępne → OK bez weryfikacji (false)
+        assert_eq!(classify_upload_confirm(100, Err("no size".into())), Ok(false));
     }
 
     // upload_bytes — strażnik limitu odrzuca nadmiarowy payload PRZED siecią,
