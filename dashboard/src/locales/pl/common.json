@@ -2074,9 +2074,9 @@
     "online_sync_setup_how_to_start": "Jak zacząć: wpisz URL serwera, User ID i surowy Token, zapisz ustawienia, poczekaj na wygenerowanie Device ID i dopiero wtedy uruchom `Sync now` albo `Sync on startup`.",
     "online_sync_setup_when_to_use": "Kiedy użyć: włącz to, gdy chcesz mieć kopie danych poza lokalną bazą lub synchronizować pracę między maszynami.",
     "online_sync_setup_limitations": "Ograniczenia i konsekwencje: tryb demo wyłącza synchronizację, błędny token zablokuje push/pull, a po komunikacie o reseed trzeba odbudować stan lokalnym eksportem lub nowym seedem.",
-    "online_sync_daemon_mode": "Synchronizacja przez daemon (protokół LAN Sync): Gdy daemon TIMEFLOW jest uruchomiony, synchronizacja online może użyć 13-krokowego protokołu sesji z transferem SFTP. Zapewnia szyfrowany transfer plików, śledzenie postępu i automatyczne scalanie — ten sam protokół co synchronizacja LAN, ale przez zdalny serwer. Skonfiguruj klucz szyfrowania w ustawieniach synchronizacji.",
+    "online_sync_daemon_mode": "Synchronizacja przez daemon: Gdy daemon TIMEFLOW jest uruchomiony, online sync działa jako proces store-and-forward w tle — przesyła zaszyfrowany snapshot na serwer i pobiera snapshot drugiego urządzenia, gdy jest dostępny. Drugie urządzenie nie musi być online w tym samym czasie. Postęp jest widoczny w nakładce podczas krótkiego lokalnego scalania.",
     "online_sync_cancel": "Anulowanie Online Sync — gdy działa synchronizacja online przez daemon, TIMEFLOW może poprosić o anulowanie. Synchronizacja zatrzymuje się w najbliższym bezpiecznym punkcie i prosi serwer o anulowanie aktywnej sesji.",
-    "delta_sync_description": "Od wersji z Delta Sync: system przesyła tylko zmodyfikowane pakiety synchronizacji dla starych i nowych sesji, oszczędzając do 95% zużycia łącza.",
+    "delta_sync_description": "Model store-and-forward: TIMEFLOW wysyła pełny zaszyfrowany snapshot na serwer, a następnie pobiera i scala lokalnie ostatni snapshot drugiego urządzenia. Połączenie na żywo z drugim urządzeniem nie jest wymagane — każde urządzenie synchronizuje się niezależnie według własnego harmonogramu.",
     "online_sync_clients_sync": "Synchronizacja klientów i przypisań: definicje klientów oraz przypisany klient i status każdego projektu wędrują teraz z Online Sync, więc panel Klienci jest spójny między maszynami. Uwaga: ponowne przypisanie klienta zawsze się propaguje; usunięcie przypisania może wymagać jeszcze jednej synchronizacji, by dotrzeć do pozostałych urządzeń.",
     "license_activation": "Aktywacja licencji: wklej klucz licencji w sekcji Online Sync → Licencja i kliknij Aktywuj. Urządzenie zostanie zarejestrowane w grupie na serwerze. Po aktywacji dashboard wyświetla plan, grupę, liczbę urządzeń i datę wygaśnięcia.",
     "lan_sync_title": "Synchronizacja LAN",
@@ -2149,7 +2149,7 @@
     "online_sync_license_section": "Licencja — wklej klucz licencyjny w ustawieniach Online Sync, kliknij Aktywuj. Dashboard pokaże plan, grupę, liczbę urządzeń i datę wygaśnięcia. Licencja jest powiązana z urządzeniem.",
     "online_sync_sftp_encryption_key": "Klucz szyfrowania — wprowadź klucz w Ustawienia > Online Sync > Klucz szyfrowania. Jest przechowywany lokalnie i służy do szyfrowania end-to-end Twoich danych, zanim opuszczą urządzenie. Klucz jest wymagany: bez niego synchronizacja online zatrzymuje się z błędem i nic nie wysyła. Użyj dokładnie tego samego klucza na każdym urządzeniu współdzielącym dane — inny klucz nie odszyfruje snapshotu drugiego urządzenia.",
     "online_sync_e2e_encryption": "Szyfrowanie end-to-end — snapshot danych jest szyfrowany na Twoim urządzeniu Twoim kluczem szyfrowania przed wysłaniem. Serwer przechowuje wyłącznie szyfrogram i nie może odczytać Twoich danych. Odszyfrowanie następuje lokalnie po pobraniu, więc każde urządzenie musi mieć ten sam klucz. Konsekwencja: utrata klucza oznacza, że snapshotów już na serwerze nie da się odzyskać.",
-    "online_sync_peer_presence": "Synchronizacja online uruchamia się tylko wtedy, gdy drugie urządzenie jest aktywne (widziane w ciągu ostatnich 5 minut). Jeśli żadne inne urządzenie nie jest online, TIMEFLOW pomija synchronizację — nie wstrzymuje nagrywania i nie czeka na drugie urządzenie.",
+    "online_sync_peer_presence": "Synchronizacja online działa bez czekania na drugie urządzenie — przesyła snapshot na serwer i pobiera to, co drugie urządzenie ostatnio wysłało. Drugie urządzenie może być całkowicie offline; dane pojawią się przy jego najbliższej synchronizacji. Gdy oba urządzenia edytują ten sam wpis jednocześnie, wygrywa najnowsza zmiana (last-write-wins).",
     "dashboard_sidebar_backup_indicator": "Wskaźnik backupu w sidebarze — sidebar pokazuje datę ostatniego backupu i status. Ikona ostrzeżenia pojawia się, gdy backup jest zaległy. Kliknij, aby otworzyć sekcję Dane.",
     "dashboard_sidebar_collapse": "Zwijany pasek boczny — przyciskiem u góry paska bocznego zwijasz nawigację do wąskiego paska z samymi ikonami (i rozwijasz z powrotem). W trybie zwiniętym najedź na ikonę, aby zobaczyć jej etykietę i status w tooltipie. Wybór jest zapamiętywany i współdzielony między oknem pulpitu a web UI. Działa tylko na szerokościach desktopowych; na mobile sidebar pozostaje pełną szufladą.",
     "dashboard_macos_native_window_controls": "Natywne kontrolki okna na macOS — TIMEFLOW używa systemowych przycisków (czerwona/żółta/zielona kropka) w lewym górnym rogu zamiast własnych przycisków minimalizuj/maksymalizuj/zamknij. Etykieta TIMEFLOW pojawia się po prawej stronie paska tytułowego. Na Windows pozostają własne kontrolki po prawej.",
@@ -2255,7 +2255,8 @@
     "dismiss": "Zamknij",
     "cancel": "Przerwij",
     "not_needed": "Synchronizacja niepotrzebna — bazy identyczne",
-    "frozen_notice": "Rejestrowanie wpisów jest wstrzymane. Proszę nie zamykać aplikacji."
+    "frozen_notice": "Rejestrowanie wpisów jest wstrzymane. Proszę nie zamykać aplikacji.",
+    "background_sync_notice": "Synchronizacja w tle…"
   },
   "projects_page": {
     "load_more_projects": "Wczytaj więcej projektów",

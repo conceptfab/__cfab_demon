@@ -189,10 +189,14 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
           </div>
         )}
 
-        {/* Freeze notice (only while the DB is actually frozen) + cancel (always while active) */}
+        {/* Background notice (online: neutral; LAN: alarming only while DB is frozen) + cancel */}
         {!isCompleted && !isError && (
           <>
-            {showFrozenNotice && (
+            {syncType === 'online' ? (
+              <p className="text-[11px] text-muted-foreground mb-2">
+                {t('sync_progress.background_sync_notice', 'Background sync in progress…')}
+              </p>
+            ) : showFrozenNotice && (
               <p className="text-[11px] text-amber-400/80 mb-2">
                 {t('sync_progress.frozen_notice', 'Recording is paused. Please do not close the application.')}
               </p>

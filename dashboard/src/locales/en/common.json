@@ -2074,9 +2074,9 @@
     "online_sync_setup_how_to_start": "How to start: enter the server URL, User ID, and raw Token, save settings, wait for Device ID generation, and only then run `Sync now` or enable `Sync on startup`.",
     "online_sync_setup_when_to_use": "When to use: enable it when you want off-device backups or want to sync work between multiple machines.",
     "online_sync_setup_limitations": "Limitations and consequences: Demo Mode disables sync, an invalid token blocks push/pull, and a reseed warning means you need to rebuild state with a local export or a fresh seed.",
-    "online_sync_daemon_mode": "Daemon-based sync (LAN Sync Protocol): When the TIMEFLOW daemon is running, online sync can use the 13-step session protocol with SFTP transfer. This provides encrypted file transfer, progress tracking, and automatic merge — same protocol as LAN sync but through a remote server. Configure the encryption key in sync settings.",
+    "online_sync_daemon_mode": "Daemon-based sync: When the TIMEFLOW daemon is running, online sync runs as a background store-and-forward process — it uploads your encrypted snapshot to the server and downloads the other device's snapshot when available. No peer needs to be online at the same time. Progress is shown in the overlay while the brief local merge runs.",
     "online_sync_cancel": "Cancel Online Sync — when a daemon-based online sync is running, TIMEFLOW can request cancellation. The sync stops at the next safe checkpoint and asks the server to cancel the active session.",
-    "delta_sync_description": "Since the Delta Sync version: the system transmits only modified synchronization packets for old and new sessions, saving up to 95% of bandwidth usage.",
+    "delta_sync_description": "Store-and-forward model: TIMEFLOW uploads a full encrypted snapshot to the server, then downloads and merges the other device's latest snapshot locally. No live connection to the second device is required — each device syncs independently on its own schedule.",
     "online_sync_clients_sync": "Clients & assignments sync: client definitions, each project's assigned client and its status now travel with Online Sync, so the Clients panel stays consistent across machines. Note: re-assigning a client always propagates; clearing an assignment may need one more sync to reach the other devices.",
     "license_activation": "License activation: paste your license key in Online Sync → License section and click Activate. Your device will be registered in the group on the server. After activation the dashboard shows the plan, group, device count and expiration date.",
     "lan_sync_title": "LAN Sync",
@@ -2149,7 +2149,7 @@
     "online_sync_license_section": "License — paste your license key in Online Sync settings, click Activate, and the dashboard shows your plan, group, device count, and expiration date. License is tied to the device.",
     "online_sync_sftp_encryption_key": "Encryption key — enter the key in Settings > Online Sync > Encryption Key. It is stored locally and used to end-to-end encrypt your data before it leaves the device. The key is required: without it online sync stops with an error and uploads nothing. Use the exact same key on every device that shares the data — a different key cannot decrypt the other device's snapshot.",
     "online_sync_e2e_encryption": "End-to-end encryption — the data snapshot is encrypted on your device with your encryption key before it is uploaded. The server stores only ciphertext and cannot read your data. Decryption happens locally after download, so every device must share the same key. Consequence: if you lose the key, snapshots already on the server cannot be recovered.",
-    "online_sync_peer_presence": "Online sync only runs when a second device is active (seen within the last 5 minutes). If no other device is online, TIMEFLOW skips the sync — it does not pause recording or wait for a second device.",
+    "online_sync_peer_presence": "Online sync works without waiting for a second device — it uploads your snapshot to the server and downloads whatever the other device last uploaded. The other device can be completely offline; data will appear there on its next sync. When both devices edit the same entry at the same time, the most recent change wins (last-write-wins).",
     "dashboard_sidebar_backup_indicator": "Sidebar Backup indicator — the sidebar shows the last backup date and status. A warning icon appears when backup is overdue. Click to open the Data section.",
     "dashboard_sidebar_collapse": "Collapsible sidebar — use the toggle at the top of the sidebar to collapse the navigation to a narrow icon-only rail (and expand it back). When collapsed, hover any icon to see its label and status in a tooltip. The choice is remembered and shared between the desktop window and the web UI. Available on desktop widths only; on mobile the sidebar stays a full drawer.",
     "dashboard_macos_native_window_controls": "Native window controls on macOS — TIMEFLOW uses the system traffic lights (red/yellow/green) in the top-left corner instead of custom minimize/maximize/close buttons. The TIMEFLOW label appears on the right side of the title bar. On Windows the custom controls on the right are kept.",
@@ -2255,7 +2255,8 @@
     "dismiss": "Dismiss",
     "cancel": "Cancel",
     "not_needed": "Synchronization not needed — databases identical",
-    "frozen_notice": "Session recording is paused. Please do not close the application."
+    "frozen_notice": "Session recording is paused. Please do not close the application.",
+    "background_sync_notice": "Background sync in progress…"
   },
   "projects_page": {
     "load_more_projects": "Load more projects",
