@@ -299,6 +299,10 @@ pub struct OnlineSyncSettings {
     /// Group ID for license-based features (async delta, etc.)
     #[serde(default)]
     pub group_id: String,
+    /// Optional user ID. Empty by default; the server resolves the real userId
+    /// from the device Bearer token, so this is only an explicit override.
+    #[serde(default)]
+    pub user_id: String,
 }
 
 fn default_sync_mode() -> String {
@@ -328,6 +332,7 @@ impl Default for OnlineSyncSettings {
             auto_sync_on_startup: false,
             sync_mode: "session".to_string(),
             group_id: String::new(),
+            user_id: String::new(),
         }
     }
 }
