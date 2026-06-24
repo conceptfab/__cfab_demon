@@ -866,9 +866,15 @@ fn shadow_db_path() -> Result<std::path::PathBuf, String> {
     Ok(main.with_file_name("timeflow_dashboard-shadow.db"))
 }
 
-// NOTE: the non-blocking shadow-merge functions below are intentionally not yet
-// wired into the sync loop (that is the next task); until then they are reachable
-// only from this module's tests, so they carry `#[allow(dead_code)]`.
+// NOTE: the non-blocking shadow-merge functions below are a deliberately RESERVED
+// primitive. They are correct and unit-tested (equivalence to direct merge + no
+// data loss for writes during the merge window), but are intentionally NOT wired
+// into the sync loop. Decision (2026-06-24): Faza 1's brief local-merge freeze is
+// acceptable; this approach folds the union back into live under a write-lock, so
+// it does not shorten the recording pause below Faza 1 (a true <100ms page-copy
+// swap on SQLite proved hard — see the Faza 2 section of the plan/spec). Kept for a
+// future fast-swap effort, so they carry `#[allow(dead_code)]` and are reachable
+// only from this module's tests.
 
 /// Shadow DB path as a sibling of the given live DB path.
 #[allow(dead_code)]
