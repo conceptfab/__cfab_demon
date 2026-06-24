@@ -133,6 +133,51 @@ fn now_unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// Trwały stan store-and-forward online synca: ostatnia znana rewizja serwera
+/// (CAS base) oraz content-hash bazy z chwili ostatniego udanego sync.
+/// Trzymane na dysku (jak `online_sync_last_completed`), bo muszą przeżyć restart —
+/// inaczej każdy start zaczynałby od rewizji 0 i hashy „brudnych".
+fn online_sync_revision_path() -> Result<PathBuf> {
+    Ok(config_dir()?.join("online_sync_revision.txt"))
+}
+
+/// Odczytaj ostatnią znaną rewizję serwera (CAS base). 0 = nigdy nie synchronizowano.
+pub fn load_online_sync_revision() -> i64 {
+    online_sync_revision_path()
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// Zapisz ostatnią znaną rewizję serwera. Best-effort.
+pub fn save_online_sync_revision(rev: i64) {
+    if let Ok(p) = online_sync_revision_path() {
+        let _ = std::fs::write(p, rev.to_string());
+    }
+}
+
+fn online_sync_synced_hash_path() -> Result<PathBuf> {
+    Ok(config_dir()?.join("online_sync_synced_hash.txt"))
+}
+
+/// Odczytaj content-hash bazy z chwili ostatniego udanego online sync.
+/// `None` = nigdy nie synchronizowano (wtedy każda lokalna zmiana traktowana jako „dirty").
+pub fn load_online_sync_synced_hash() -> Option<String> {
+    online_sync_synced_hash_path()
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Zapisz content-hash bazy po udanym online sync. Best-effort.
+pub fn save_online_sync_synced_hash(hash: &str) {
+    if let Ok(p) = online_sync_synced_hash_path() {
+        let _ = std::fs::write(p, hash);
+    }
+}
+
 /// Trwały stan backoffu online synca po nieudanych próbach. Trzymany na dysku,
 /// bo wiele niezależnych pętli (useJobPool, useBackgroundSync, demon) wali w ten
 /// sam endpoint `/online/trigger-sync` — gdy serwer pada, bez tego ponawiają co
