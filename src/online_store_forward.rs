@@ -387,7 +387,7 @@ mod tests {
     #[test] fn pull_when_behind_and_clean() { assert_eq!(decide(&v(4,5,false)), SyncDecision::Pull); }
     #[test] fn pull_then_push_when_behind_and_dirty() { assert_eq!(decide(&v(4,5,true)), SyncDecision::PullThenPush); }
 
-    const TEST_KEY: &str = "test-encryption-passphrase-7b";
+    const E2E_TEST_VECTOR: &str = "tf-e2e-archive-vector";
 
     /// Reprezentatywny kształt build_full_export.
     const SAMPLE_EXPORT: &str = r#"{"table_hashes":{"projects":"abc"},"exported_at":"2026-06-24 10:00:00","device_id":"dev-1","data":{"projects":[{"id":1,"name":"P"}],"applications":[],"sessions":[],"manual_sessions":[],"tombstones":[],"clients":[],"assignment_feedback":[],"assignment_auto_runs":[]}}"#;
@@ -397,7 +397,7 @@ mod tests {
     /// Koperta zawiera tylko szyfrogram — nie surowy eksport.
     #[test]
     fn archive_round_trip_is_identity_encrypted() {
-        let archive = wrap_snapshot_to_archive(SAMPLE_EXPORT, TEST_KEY).expect("wrap");
+        let archive = wrap_snapshot_to_archive(SAMPLE_EXPORT, E2E_TEST_VECTOR).expect("wrap");
 
         // Serwerowy kontrakt: { data: <object> }; koperta E2E w środku.
         let data = archive.get("data").expect("archive musi mieć pole 'data'");
@@ -407,7 +407,7 @@ mod tests {
         // Serwer nie może odczytać eksportu: szyfrogram nie zawiera plaintextu.
         assert!(!ct.contains("projects"), "ct musi być szyfrogramem, nie plaintextem");
 
-        let restored = unwrap_archive_to_snapshot(&archive, TEST_KEY).expect("unwrap");
+        let restored = unwrap_archive_to_snapshot(&archive, E2E_TEST_VECTOR).expect("unwrap");
         let a: serde_json::Value = serde_json::from_str(SAMPLE_EXPORT).unwrap();
         let b: serde_json::Value = serde_json::from_str(&restored).unwrap();
         assert_eq!(a, b, "round-trip wrap→unwrap musi zachować eksport bit w bit");
@@ -417,8 +417,8 @@ mod tests {
     /// (Świadome: zbieżność po stronie KLIENTA, nie po SHA serwera.)
     #[test]
     fn wrap_produces_distinct_ciphertext_each_call() {
-        let a = wrap_snapshot_to_archive(SAMPLE_EXPORT, TEST_KEY).unwrap();
-        let b = wrap_snapshot_to_archive(SAMPLE_EXPORT, TEST_KEY).unwrap();
+        let a = wrap_snapshot_to_archive(SAMPLE_EXPORT, E2E_TEST_VECTOR).unwrap();
+        let b = wrap_snapshot_to_archive(SAMPLE_EXPORT, E2E_TEST_VECTOR).unwrap();
         let ct_a = a["data"]["ct"].as_str().unwrap();
         let ct_b = b["data"]["ct"].as_str().unwrap();
         assert_ne!(ct_a, ct_b, "losowy nonce → różny szyfrogram per push");
@@ -427,7 +427,7 @@ mod tests {
     /// Zły klucz → Err (autentykacja GCM), nigdy panic ani śmieci psujące merge.
     #[test]
     fn unwrap_with_wrong_key_returns_err() {
-        let archive = wrap_snapshot_to_archive(SAMPLE_EXPORT, TEST_KEY).expect("wrap");
+        let archive = wrap_snapshot_to_archive(SAMPLE_EXPORT, E2E_TEST_VECTOR).expect("wrap");
         let r = unwrap_archive_to_snapshot(&archive, "zly-klucz");
         assert!(r.is_err(), "zły klucz musi dać Err");
     }
@@ -435,7 +435,7 @@ mod tests {
     #[test]
     fn unwrap_rejects_archive_without_data() {
         let bad = serde_json::json!({ "version": "1" });
-        assert!(unwrap_archive_to_snapshot(&bad, TEST_KEY).is_err());
+        assert!(unwrap_archive_to_snapshot(&bad, E2E_TEST_VECTOR).is_err());
     }
 
     /// Brak koperty E2E (ani markera, ani ct) → czytelny Err, nie panic.
@@ -443,12 +443,12 @@ mod tests {
     fn unwrap_rejects_non_e2e_envelope() {
         // Stary kształt plaintext { data: <export> } — bez markera e2e.
         let legacy = serde_json::json!({ "data": { "projects": [] } });
-        assert!(unwrap_archive_to_snapshot(&legacy, TEST_KEY).is_err(),
+        assert!(unwrap_archive_to_snapshot(&legacy, E2E_TEST_VECTOR).is_err(),
             "koperta bez markera e2e musi być odrzucona");
 
         // Marker jest, ale brak ct.
         let no_ct = serde_json::json!({ "data": { "e2e": 1, "alg": "aes-256-gcm" } });
-        assert!(unwrap_archive_to_snapshot(&no_ct, TEST_KEY).is_err(),
+        assert!(unwrap_archive_to_snapshot(&no_ct, E2E_TEST_VECTOR).is_err(),
             "koperta E2E bez 'ct' musi dać Err");
     }
 }

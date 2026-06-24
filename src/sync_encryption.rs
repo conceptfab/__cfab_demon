@@ -321,7 +321,7 @@ mod tests {
         assert_ne!(a[..12], b[..12], "IV losowy per wywołanie (brak nonce reuse)");
     }
 
-    const TEST_PASSPHRASE: &str = "moje-tajne-haslo-do-e2e";
+    const E2E_TEST_VECTOR: &str = "tf-e2e-test-vector-1";
 
     #[test]
     fn passphrase_roundtrip_utf8_empty_and_large() {
@@ -331,30 +331,30 @@ mod tests {
             b"with\0null\0bytes".to_vec(),
             vec![7u8; 512 * 1024],
         ] {
-            let enc = encrypt_with_passphrase(&payload, TEST_PASSPHRASE).unwrap();
-            let dec = decrypt_with_passphrase(&enc, TEST_PASSPHRASE).unwrap();
+            let enc = encrypt_with_passphrase(&payload, E2E_TEST_VECTOR).unwrap();
+            let dec = decrypt_with_passphrase(&enc, E2E_TEST_VECTOR).unwrap();
             assert_eq!(dec, payload, "roundtrip musi zachować bajty 1:1");
         }
     }
 
     #[test]
     fn passphrase_nonce_is_random_per_call() {
-        let a = encrypt_with_passphrase(b"x", TEST_PASSPHRASE).unwrap();
-        let b = encrypt_with_passphrase(b"x", TEST_PASSPHRASE).unwrap();
+        let a = encrypt_with_passphrase(b"x", E2E_TEST_VECTOR).unwrap();
+        let b = encrypt_with_passphrase(b"x", E2E_TEST_VECTOR).unwrap();
         assert_ne!(a[..12], b[..12], "IV losowy per wywołanie (brak nonce reuse)");
         assert_ne!(a, b, "szyfrogram różny przy losowym nonce");
     }
 
     #[test]
     fn passphrase_wrong_key_returns_err_not_garbage() {
-        let enc = encrypt_with_passphrase(b"sekret", TEST_PASSPHRASE).unwrap();
-        let r = decrypt_with_passphrase(&enc, "inne-haslo");
+        let enc = encrypt_with_passphrase(b"sekret", E2E_TEST_VECTOR).unwrap();
+        let r = decrypt_with_passphrase(&enc, "tf-e2e-test-vector-2");
         assert!(r.is_err(), "zły passphrase musi dać Err (autentykacja GCM), nie śmieci");
     }
 
     #[test]
     fn passphrase_truncated_input_returns_err_not_panic() {
-        let r = decrypt_with_passphrase(b"short", TEST_PASSPHRASE);
+        let r = decrypt_with_passphrase(b"short", E2E_TEST_VECTOR);
         assert!(r.is_err(), "za krótkie wejście (bez IV) musi dać Err, nie panic");
     }
 
