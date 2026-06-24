@@ -170,7 +170,7 @@ fn compute_timeout(body_len: usize) -> std::time::Duration {
     std::time::Duration::from_secs(base_secs + extra_secs)
 }
 
-fn server_post(server_url: &str, path: &str, token: &str, body: &str) -> Result<String, String> {
+pub(crate) fn server_post(server_url: &str, path: &str, token: &str, body: &str) -> Result<String, String> {
     let url = format!("{}{}", server_url.trim_end_matches('/'), path);
     let resp = ureq::post(&url)
         .set("Authorization", &format!("Bearer {}", token))
@@ -181,7 +181,7 @@ fn server_post(server_url: &str, path: &str, token: &str, body: &str) -> Result<
     resp.into_string().map_err(|e| format!("Read response: {}", e))
 }
 
-fn server_get(server_url: &str, path: &str, token: &str) -> Result<String, String> {
+pub(crate) fn server_get(server_url: &str, path: &str, token: &str) -> Result<String, String> {
     let url = format!("{}{}", server_url.trim_end_matches('/'), path);
     let resp = ureq::get(&url)
         .set("Authorization", &format!("Bearer {}", token))
