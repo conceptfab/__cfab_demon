@@ -1,3 +1,10 @@
+//! Szyfrowanie kredencjałów/plików dla starego sesyjnego online synca (SFTP).
+//! Nieużywane po przejściu na store-and-forward (snapshoty jadą przez HTTP,
+//! szyfrowanie warstwą transportu TLS). Zostaje jako gotowy moduł pod ewentualne
+//! przyszłe szyfrowanie-at-rest; do tego czasu wyciszamy dead_code na poziomie
+//! modułu, żeby nie kasować przetestowanego kodu.
+#![allow(dead_code)]
+
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key};
 use hmac::{Hmac, Mac};

@@ -356,6 +356,9 @@ fn default_sync_mode() -> String {
 
 impl OnlineSyncSettings {
     /// Returns the effective device ID: configured value, or auto-detected fallback.
+    /// Nieużywane po przejściu na store-and-forward (czyta `device_id` wprost);
+    /// zostaje jako helper na wypadek powrotu auto-fallbacku device_id.
+    #[allow(dead_code)]
     pub fn effective_device_id(&self) -> String {
         if self.device_id.is_empty() {
             crate::lan_common::get_device_id()

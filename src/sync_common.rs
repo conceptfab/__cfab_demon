@@ -208,6 +208,9 @@ pub fn restore_database_backup_typed(conn: &mut rusqlite::Connection, sync_type:
 
 /// Build a delta export containing only records changed since `since_ts`.
 /// Returns (json_string, byte_count). If since_ts is None, exports everything.
+/// Nieużywane w produkcji po przejściu na store-and-forward (push wysyła pełny
+/// snapshot, nie deltę); pozostaje wykorzystywane przez testy symulatora synca.
+#[allow(dead_code)]
 pub fn build_delta_export(conn: &rusqlite::Connection, since_ts: Option<&str>) -> Result<(String, usize), String> {
     let since = since_ts.unwrap_or("1970-01-01 00:00:00");
     let json = lan_server::build_delta_for_pull_public(conn, since)?;
@@ -217,6 +220,8 @@ pub fn build_delta_export(conn: &rusqlite::Connection, since_ts: Option<&str>) -
 
 /// Push-frontier: ostatni znacznik WŁASNEGO pusha (peer_id IS NULL).
 /// Oddzielony od pull-frontier, by pull nie cofał okna niewysłanych zmian (audyt H-4).
+/// Nieużywane w produkcji po usunięciu async-delta synca; nadal w testach H-4.
+#[allow(dead_code)]
 pub fn get_last_push_timestamp(conn: &rusqlite::Connection) -> Option<String> {
     conn.query_row(
         "SELECT created_at FROM sync_markers WHERE peer_id IS NULL ORDER BY created_at DESC LIMIT 1",

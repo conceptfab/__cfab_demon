@@ -1288,15 +1288,7 @@ fn handle_online_trigger_sync(
     std::thread::spawn(move || {
         log::info!("Online sync thread started");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            match settings.sync_mode.as_str() {
-                "async" if !settings.group_id.is_empty() => {
-                    let group_id = settings.group_id.clone();
-                    crate::online_sync::run_async_delta_sync(settings, state_clone.clone(), &group_id, stop_clone.clone());
-                }
-                _ => {
-                    crate::online_sync::run_online_sync(settings, state_clone.clone(), stop_clone);
-                }
-            }
+            crate::online_store_forward::run_store_forward_sync(settings, state_clone.clone(), stop_clone);
         }));
         if let Err(e) = result {
             log::error!("Online sync thread panicked: {:?}", e);
@@ -1581,6 +1573,9 @@ fn handle_get_paired_devices() -> (u16, String) {
 }
 
 /// Public wrapper for the orchestrator to call.
+/// Nieużywane w produkcji po przejściu na store-and-forward; nadal wołane przez
+/// `build_delta_export` i testy round-trip w `sync_common`.
+#[allow(dead_code)]
 pub fn build_delta_for_pull_public(conn: &rusqlite::Connection, since: &str) -> Result<String, String> {
     build_delta_for_pull(conn, since, true)
 }

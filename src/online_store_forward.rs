@@ -13,8 +13,6 @@ const MAX_PUSH_RETRY: u32 = 3;
 pub struct SyncView {
     pub client_revision: i64,
     pub server_revision: i64,
-    pub local_hash: String,
-    pub server_hash: Option<String>,
     /// czy lokalna baza ma niezsynchronizowane zmiany (local_hash != hash z ostatniego sync)
     pub local_dirty: bool,
 }
@@ -53,7 +51,6 @@ struct StatusReq<'a> {
 #[derive(Deserialize)]
 pub struct StatusResp {
     #[serde(rename = "serverRevision")] pub server_revision: i64,
-    #[serde(rename = "serverHash")] pub server_hash: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -81,7 +78,6 @@ struct PullReq<'a> {
 pub struct PullResp {
     #[serde(rename = "hasUpdate")] pub has_update: bool,
     pub revision: Option<i64>,
-    #[serde(rename = "payloadSha256")] pub payload_sha256: Option<String>,
     pub archive: Option<serde_json::Value>,
 }
 
@@ -124,12 +120,7 @@ pub(crate) fn pull_snapshot(server: &str, token: &str, user: &str, device: &str,
 // wyciągamy `archive.data` i serializujemy z powrotem do stringa — to dokładnie to,
 // czego oczekuje merge. Round-trip jest symetryczny.
 
-// allow(dead_code): cały łańcuch store-and-forward (run_store_forward_sync +
-// prywatne callee + helpery) jest gotowy, ale podpięty dopiero w Task 7 (trigger).
-// Do tego czasu nikt go nie woła — celowo wyciszamy, by build był czysty.
-
 /// Owija string eksportu (`build_full_export`) w `archive = { "data": <export-object> }`.
-#[allow(dead_code)]
 fn wrap_snapshot_to_archive(export_json: &str) -> Result<serde_json::Value, String> {
     let export: serde_json::Value =
         serde_json::from_str(export_json).map_err(|e| format!("wrap: zły eksport JSON: {e}"))?;
@@ -138,7 +129,6 @@ fn wrap_snapshot_to_archive(export_json: &str) -> Result<serde_json::Value, Stri
 
 /// Wyciąga z `archive` obiekt eksportu (`archive.data`) i serializuje do stringa,
 /// który `merge_incoming_data` przyjmuje bez zmian.
-#[allow(dead_code)]
 fn unwrap_archive_to_snapshot(archive: &serde_json::Value) -> Result<String, String> {
     let data = archive
         .get("data")
@@ -148,19 +138,27 @@ fn unwrap_archive_to_snapshot(archive: &serde_json::Value) -> Result<String, Str
 
 // ── Store-and-forward sync loop ──
 
-/// Publiczne wejście store-and-forward online synca. Wywoływane przez trigger (Task 7).
+/// Wspólny test przerwania przebiegu: użytkownik anulował (`request_cancel`) LUB
+/// demon się zamyka (`stop_signal`). Sprawdzany na grubych granicach kroków
+/// (start, przed merge, przed każdą próbą push) — bez busy-pollingu.
+fn should_abort(stop_signal: &AtomicBool) -> bool {
+    crate::online_sync::is_cancel_requested()
+        || stop_signal.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Publiczne wejście store-and-forward online synca. Wywoływane przez trigger.
 /// Panic-safe (guarded_then_cleanup); zawsze odmraża bazę i resetuje progress na końcu.
-#[allow(dead_code)]
 pub fn run_store_forward_sync(
     settings: config::OnlineSyncSettings,
     sync_state: Arc<LanSyncState>,
-    _stop_signal: Arc<AtomicBool>,
+    stop_signal: Arc<AtomicBool>,
 ) {
+    crate::online_sync::clear_cancel();
     sync_state.set_sync_type("online");
     let sync_state_cleanup = Arc::clone(&sync_state);
     crate::lan_sync_orchestrator::guarded_then_cleanup(
         std::panic::AssertUnwindSafe(|| {
-            match execute_store_forward(&settings, &sync_state) {
+            match execute_store_forward(&settings, &sync_state, &stop_signal) {
                 Ok(()) => {
                     config::save_online_sync_completed();
                     true
@@ -180,15 +178,21 @@ pub fn run_store_forward_sync(
 }
 
 /// Pojedynczy przebieg: decyzja → pull+merge i/lub push (z CAS retry).
-#[allow(dead_code)]
 fn execute_store_forward(
     settings: &config::OnlineSyncSettings,
     sync_state: &LanSyncState,
+    stop_signal: &AtomicBool,
 ) -> Result<(), String> {
     let server = &settings.server_url;
     let token = &settings.auth_token;
     let user = &settings.user_id;
     let device = &settings.device_id;
+
+    // (a) Granica startu — przerwij zanim w ogóle uderzymy w sieć/bazę.
+    if should_abort(stop_signal) {
+        lan_common::sync_log("[store-forward] przerwano (cancel/stop)");
+        return Ok(());
+    }
 
     let local_hash = {
         let conn = lan_common::open_dashboard_db()?;
@@ -200,11 +204,13 @@ fn execute_store_forward(
 
     sync_state.set_progress(1, "checking", "idle");
     let status = fetch_status(server, token, user, device, client_rev, &local_hash)?;
+    if should_abort(stop_signal) {
+        lan_common::sync_log("[store-forward] przerwano (cancel/stop)");
+        return Ok(());
+    }
     let view = SyncView {
         client_revision: client_rev,
         server_revision: status.server_revision,
-        local_hash: local_hash.clone(),
-        server_hash: status.server_hash.clone(),
         local_dirty,
     };
     match decide(&view) {
@@ -213,18 +219,18 @@ fn execute_store_forward(
             Ok(())
         }
         SyncDecision::Pull => {
-            do_pull_merge(settings, sync_state)?;
+            do_pull_merge(settings, sync_state, stop_signal)?;
             Ok(())
         }
         SyncDecision::Push => {
-            do_push(settings, sync_state, client_rev)?;
+            do_push(settings, sync_state, client_rev, stop_signal)?;
             Ok(())
         }
         SyncDecision::PullThenPush => {
-            do_pull_merge(settings, sync_state)?;
+            do_pull_merge(settings, sync_state, stop_signal)?;
             // Po merge rewizja serwera została zapisana — bierzemy ją jako CAS base.
             let new_base = config::load_online_sync_revision();
-            do_push(settings, sync_state, new_base)?;
+            do_push(settings, sync_state, new_base, stop_signal)?;
             Ok(())
         }
     }
@@ -233,10 +239,10 @@ fn execute_store_forward(
 /// Pobierz snapshot z serwera i zmerguj lokalnie.
 /// FAZA 1: krótki freeze() tylko wokół samego lokalnego merge (Task 12 go usunie
 /// na rzecz merge nieblokującego). Sieć (pull) jest poza freeze.
-#[allow(dead_code)]
 fn do_pull_merge(
     settings: &config::OnlineSyncSettings,
     sync_state: &LanSyncState,
+    stop_signal: &AtomicBool,
 ) -> Result<(), String> {
     let server = &settings.server_url;
     let token = &settings.auth_token;
@@ -247,11 +253,18 @@ fn do_pull_merge(
     sync_state.set_progress(5, "pulling", "download");
     let pull = pull_snapshot(server, token, user, device, client_rev)?;
     if !pull.has_update {
+        crate::lan_common::sync_log("[store-forward] pull: serwer nie ma nowszych danych (brak update)");
         return Ok(());
     }
     let archive = pull.archive.ok_or("pull: hasUpdate ale brak archive")?;
     let server_rev = pull.revision.ok_or("pull: brak revision")?;
     let slave_data = unwrap_archive_to_snapshot(&archive)?;
+
+    // (b) Granica przed merge — przerwij zanim ruszymy lokalną bazę (freeze+merge).
+    if should_abort(stop_signal) {
+        lan_common::sync_log("[store-forward] przerwano (cancel/stop)");
+        return Ok(());
+    }
 
     sync_state.freeze();
     let merge_res = (|| -> Result<String, String> {
@@ -272,11 +285,11 @@ fn do_pull_merge(
 
 /// Wyeksportuj lokalną bazę i wypchnij na serwer z CAS (knownServerRevision).
 /// Przy kolizji `stale_revision` robimy pull+merge i ponawiamy push (do MAX_PUSH_RETRY).
-#[allow(dead_code)]
 fn do_push(
     settings: &config::OnlineSyncSettings,
     sync_state: &LanSyncState,
     base_rev: i64,
+    stop_signal: &AtomicBool,
 ) -> Result<(), String> {
     let server = &settings.server_url;
     let token = &settings.auth_token;
@@ -285,6 +298,11 @@ fn do_push(
 
     let mut base = base_rev;
     for attempt in 0..MAX_PUSH_RETRY {
+        // (c) Granica każdej próby CAS — przerwij przed kolejnym eksportem+push.
+        if should_abort(stop_signal) {
+            lan_common::sync_log("[store-forward] przerwano (cancel/stop)");
+            return Ok(());
+        }
         sync_state.set_progress(11, "pushing", "upload");
         let export_json = {
             let conn = lan_common::open_dashboard_db()?;
@@ -307,7 +325,7 @@ fn do_push(
                 "[store-forward] push stale (próba {}), pull+merge i retry",
                 attempt + 1
             ));
-            do_pull_merge(settings, sync_state)?;
+            do_pull_merge(settings, sync_state, stop_signal)?;
             base = config::load_online_sync_revision();
             continue;
         }
@@ -320,8 +338,7 @@ fn do_push(
 mod tests {
     use super::*;
     fn v(cr: i64, sr: i64, dirty: bool) -> SyncView {
-        SyncView { client_revision: cr, server_revision: sr,
-            local_hash: "h".into(), server_hash: Some("s".into()), local_dirty: dirty }
+        SyncView { client_revision: cr, server_revision: sr, local_dirty: dirty }
     }
     #[test] fn idle_when_in_sync_and_clean() { assert_eq!(decide(&v(5,5,false)), SyncDecision::Idle); }
     #[test] fn push_when_clean_behind_false_but_dirty() { assert_eq!(decide(&v(5,5,true)), SyncDecision::Push); }

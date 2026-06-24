@@ -1,4 +1,11 @@
 //! SFTP client for online sync file transfers.
+//!
+//! Cały moduł jest tymczasowo nieużywany po przejściu online synca na
+//! store-and-forward (snapshoty idą przez HTTP `/api/sync/*`, bez SFTP). Zostaje
+//! jako gotowy transport pod ewentualny przyszły tryb dużych plików; do tego
+//! czasu wyciszamy dead_code na poziomie modułu (czysty build, bez kasowania
+//! sprawdzonego kodu).
+#![allow(dead_code)]
 
 use ssh2::Session;
 use std::collections::HashMap;
