@@ -200,6 +200,9 @@ pub fn run_store_forward_sync(
             match execute_store_forward(&settings, &sync_state, &stop_signal) {
                 Ok(()) => {
                     config::save_online_sync_completed();
+                    // Odśwież licznik w PAMIĘCI — inaczej tray (secs_since_last_sync)
+                    // zawsze pokazuje „Synchronization failed" mimo udanego synca online.
+                    sync_state.mark_sync_completed();
                     true
                 }
                 Err(e) if e == CANCELLED_MARKER => {

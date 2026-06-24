@@ -89,14 +89,41 @@ pub fn upload_bytes(target: &FtpTarget, remote_path: &str, data: &[u8]) -> Resul
             MAX_FILE_BYTES
         ));
     }
+    let local_len = data.len();
     let mut ftp = connect(target)?;
     let mut cursor = Cursor::new(data);
-    let res = ftp
-        .put_file(remote_path, &mut cursor)
-        .map(|_| ())
-        .map_err(|e| format!("FTP upload {remote_path}: {e}"));
+    if let Err(e) = ftp.put_file(remote_path, &mut cursor) {
+        let _ = ftp.quit();
+        let msg = format!("FTP upload {remote_path}: {e}");
+        sync_log(&format!("[ftp] UMIESZCZENIE BŁĄD: {msg}"));
+        return Err(msg);
+    }
+    // Czytelne potwierdzenie UMIESZCZENIA: weryfikujemy rozmiar pliku po stronie FTP
+    // (komenda SIZE). Best-effort — gdy backend nie wspiera SIZE, logujemy bez
+    // twardej weryfikacji, ale nie wywracamy synca.
+    let confirm = ftp.size(remote_path);
     let _ = ftp.quit();
-    res
+    match confirm {
+        Ok(remote_len) if remote_len == local_len => {
+            sync_log(&format!(
+                "[ftp] UMIESZCZENIE OK: {remote_path} ({remote_len} B potwierdzone na FTP)"
+            ));
+            Ok(())
+        }
+        Ok(remote_len) => {
+            let msg = format!(
+                "FTP upload {remote_path}: rozmiar po zapisie {remote_len} B ≠ wysłane {local_len} B (niepełny zapis)"
+            );
+            sync_log(&format!("[ftp] UMIESZCZENIE NIEPEŁNE: {msg}"));
+            Err(msg)
+        }
+        Err(e) => {
+            sync_log(&format!(
+                "[ftp] UMIESZCZENIE OK (bez weryfikacji SIZE): {remote_path} ({local_len} B wysłane) — SIZE niedostępne: {e}"
+            ));
+            Ok(())
+        }
+    }
 }
 
 /// Pobiera bajty z `remote_path`. Waliduje limit rozmiaru po pobraniu.
@@ -107,7 +134,13 @@ pub fn download_bytes(target: &FtpTarget, remote_path: &str) -> Result<Vec<u8>, 
         .map(|cur| cur.into_inner())
         .map_err(|e| format!("FTP download {remote_path}: {e}"));
     let _ = ftp.quit();
-    let data = res?;
+    let data = match res {
+        Ok(d) => d,
+        Err(e) => {
+            sync_log(&format!("[ftp] ODCZYT BŁĄD: {e}"));
+            return Err(e);
+        }
+    };
     if data.len() as u64 > MAX_FILE_BYTES {
         return Err(format!(
             "Pobrany plik {} B przekracza limit {} B",
@@ -115,7 +148,28 @@ pub fn download_bytes(target: &FtpTarget, remote_path: &str) -> Result<Vec<u8>, 
             MAX_FILE_BYTES
         ));
     }
+    // Czytelne potwierdzenie ODCZYTU.
+    sync_log(&format!(
+        "[ftp] ODCZYT OK: {remote_path} ({} B pobrane z FTP)",
+        data.len()
+    ));
     Ok(data)
+}
+
+/// Usuwa zdalny plik z FTP i loguje czytelne potwierdzenie. Wywoływane przez
+/// KLIENTA po udanym imporcie — domyka cykl umieszczenie→odczyt→usunięcie i trzyma
+/// zasadę „serwer nie dotyka danych" (kasuje odbiorca, nie serwer).
+pub fn delete_file(target: &FtpTarget, remote_path: &str) -> Result<(), String> {
+    let mut ftp = connect(target)?;
+    let res = ftp
+        .rm(remote_path)
+        .map_err(|e| format!("FTP delete {remote_path}: {e}"));
+    let _ = ftp.quit();
+    match &res {
+        Ok(()) => sync_log(&format!("[ftp] USUNIĘCIE OK: {remote_path} (skasowane z FTP)")),
+        Err(e) => sync_log(&format!("[ftp] USUNIĘCIE BŁĄD: {e}")),
+    }
+    res
 }
 
 #[cfg(test)]

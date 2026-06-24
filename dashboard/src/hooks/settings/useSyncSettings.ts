@@ -180,8 +180,17 @@ export function useSyncSettings({
 
         try {
           await persistDaemonOnlineSyncSettings(savedOnlineSync, uiToken);
-        } catch {
-          // Daemon not available; UI sync state can still be updated locally.
+        } catch (e) {
+          // Demon nie przyjął ustawień — NIE udawaj sukcesu: sync poszedłby na
+          // starych ustawieniach. Pokaż realny błąd zamiast cichego połknięcia.
+          setManualSyncResult({
+            ok: false,
+            action: 'none',
+            reason: 'daemon_settings_rejected',
+            serverRevision: onlineSyncState.serverRevision,
+            error: getErrorMessage(e, t('ui.common.unknown_error')),
+          });
+          return;
         }
 
         await triggerDaemonOnlineSync({ force: true });
@@ -312,15 +321,27 @@ export function useSyncSettings({
       }
 
       if (result.apiToken) {
-        void persistDaemonOnlineSyncSettings(
-          { ...onlineSyncSettings, deviceId: effectiveDeviceId },
-          result.apiToken,
-        ).catch((err) => {
+        try {
+          await persistDaemonOnlineSyncSettings(
+            { ...onlineSyncSettings, deviceId: effectiveDeviceId },
+            result.apiToken,
+          );
+        } catch (err) {
           logTauriWarn(
             '[license] Failed to persist daemon settings after activation:',
             err,
           );
-        });
+          // Licencja aktywowana, ale demon nie dostał group_id/sync_mode/klucza —
+          // bez tego sync online NIE ruszy. Pokaż to zamiast cichego połknięcia.
+          setLicenseError(
+            t('settings.license.daemon_persist_failed', {
+              defaultValue:
+                'Licencja aktywowana, ale nie udało się przekazać ustawień do demona: {{error}}. Kliknij „Zapisz ustawienia".',
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+          return;
+        }
       }
 
       showInfo(t('settings.license.activated_success'));

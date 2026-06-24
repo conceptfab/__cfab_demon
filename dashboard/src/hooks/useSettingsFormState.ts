@@ -138,6 +138,16 @@ export function useSettingsFormState({
       })
       .catch((err) => {
         logTauriWarn('Failed to persist online sync settings to daemon:', err);
+        // Bez tego użytkownik nie wie, że demon NIE przyjął zmian (np. „Sync on
+        // startup", interwał, sync_mode) — UI pokazywałby „Zapisano", a demon dalej
+        // działałby na starych ustawieniach. To był objaw „apka olewa ustawienia".
+        showError(
+          t('settings_page.online_sync_daemon_save_failed', {
+            defaultValue:
+              'Nie udało się zapisać ustawień synchronizacji w demonie: {{error}}',
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
       });
 
     const savedFreeze = saveFreezeSettings(generalSettings.freezeSettings);
@@ -187,6 +197,7 @@ export function useSettingsFormState({
     setStoreLanguage,
     setStoreSplitSettings,
     setStoreWorkingHours,
+    showError,
     showInfo,
     syncSettings,
     t,

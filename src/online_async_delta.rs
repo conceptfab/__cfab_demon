@@ -231,8 +231,15 @@ pub fn pull_pending(s: &OnlineSyncSettings, sync_state: &LanSyncState, stop_sign
     sync_state.set_progress(3, "checking", "download");
     let pending = async_pending(s, stop_signal)?;
     if pending.packages.is_empty() {
+        lan_common::sync_log(
+            "[async-pull] pending: 0 paczek (serwer nic nie zwrócił dla tej grupy/urządzenia — sprawdź group_id i czy druga maszyna pushowała)",
+        );
         return Ok(false);
     }
+    lan_common::sync_log(&format!(
+        "[async-pull] pending: {} paczek do pobrania",
+        pending.packages.len()
+    ));
 
     let mut applied = false;
     for pkg in pending.packages {
@@ -284,6 +291,11 @@ pub fn pull_pending(s: &OnlineSyncSettings, sync_state: &LanSyncState, stop_sign
         let merged_hash = merge_res?;
 
         config::save_online_sync_synced_hash(&merged_hash);
+        // KLIENT kasuje plik z FTP po udanym imporcie (serwer nie dotyka danych).
+        // Best-effort: błąd kasowania nie wywraca synca (plik i tak ma TTL), ale jest
+        // czytelnie zalogowany przez delete_file (USUNIĘCIE OK/BŁĄD).
+        let del_target = ftp_target_from_creds(&creds)?;
+        let _ = online_ftp_transport::delete_file(&del_target, &remote_path);
         async_ack(s, &pkg.id, stop_signal)?;
         applied = true;
         lan_common::sync_log(&format!(
