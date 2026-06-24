@@ -2994,4 +2994,120 @@ mod tests {
             "push-frontier musi ignorowac nowszy marker pull"
         );
     }
+
+    // ── Store-and-forward convergence (online sync redesign) ──
+    // Model dostepu: N urzadzen wymienia PELNE snapshoty przez wspolny
+    // "server blob" (jeden String = ostatni pelny eksport). Kazda runda:
+    // urzadzenie pobiera blob -> merge_incoming_data + verify_merge_integrity ->
+    // wypycha wlasny build_full_export jako nowy blob. Petla konczy sie, gdy
+    // content-hash bloba serwera jest niezmieniony przez 2 rundy z rzedu.
+    // To waliduje rdzen: N urzadzen pull+merge+push przez wersjonowany blob
+    // zbiega do UNII danych bez utraty, a content-hash zatrzymuje ping-pong.
+
+    /// Deterministyczny (w obrebie procesu) hash bloba serwera — warunek stopu.
+    fn blob_content_hash(blob: &str) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        blob.hash(&mut h);
+        h.finish()
+    }
+
+    #[test]
+    fn store_forward_three_devices_converge_to_union() {
+        // 3 urzadzenia, kazde z ROZLACZNYM zestawem danych (rozne prefiksy nazw).
+        let mut devices: Vec<rusqlite::Connection> =
+            vec![open_test_db(), open_test_db(), open_test_db()];
+        for (conn, prefix) in devices.iter().zip(["A", "B", "C"]) {
+            seed(conn, prefix);
+        }
+
+        // Suma rozlacznych ziaren = oczekiwana unia.
+        let pre: Vec<Counts> = devices.iter().map(counts).collect();
+        let expected_projects: i64 = pre.iter().map(|c| c.projects).sum();
+        let expected_apps: i64 = pre.iter().map(|c| c.apps).sum();
+        let expected_sessions: i64 = pre.iter().map(|c| c.sessions).sum();
+        let expected_manual: i64 = pre.iter().map(|c| c.manual).sum();
+
+        // Wspolny "server" = ostatni pelny eksport (None do pierwszego push).
+        let mut server_blob: Option<String> = None;
+        let mut last_hash: Option<u64> = None;
+        let mut stable_rounds = 0usize;
+        let mut rounds = 0usize;
+        const MAX_ROUNDS: usize = 20;
+
+        while stable_rounds < 2 && rounds < MAX_ROUNDS {
+            rounds += 1;
+            // Iteruj urzadzenia po indeksie (nie da sie trzymac 3x &mut w tablicy).
+            for i in 0..devices.len() {
+                if let Some(blob) = server_blob.clone() {
+                    merge_incoming_data(&mut devices[i], &blob)
+                        .unwrap_or_else(|e| panic!("merge na urzadzeniu {i} (runda {rounds}): {e}"));
+                    verify_merge_integrity(&devices[i])
+                        .unwrap_or_else(|e| panic!("verify na urzadzeniu {i} (runda {rounds}): {e}"));
+                }
+                // Wypchnij wlasny pelny stan jako nowy blob serwera.
+                server_blob = Some(
+                    build_full_export(&devices[i])
+                        .unwrap_or_else(|e| panic!("export urzadzenia {i} (runda {rounds}): {e}")),
+                );
+            }
+
+            // Warunek stopu: content-hash bloba serwera niezmieniony 2 rundy z rzedu.
+            let h = blob_content_hash(server_blob.as_deref().unwrap_or(""));
+            if last_hash == Some(h) {
+                stable_rounds += 1;
+            } else {
+                stable_rounds = 0;
+            }
+            last_hash = Some(h);
+        }
+
+        assert!(
+            rounds < MAX_ROUNDS,
+            "store-and-forward nie zbieglo w {MAX_ROUNDS} rundach (content-hash bloba wciaz sie zmienia) — \
+             mozliwy bug konwergencji silnika merge przy dostepie store-and-forward"
+        );
+
+        // Po konwergencji: kazde urzadzenie ma te sama unie (count == suma ziaren).
+        for (i, conn) in devices.iter().enumerate() {
+            let c = counts(conn);
+            assert_eq!(
+                c.projects, expected_projects,
+                "urzadzenie {i}: projects={} != unia {expected_projects}",
+                c.projects
+            );
+            assert_eq!(c.apps, expected_apps, "urzadzenie {i}: apps != unia");
+            assert_eq!(c.sessions, expected_sessions, "urzadzenie {i}: sessions != unia");
+            assert_eq!(c.manual, expected_manual, "urzadzenie {i}: manual != unia");
+        }
+
+        // Identyczny table-hash na wszystkich 3 urzadzeniach (warunek "none" w sync).
+        let h0 = compute_tables_hash_string_conn(&devices[0]);
+        for (i, conn) in devices.iter().enumerate().skip(1) {
+            assert_eq!(
+                compute_tables_hash_string_conn(conn),
+                h0,
+                "table-hash urzadzenia {i} != urzadzenia 0 po konwergencji"
+            );
+        }
+    }
+
+    #[test]
+    fn merging_own_export_is_idempotent() {
+        // Warunek stopu jest poprawny tylko jesli merge wlasnego eksportu w siebie
+        // NIE zmienia table-hasha (inaczej content-hash nigdy by sie nie ustabilizowal).
+        let mut c = open_test_db();
+        seed(&c, "X");
+        let h_before = compute_tables_hash_string_conn(&c);
+
+        let snap = build_full_export(&c).expect("export self");
+        merge_incoming_data(&mut c, &snap).expect("merge own export");
+        verify_merge_integrity(&c).expect("verify after self-merge");
+
+        assert_eq!(
+            compute_tables_hash_string_conn(&c),
+            h_before,
+            "merge wlasnego eksportu w siebie nie moze zmienic table-hasha (idempotencja)"
+        );
+    }
 }
