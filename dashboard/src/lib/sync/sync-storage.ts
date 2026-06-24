@@ -6,7 +6,7 @@ import type {
 } from '@/lib/online-sync-types';
 
 export const ONLINE_SYNC_SETTINGS_KEY = 'timeflow.settings.online-sync';
-const ONLINE_SYNC_STATE_KEY = 'timeflow.sync.state';
+export const ONLINE_SYNC_STATE_KEY = 'timeflow.sync.state';
 const ONLINE_SYNC_STATE_STORAGE_VERSION = 2;
 export const ONLINE_SYNC_SETTINGS_CHANGED_EVENT =
   'timeflow:online-sync-settings-changed';

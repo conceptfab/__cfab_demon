@@ -14,6 +14,7 @@ import {
   normalizeAutoSyncIntervalMinutes,
   normalizeOnlineSyncState,
   normalizeServerUrl,
+  ONLINE_SYNC_STATE_KEY,
   ONLINE_SYNC_SETTINGS_KEY,
   readJsonStorage,
   readJsonStorageWithFallback,
@@ -160,5 +161,48 @@ export function loadOnlineSyncState(
   }
 
   return normalizeOnlineSyncState(readOnlineSyncStateStorageRaw());
+}
+
+export interface OnlineSyncLastResult {
+  ok: boolean;
+  syncedHash?: string | null;
+  finishedAt?: number;
+}
+
+/** Zapisuje REALNY wynik ostatniego online sync do stanu czytanego przez panel (audyt H1). */
+export function saveOnlineSyncLastResult(result: OnlineSyncLastResult): void {
+  // Resolve settings (persists deviceId if absent) so scope key matches what
+  // loadOnlineSyncState() will read back with its own loadOnlineSyncSettings() call.
+  const settings = loadOnlineSyncSettings();
+  const scopeKey = getOnlineSyncStateScopeKey(settings);
+
+  // Read the existing envelope (or build an empty v2 one).
+  const existing = readOnlineSyncStateEnvelope();
+  const scopes: Record<string, Partial<OnlineSyncState>> = existing
+    ? { ...existing.scopes }
+    : {};
+
+  // Merge into the current scope — keep all other fields, update lastSyncAt + hash.
+  const prev = normalizeOnlineSyncState(scopes[scopeKey]);
+  const lastSyncAt =
+    result.finishedAt != null
+      ? new Date(result.finishedAt * 1000).toISOString()
+      : new Date().toISOString();
+  const localHash =
+    result.syncedHash != null ? result.syncedHash : prev.localHash;
+  const serverHash =
+    result.syncedHash != null ? result.syncedHash : prev.serverHash;
+
+  scopes[scopeKey] = {
+    ...prev,
+    lastSyncAt,
+    localHash,
+    serverHash,
+  };
+
+  writeJsonStorage(ONLINE_SYNC_STATE_KEY, {
+    version: 2,
+    scopes,
+  });
 }
 

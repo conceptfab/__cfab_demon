@@ -194,14 +194,38 @@ export function useSyncSettings({
         }
 
         await triggerDaemonOnlineSync({ force: true });
-        await new Promise((r) => setTimeout(r, 2_000));
-        setOnlineSyncState(loadOnlineSyncState());
-        setManualSyncResult({
-          ok: true,
-          action: 'push',
-          reason: 'daemon_sync_triggered',
-          serverRevision: null,
-        });
+
+        const { getDaemonOnlineSyncResult } = await import('@/lib/tauri/online-sync');
+        const { saveOnlineSyncLastResult } = await import('@/lib/sync/sync-state');
+        const startedAt = Math.floor(Date.now() / 1000);
+        let outcome: Awaited<ReturnType<typeof getDaemonOnlineSyncResult>> | null = null;
+        for (let i = 0; i < 40; i++) {
+          await new Promise((r) => setTimeout(r, 500));
+          try {
+            const res = await getDaemonOnlineSyncResult();
+            if (res.finishedAt >= startedAt && (res.phase === 'completed' || res.phase === 'error')) {
+              outcome = res;
+              break;
+            }
+          } catch {
+            // demon chwilowo nieosiągalny — spróbuj ponownie
+          }
+        }
+
+        if (outcome && outcome.phase === 'completed') {
+          saveOnlineSyncLastResult({ ok: true, syncedHash: outcome.syncedHash, finishedAt: outcome.finishedAt });
+          setOnlineSyncState(loadOnlineSyncState());
+          setManualSyncResult({ ok: true, action: 'push', reason: 'daemon_sync_completed', serverRevision: null });
+        } else if (outcome && outcome.phase === 'error') {
+          setManualSyncResult({
+            ok: false, action: 'none', reason: 'daemon_sync_failed',
+            serverRevision: onlineSyncState.serverRevision,
+            error: outcome.error ?? t('ui.common.unknown_error'),
+          });
+        } else {
+          setOnlineSyncState(loadOnlineSyncState());
+          setManualSyncResult({ ok: true, action: 'push', reason: 'daemon_sync_in_progress', serverRevision: null });
+        }
         triggerRefresh('settings_manual_sync');
       } catch (e) {
         setManualSyncResult({
@@ -236,14 +260,38 @@ export function useSyncSettings({
         setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiToken });
 
         await triggerDaemonOnlineSync({ force: true });
-        await new Promise((r) => setTimeout(r, 2_000));
-        setOnlineSyncState(loadOnlineSyncState());
-        setManualSyncResult({
-          ok: true,
-          action: 'push',
-          reason: 'daemon_force_sync_triggered',
-          serverRevision: null,
-        });
+
+        const { getDaemonOnlineSyncResult } = await import('@/lib/tauri/online-sync');
+        const { saveOnlineSyncLastResult } = await import('@/lib/sync/sync-state');
+        const startedAt = Math.floor(Date.now() / 1000);
+        let outcome: Awaited<ReturnType<typeof getDaemonOnlineSyncResult>> | null = null;
+        for (let i = 0; i < 40; i++) {
+          await new Promise((r) => setTimeout(r, 500));
+          try {
+            const res = await getDaemonOnlineSyncResult();
+            if (res.finishedAt >= startedAt && (res.phase === 'completed' || res.phase === 'error')) {
+              outcome = res;
+              break;
+            }
+          } catch {
+            // demon chwilowo nieosiągalny — spróbuj ponownie
+          }
+        }
+
+        if (outcome && outcome.phase === 'completed') {
+          saveOnlineSyncLastResult({ ok: true, syncedHash: outcome.syncedHash, finishedAt: outcome.finishedAt });
+          setOnlineSyncState(loadOnlineSyncState());
+          setManualSyncResult({ ok: true, action: 'push', reason: 'daemon_sync_completed', serverRevision: null });
+        } else if (outcome && outcome.phase === 'error') {
+          setManualSyncResult({
+            ok: false, action: 'none', reason: 'daemon_sync_failed',
+            serverRevision: onlineSyncState.serverRevision,
+            error: outcome.error ?? t('ui.common.unknown_error'),
+          });
+        } else {
+          setOnlineSyncState(loadOnlineSyncState());
+          setManualSyncResult({ ok: true, action: 'push', reason: 'daemon_sync_in_progress', serverRevision: null });
+        }
       } catch (e) {
         setManualSyncResult({
           ok: false,
