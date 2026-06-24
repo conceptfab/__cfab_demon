@@ -85,9 +85,15 @@ export function useSyncSettings({
         await saveDaemonOnlineSyncSettings({ ...current, encryption_key });
       } catch (err) {
         logTauriWarn('[online-sync] E2E key self-heal failed:', err);
+        setLicenseError(
+          t('settings.license.e2e_key_selfheal_failed', {
+            defaultValue:
+              'Nie udało się dopisać klucza E2E do demona — online sync może nie ruszyć. Kliknij „Zapisz ustawienia".',
+          }),
+        );
       }
     })();
-  }, []);
+  }, [setLicenseError, t]);
 
   const lastSyncLabel = onlineSyncState.lastSyncAt
     ? new Date(onlineSyncState.lastSyncAt).toLocaleString()
@@ -358,8 +364,15 @@ export function useSyncSettings({
             ...prev,
             apiToken: result.apiToken!,
           }));
-        } catch {
+        } catch (err) {
           logTauriWarn('[license] Failed to auto-save API token');
+          setLicenseError(
+            t('settings.license.token_persist_failed', {
+              defaultValue:
+                'Licencja aktywowana, ale nie udało się zapisać tokena API: {{error}}. Token może nie przetrwać restartu.',
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
         }
       }
 
