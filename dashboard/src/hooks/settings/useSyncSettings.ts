@@ -176,6 +176,7 @@ export function useSyncSettings({
         });
         return;
       }
+      if (manualSyncing) return; // single-flight: nie odpalaj drugiego synca równolegle
 
       setManualSyncing(true);
       setManualSyncResult(null);
@@ -246,6 +247,7 @@ export function useSyncSettings({
       }
     },
     [
+      manualSyncing,
       onlineSyncSettings,
       onlineSyncState.serverRevision,
       persistDaemonOnlineSyncSettings,
@@ -257,6 +259,7 @@ export function useSyncSettings({
   const handleForceSyncNow = useCallback(
     async (demoModeEnabled: boolean) => {
       if (demoModeEnabled) return;
+      if (manualSyncing) return; // single-flight: nie odpalaj drugiego synca równolegle
 
       setManualSyncing(true);
       setManualSyncResult(null);
@@ -310,7 +313,7 @@ export function useSyncSettings({
         setManualSyncing(false);
       }
     },
-    [onlineSyncSettings, onlineSyncState.serverRevision, t],
+    [manualSyncing, onlineSyncSettings, onlineSyncState.serverRevision, t],
   );
 
   const resetManualSyncResult = useCallback(() => {
