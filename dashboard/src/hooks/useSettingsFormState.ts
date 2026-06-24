@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { settingsApi } from '@/lib/tauri';
 import { loadLicenseInfo, saveOnlineSyncSettings } from '@/lib/online-sync';
+import type { DaemonOnlineSyncSettings } from '@/lib/tauri/online-sync';
 import { logTauriWarn } from '@/lib/utils';
 import {
   type CurrencySettings,
@@ -117,7 +118,8 @@ export function useSettingsFormState({
           savedOnlineSync.encryptionKey,
           loadLicenseInfo()?.groupId,
         );
-        await saveDaemonOnlineSyncSettings({
+        const groupId = loadLicenseInfo()?.groupId;
+        const daemonSettings: DaemonOnlineSyncSettings = {
           enabled: savedOnlineSync.enabled,
           server_url: savedOnlineSync.serverUrl,
           auth_token: uiApiToken,
@@ -125,7 +127,14 @@ export function useSettingsFormState({
           encryption_key: encryptionKey,
           sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
           auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
-        });
+        };
+        // Licencja aktywna (grupa) → dane na FTP (sync_mode=async); klucz creds
+        // liczony automatycznie z grupy. Wysyłamy tylko gdy niepuste (tauri scala).
+        if (groupId) {
+          daemonSettings.group_id = groupId;
+          daemonSettings.sync_mode = 'async';
+        }
+        await saveDaemonOnlineSyncSettings(daemonSettings);
       })
       .catch((err) => {
         logTauriWarn('Failed to persist online sync settings to daemon:', err);

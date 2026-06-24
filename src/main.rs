@@ -23,6 +23,8 @@ mod monitor;
 #[cfg(target_os = "macos")]
 #[path = "monitor_macos.rs"]
 mod monitor;
+mod online_async_delta;
+mod online_ftp_transport;
 mod online_store_forward;
 mod online_sync;
 mod platform;

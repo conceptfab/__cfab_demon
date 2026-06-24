@@ -15,6 +15,7 @@ import {
   type OnlineSyncSettings,
   type OnlineSyncState,
 } from '@/lib/online-sync';
+import type { DaemonOnlineSyncSettings } from '@/lib/tauri/online-sync';
 import { getErrorMessage, logTauriWarn } from '@/lib/utils';
 import {
   type StateUpdater,
@@ -135,7 +136,8 @@ export function useSyncSettings({
         savedOnlineSync.encryptionKey,
         loadLicenseInfo()?.groupId,
       );
-      await saveDaemonOnlineSyncSettings({
+      const groupId = loadLicenseInfo()?.groupId;
+      const daemonSettings: DaemonOnlineSyncSettings = {
         enabled: savedOnlineSync.enabled,
         server_url: savedOnlineSync.serverUrl,
         auth_token: authToken,
@@ -143,7 +145,15 @@ export function useSyncSettings({
         encryption_key: encryptionKey,
         sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
         auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
-      });
+      };
+      // Licencja aktywna (grupa) → dane lądują na FTP (sync_mode=async). Klucz do
+      // odczytu creds FTP liczony automatycznie z grupy — user nic nie wkleja.
+      // Wysyłamy tylko gdy niepuste (tauri scala).
+      if (groupId) {
+        daemonSettings.group_id = groupId;
+        daemonSettings.sync_mode = 'async';
+      }
+      await saveDaemonOnlineSyncSettings(daemonSettings);
     },
     [],
   );

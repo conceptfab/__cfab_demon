@@ -10,6 +10,11 @@ export interface DaemonOnlineSyncSettings {
   encryption_key: string;
   sync_interval_minutes: number;
   auto_sync_on_startup: boolean;
+  /** "session" | "async" (=pliki na FTP). Ustawiane na "async" gdy licencja aktywna. */
+  sync_mode?: string;
+  /** Grupa licencyjna — wymagana przez ścieżkę async-delta (kluczowanie paczek +
+   *  klucz creds FTP liczony z grupy). Wysyłane gdy licencja aktywna. */
+  group_id?: string;
 }
 
 /**

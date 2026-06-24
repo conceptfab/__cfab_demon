@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use crate::online_sync::server_post;
+use crate::online_sync::{server_post_cancellable, CANCELLED_MARKER};
 use crate::lan_server::LanSyncState;
 use crate::{config, sync_common, lan_common};
 
@@ -82,29 +82,32 @@ pub struct PullResp {
 }
 
 pub(crate) fn fetch_status(server: &str, token: &str, user: &str, device: &str,
-                           client_rev: i64, client_hash: &str) -> Result<StatusResp, String> {
+                           client_rev: i64, client_hash: &str,
+                           stop_signal: &AtomicBool) -> Result<StatusResp, String> {
     let body = serde_json::to_string(&StatusReq {
         user_id: user, device_id: device, client_revision: client_rev, client_hash,
     }).map_err(|e| e.to_string())?;
-    let raw = server_post(server, "/api/sync/status", token, &body)?;
+    let raw = server_post_cancellable(server, "/api/sync/status", token, &body, stop_signal)?;
     serde_json::from_str(&raw).map_err(|e| format!("status parse: {e}"))
 }
 
 pub(crate) fn push_snapshot(server: &str, token: &str, user: &str, device: &str,
-                            known_rev: Option<i64>, archive: serde_json::Value) -> Result<PushResp, String> {
+                            known_rev: Option<i64>, archive: serde_json::Value,
+                            stop_signal: &AtomicBool) -> Result<PushResp, String> {
     let body = serde_json::to_string(&PushReq {
         user_id: user, device_id: device, known_server_revision: known_rev, archive,
     }).map_err(|e| e.to_string())?;
-    let raw = server_post(server, "/api/sync/push", token, &body)?;
+    let raw = server_post_cancellable(server, "/api/sync/push", token, &body, stop_signal)?;
     serde_json::from_str(&raw).map_err(|e| format!("push parse: {e}"))
 }
 
 pub(crate) fn pull_snapshot(server: &str, token: &str, user: &str, device: &str,
-                            client_rev: i64) -> Result<PullResp, String> {
+                            client_rev: i64,
+                            stop_signal: &AtomicBool) -> Result<PullResp, String> {
     let body = serde_json::to_string(&PullReq {
         user_id: user, device_id: device, client_revision: client_rev,
     }).map_err(|e| e.to_string())?;
-    let raw = server_post(server, "/api/sync/delta-pull", token, &body)?;
+    let raw = server_post_cancellable(server, "/api/sync/delta-pull", token, &body, stop_signal)?;
     serde_json::from_str(&raw).map_err(|e| format!("pull parse: {e}"))
 }
 
@@ -199,6 +202,12 @@ pub fn run_store_forward_sync(
                     config::save_online_sync_completed();
                     true
                 }
+                Err(e) if e == CANCELLED_MARKER => {
+                    // Anulowanie (cancel/stop) to NIE błąd: nie zapisujemy completed
+                    // ani nie podbijamy licznika porażek (record_online_sync_failure).
+                    lan_common::sync_log("[store-forward] przerwano w locie (cancel/stop)");
+                    true
+                }
                 Err(e) => {
                     lan_common::sync_log(&format!("[store-forward] błąd: {e}"));
                     config::record_online_sync_failure();
@@ -219,15 +228,8 @@ fn execute_store_forward(
     sync_state: &LanSyncState,
     stop_signal: &AtomicBool,
 ) -> Result<(), String> {
-    let server = &settings.server_url;
-    let token = &settings.auth_token;
-    // Serwer rozwiązuje userId z device-tokena; wysyłanie body userId tylko grozi
-    // 403 "Body userId does not match device owner", więc wysyłamy pusty string.
-    let user = "";
-    let device = &settings.device_id;
-
-    // E2E wymaga klucza — bez niego nie umiemy zaszyfrować pushu ani odszyfrować
-    // pulla. Fail loud PRZED jakąkolwiek siecią; nie ma cichego fallbacku do plaintextu.
+    // E2E wymaga klucza grupy — zarówno dla FTP (E2E pliku), jak i direct-sync.
+    // Fail loud PRZED jakąkolwiek siecią; nie ma cichego fallbacku do plaintextu.
     if settings.encryption_key.is_empty() {
         return Err("brak klucza szyfrowania (encryption_key) — online sync wymaga klucza".into());
     }
@@ -238,6 +240,48 @@ fn execute_store_forward(
         return Ok(());
     }
 
+    // DOMYŚLNIE: dane lądują na storage-backendzie FTP/SFTP (np. „hostido"), a serwer
+    // tylko koordynuje — zgodnie z architekturą produktu (dane NIGDY do bazy serwera).
+    // Klucz do odczytu creds = klucz grupy (encryption_key, auto-wyprowadzany), więc
+    // user nie wkleja żadnego sekretu. Stara ścieżka direct-sync→Postgres dostępna
+    // wyłącznie jawnie przez sync_mode="direct-postgres" (legacy, normalnie nieużywane).
+    if settings.sync_mode != "direct-postgres" {
+        if settings.group_id.is_empty() {
+            return Err("online sync FTP wymaga aktywnej grupy licencji (group_id) — aktywuj licencję".into());
+        }
+        // Najpierw drenaż pending (serwer blokuje push, gdy są zaległe paczki),
+        // potem push tylko gdy lokalnie „dirty".
+        crate::online_async_delta::pull_pending(settings, sync_state, stop_signal)?;
+        if should_abort(stop_signal) {
+            lan_common::sync_log("[store-forward] przerwano (cancel/stop)");
+            return Ok(());
+        }
+        let local_hash = {
+            let conn = lan_common::open_dashboard_db()?;
+            sync_common::compute_tables_hash_string_conn(&conn)
+        };
+        let last_synced = config::load_online_sync_synced_hash();
+        if last_synced.as_deref() == Some(local_hash.as_str()) {
+            sync_state.set_progress(13, "completed", "idle");
+            return Ok(());
+        }
+        return crate::online_async_delta::push(
+            settings,
+            sync_state,
+            &local_hash,
+            last_synced.as_deref(),
+            stop_signal,
+        );
+    }
+
+    // ── Legacy: direct-sync (snapshot → Postgres serwera), tylko gdy jawnie wybrane ──
+    let server = &settings.server_url;
+    let token = &settings.auth_token;
+    // Serwer rozwiązuje userId z device-tokena; wysyłanie body userId tylko grozi
+    // 403 "Body userId does not match device owner", więc wysyłamy pusty string.
+    let user = "";
+    let device = &settings.device_id;
+
     let local_hash = {
         let conn = lan_common::open_dashboard_db()?;
         sync_common::compute_tables_hash_string_conn(&conn)
@@ -247,7 +291,7 @@ fn execute_store_forward(
     let local_dirty = last_synced.as_deref() != Some(local_hash.as_str());
 
     sync_state.set_progress(1, "checking", "idle");
-    let status = fetch_status(server, token, user, device, client_rev, &local_hash)?;
+    let status = fetch_status(server, token, user, device, client_rev, &local_hash, stop_signal)?;
     if should_abort(stop_signal) {
         lan_common::sync_log("[store-forward] przerwano (cancel/stop)");
         return Ok(());
@@ -297,7 +341,7 @@ fn do_pull_merge(
     let client_rev = config::load_online_sync_revision();
 
     sync_state.set_progress(5, "pulling", "download");
-    let pull = pull_snapshot(server, token, user, device, client_rev)?;
+    let pull = pull_snapshot(server, token, user, device, client_rev, stop_signal)?;
     if !pull.has_update {
         crate::lan_common::sync_log("[store-forward] pull: serwer nie ma nowszych danych (brak update)");
         return Ok(());
@@ -358,7 +402,7 @@ fn do_push(
         };
         let archive = wrap_snapshot_to_archive(&export_json, &settings.encryption_key)?;
         let known = if base == 0 { None } else { Some(base) };
-        let resp = push_snapshot(server, token, user, device, known, archive)?;
+        let resp = push_snapshot(server, token, user, device, known, archive, stop_signal)?;
         if resp.accepted || resp.no_op {
             config::save_online_sync_revision(resp.revision);
             let conn = lan_common::open_dashboard_db()?;
