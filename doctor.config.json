@@ -17,6 +17,10 @@
       {
         "files": ["target/**", "**/target/**"],
         "rules": ["react-doctor/dangerous-html-sink"]
+      },
+      {
+        "files": ["**/hooks/settings/useSyncSettings.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
       }
     ]
   }

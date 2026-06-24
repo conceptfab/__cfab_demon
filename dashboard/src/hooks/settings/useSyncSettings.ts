@@ -202,8 +202,10 @@ export function useSyncSettings({
 
         await triggerDaemonOnlineSync({ force: true });
 
-        const { getDaemonOnlineSyncResult } = await import('@/lib/tauri/online-sync');
-        const { saveOnlineSyncLastResult } = await import('@/lib/sync/sync-state');
+        const [{ getDaemonOnlineSyncResult }, { saveOnlineSyncLastResult }] = await Promise.all([
+          import('@/lib/tauri/online-sync'),
+          import('@/lib/sync/sync-state'),
+        ]);
         const startedAt = Math.floor(Date.now() / 1000);
         let outcome: Awaited<ReturnType<typeof getDaemonOnlineSyncResult>> | null = null;
         for (let i = 0; i < 40; i++) {
@@ -270,8 +272,10 @@ export function useSyncSettings({
 
         await triggerDaemonOnlineSync({ force: true });
 
-        const { getDaemonOnlineSyncResult } = await import('@/lib/tauri/online-sync');
-        const { saveOnlineSyncLastResult } = await import('@/lib/sync/sync-state');
+        const [{ getDaemonOnlineSyncResult }, { saveOnlineSyncLastResult }] = await Promise.all([
+          import('@/lib/tauri/online-sync'),
+          import('@/lib/sync/sync-state'),
+        ]);
         const startedAt = Math.floor(Date.now() / 1000);
         let outcome: Awaited<ReturnType<typeof getDaemonOnlineSyncResult>> | null = null;
         for (let i = 0; i < 40; i++) {
