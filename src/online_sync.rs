@@ -924,14 +924,22 @@ fn execute_online_sync(
         return Err("Server rejected session creation".to_string());
     }
 
-    // Check if server says sync is not needed (databases already identical)
-    if create_resp.status == "completed"
-        || create_resp.sync_mode.as_deref() == Some("none")
-    {
-        sync_log("[1/13] Sync niepotrzebna — bazy identyczne");
-        sync_state.set_progress(13, "not_needed", "local");
-        sync_state.sync_in_progress.store(false, Ordering::SeqCst);
-        return Ok(());
+    // Decide whether to run at all. `no_peer` (alone) and `completed`/`none`
+    // (already in sync) both skip silently — no overlay error, no DB freeze.
+    match classify_create_status(&create_resp.status, create_resp.sync_mode.as_deref()) {
+        CreateOutcome::SkipNotNeeded => {
+            sync_log("[1/13] Sync niepotrzebna — bazy identyczne");
+            sync_state.set_progress(13, "not_needed", "local");
+            sync_state.sync_in_progress.store(false, Ordering::SeqCst);
+            return Ok(());
+        }
+        CreateOutcome::SkipNoPeer => {
+            sync_log("[1/13] Pominięto — brak drugiego urządzenia online");
+            sync_state.set_progress(13, "not_needed", "local");
+            sync_state.sync_in_progress.store(false, Ordering::SeqCst);
+            return Ok(());
+        }
+        CreateOutcome::Proceed => {}
     }
 
     let session_id = create_resp.session_id;
