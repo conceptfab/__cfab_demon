@@ -36,11 +36,11 @@ export function Sidebar({
   const toggleSidebarCollapsed = useSettingsStore(
     (s) => s.toggleSidebarCollapsed,
   );
-  // Na macOS natywne traffic lights (titleBarStyle: Overlay) nachodzą na lewy-
-  // górny róg, czyli na nagłówek sidebara — w trybie zwiniętym (64px) cały
-  // nagłówek jest pod nimi. Dlatego na macOS przycisk zwijania renderujemy tuż
-  // POD nagłówkiem (poza strefą traffic lights); na Windows/Linux zostaje w
-  // nagłówku obok tytułu.
+  // Na macOS natywne traffic lights (titleBarStyle: Overlay) siedzą w lewym-
+  // górnym rogu. Przycisk zwijania renderujemy jako element `fixed` tuż obok
+  // nich, na tym samym poziomie (jak w Claude Desktop) — w stałym miejscu,
+  // niezależnie od tego, czy sidebar jest rozwinięty, czy zwinięty. Na
+  // Windows/Linux nie ma kropek, więc przycisk zostaje w nagłówku obok tytułu.
   const onMac = isMacOS();
 
   const collapseToggle = (
@@ -66,74 +66,70 @@ export function Sidebar({
   );
 
   return (
-    <aside
-      id="app-sidebar"
-      className={cn(
-        'fixed left-0 top-0 z-50 flex h-[100dvh] w-[min(20rem,calc(100vw-2rem))] flex-col border-r border-border/35 bg-background shadow-2xl transition-[transform,width] duration-200 ease-out motion-reduce:transition-none md:z-40 md:h-screen md:translate-x-0 md:shadow-none',
-        collapsed ? 'md:w-16' : 'md:w-56',
-        isMobileOpen ? 'translate-x-0' : '-translate-x-full',
-      )}
-      style={isMobileOpen ? { transform: 'translateX(0)' } : undefined}
-      aria-label={t('layout.aria.main_navigation')}
-    >
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, react-doctor/no-static-element-interactions -- Tauri drag region, not a keyboard-navigable element */}
-      <div
-        data-tauri-drag-region
-        className={cn(
-          'flex h-12 select-none items-center justify-between border-b border-border/25 px-4',
-          collapsed && 'md:justify-center md:px-0',
-        )}
-        onMouseDown={handleSidebarDragMouseDown}
-      >
-        <span
-          className={cn(
-            'text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground',
-            onMac && 'md:hidden',
-            collapsed && 'md:hidden',
-          )}
-        >
-          TIMEFLOW
-        </span>
-        <div className="flex items-center gap-1">
-          {!onMac && collapseToggle}
-          <button
-            type="button"
-            aria-label={t('layout.aria.close_navigation')}
-            onClick={onClose}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground md:hidden"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-      </div>
-
+    <>
       {onMac && (
-        <div
-          className={cn(
-            'hidden border-b border-border/25 py-1 md:flex',
-            collapsed ? 'justify-center px-2' : 'justify-end px-2',
-          )}
-        >
+        <div className="fixed left-20 top-0 z-50 hidden h-12 items-center md:flex [app-region:no-drag] [-webkit-app-region:no-drag]">
           {collapseToggle}
         </div>
       )}
+      <aside
+        id="app-sidebar"
+        className={cn(
+          'fixed left-0 top-0 z-50 flex h-[100dvh] w-[min(20rem,calc(100vw-2rem))] flex-col border-r border-border/35 bg-background shadow-2xl transition-[transform,width] duration-200 ease-out motion-reduce:transition-none md:z-40 md:h-screen md:translate-x-0 md:shadow-none',
+          collapsed ? 'md:w-16' : 'md:w-56',
+          isMobileOpen ? 'translate-x-0' : '-translate-x-full',
+        )}
+        style={isMobileOpen ? { transform: 'translateX(0)' } : undefined}
+        aria-label={t('layout.aria.main_navigation')}
+      >
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, react-doctor/no-static-element-interactions -- Tauri drag region, not a keyboard-navigable element */}
+        <div
+          data-tauri-drag-region
+          className={cn(
+            'flex h-12 select-none items-center justify-between border-b border-border/25 px-4',
+            collapsed && 'md:justify-center md:px-0',
+          )}
+          onMouseDown={handleSidebarDragMouseDown}
+        >
+          <span
+            className={cn(
+              'text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground',
+              onMac && 'md:hidden',
+              collapsed && 'md:hidden',
+            )}
+          >
+            TIMEFLOW
+          </span>
+          <div className="flex items-center gap-1">
+            {!onMac && collapseToggle}
+            <button
+              type="button"
+              aria-label={t('layout.aria.close_navigation')}
+              onClick={onClose}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground md:hidden"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
 
-      <SidebarNav
-        collapsed={collapsed}
-        currentPage={controller.currentPage}
-        goToPage={controller.goToPage}
-        sessionsAttentionTitle={controller.sessionsAttentionTitle}
-        sessionsBadge={controller.sessionsBadge}
-        unassignedSessions={controller.unassignedSessions}
-      />
+        <SidebarNav
+          collapsed={collapsed}
+          currentPage={controller.currentPage}
+          goToPage={controller.goToPage}
+          sessionsAttentionTitle={controller.sessionsAttentionTitle}
+          sessionsBadge={controller.sessionsBadge}
+          unassignedSessions={controller.unassignedSessions}
+        />
 
-      <SidebarStatusPanel collapsed={collapsed} {...controller} />
+        <SidebarStatusPanel collapsed={collapsed} {...controller} />
 
-      <BugHunter
-        isOpen={controller.isBugHunterOpen}
-        onClose={() => controller.setIsBugHunterOpen(false)}
-        version={controller.status?.dashboard_version || '?.?.?'}
-      />
-    </aside>
+        <BugHunter
+          isOpen={controller.isBugHunterOpen}
+          onClose={() => controller.setIsBugHunterOpen(false)}
+          version={controller.status?.dashboard_version || '?.?.?'}
+        />
+      </aside>
+    </>
   );
 }
