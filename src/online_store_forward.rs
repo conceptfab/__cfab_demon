@@ -221,7 +221,9 @@ fn execute_store_forward(
 ) -> Result<(), String> {
     let server = &settings.server_url;
     let token = &settings.auth_token;
-    let user = &settings.user_id;
+    // Serwer rozwiązuje userId z device-tokena; wysyłanie body userId tylko grozi
+    // 403 "Body userId does not match device owner", więc wysyłamy pusty string.
+    let user = "";
     let device = &settings.device_id;
 
     // E2E wymaga klucza — bez niego nie umiemy zaszyfrować pushu ani odszyfrować
@@ -288,7 +290,9 @@ fn do_pull_merge(
 ) -> Result<(), String> {
     let server = &settings.server_url;
     let token = &settings.auth_token;
-    let user = &settings.user_id;
+    // Serwer rozwiązuje userId z device-tokena; wysyłanie body userId tylko grozi
+    // 403 "Body userId does not match device owner", więc wysyłamy pusty string.
+    let user = "";
     let device = &settings.device_id;
     let client_rev = config::load_online_sync_revision();
 
@@ -335,7 +339,9 @@ fn do_push(
 ) -> Result<(), String> {
     let server = &settings.server_url;
     let token = &settings.auth_token;
-    let user = &settings.user_id;
+    // Serwer rozwiązuje userId z device-tokena; wysyłanie body userId tylko grozi
+    // 403 "Body userId does not match device owner", więc wysyłamy pusty string.
+    let user = "";
     let device = &settings.device_id;
 
     let mut base = base_rev;
