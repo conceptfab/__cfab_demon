@@ -932,12 +932,14 @@ fn execute_online_sync(
         CreateOutcome::SkipNotNeeded => {
             sync_log("[1/13] Sync niepotrzebna — bazy identyczne");
             sync_state.set_progress(13, "not_needed", "local");
+            sync_state.set_role("undecided");
             sync_state.sync_in_progress.store(false, Ordering::SeqCst);
             return Ok(());
         }
         CreateOutcome::SkipNoPeer => {
             sync_log("[1/13] Pominięto — brak drugiego urządzenia online");
             sync_state.set_progress(13, "not_needed", "local");
+            sync_state.set_role("undecided");
             sync_state.sync_in_progress.store(false, Ordering::SeqCst);
             return Ok(());
         }
@@ -975,6 +977,7 @@ fn execute_online_sync(
                 sync_log("[2/13] Drugie urządzenie nie dołączyło — pomijam (bez błędu)");
                 cancel_session(server_url, token, &session_id, &device_id, "peer_no_show").ok();
                 sync_state.set_progress(13, "not_needed", "local");
+                sync_state.set_role("undecided");
                 sync_state.sync_in_progress.store(false, Ordering::SeqCst);
                 return Ok(());
             }
