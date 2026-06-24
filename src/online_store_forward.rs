@@ -203,16 +203,29 @@ pub fn run_store_forward_sync(
                     // Odśwież licznik w PAMIĘCI — inaczej tray (secs_since_last_sync)
                     // zawsze pokazuje „Synchronization failed" mimo udanego synca online.
                     sync_state.mark_sync_completed();
+                    sync_state.set_online_outcome(crate::lan_server::OnlineSyncOutcome {
+                        ok: true, phase: "completed".into(), error: None,
+                        synced_hash: config::load_online_sync_synced_hash(),
+                        finished_at: crate::lan_server::LanSyncState::now_secs(),
+                    });
                     true
                 }
                 Err(e) if e == CANCELLED_MARKER => {
                     // Anulowanie (cancel/stop) to NIE błąd: nie zapisujemy completed
                     // ani nie podbijamy licznika porażek (record_online_sync_failure).
                     lan_common::sync_log("[store-forward] przerwano w locie (cancel/stop)");
+                    sync_state.set_online_outcome(crate::lan_server::OnlineSyncOutcome {
+                        ok: false, phase: "cancelled".into(), error: None,
+                        synced_hash: None, finished_at: crate::lan_server::LanSyncState::now_secs(),
+                    });
                     true
                 }
                 Err(e) => {
                     lan_common::sync_log(&format!("[store-forward] błąd: {e}"));
+                    sync_state.set_online_outcome(crate::lan_server::OnlineSyncOutcome {
+                        ok: false, phase: "error".into(), error: Some(e.clone()),
+                        synced_hash: None, finished_at: crate::lan_server::LanSyncState::now_secs(),
+                    });
                     config::record_online_sync_failure();
                     false
                 }

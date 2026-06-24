@@ -102,6 +102,19 @@ struct DbReadyResponse {
     transfer_mode: String,
 }
 
+// ── Online sync outcome ──
+
+/// Wynik ostatniego przebiegu online sync — UI odpytuje go po triggerze, bo
+/// `progress` wraca do idle po zakończeniu i gubi informację o sukcesie/błędzie.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OnlineSyncOutcome {
+    pub ok: bool,
+    pub phase: String,            // "completed" | "error" | "cancelled"
+    pub error: Option<String>,
+    pub synced_hash: Option<String>,
+    pub finished_at: u64,         // unix secs
+}
+
 // ── Sync progress ──
 
 /// Transfer progress visible to the UI layer.
@@ -162,6 +175,8 @@ pub struct LanSyncState {
     /// unikalny per sync (hash z tables_hash + sekunda UTC + device_id), więc stary
     /// wpis nigdy nie pasuje do nowego db-ready.
     pub last_db_ready: std::sync::Mutex<Option<(String, String)>>,
+    /// Wynik ostatniego online sync (dla UI; nieblokujący kanał statusu/błędu).
+    pub last_online_outcome: std::sync::Mutex<Option<OnlineSyncOutcome>>,
 }
 
 /// Guard that resets sync_in_progress to false on drop (panic-safe).
@@ -194,6 +209,7 @@ impl LanSyncState {
             consecutive_sync_failures: AtomicU32::new(0),
             sync_backoff_until: AtomicU64::new(0),
             last_db_ready: std::sync::Mutex::new(None),
+            last_online_outcome: std::sync::Mutex::new(None),
         }
     }
 
@@ -372,6 +388,22 @@ impl LanSyncState {
         let mut guard = self.role.lock().unwrap_or_else(|e| e.into_inner());
         *guard = new_role.to_string();
     }
+
+    pub fn set_online_outcome(&self, outcome: OnlineSyncOutcome) {
+        let mut g = self.last_online_outcome.lock().unwrap_or_else(|e| e.into_inner());
+        *g = Some(outcome);
+    }
+
+    pub fn get_online_outcome(&self) -> Option<OnlineSyncOutcome> {
+        self.last_online_outcome.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub(crate) fn now_secs() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    }
 }
 
 // ── Server start/stop ──
@@ -524,6 +556,7 @@ fn handle_connection(
         | "/lan/store-paired-device" | "/lan/remove-paired-device"
         | "/lan/local-identity" | "/lan/initiate-pair"
         | "/lan/trigger-sync" | "/online/trigger-sync" | "/online/cancel-sync"
+        | "/online/last-result"
     );
     if requires_auth {
         let expected = get_or_create_lan_secret();
@@ -589,6 +622,7 @@ fn handle_connection(
         ("POST", "/online/trigger-sync") => handle_online_trigger_sync(&state, &stop_signal, &body, client_ip),
         ("POST", "/online/cancel-sync") => handle_online_cancel_sync(&state, client_ip),
         ("GET", "/online/sync-progress") => handle_sync_progress(&state),
+        ("GET", "/online/last-result") => handle_online_last_result(&state),
         // Legacy endpoints — /lan/pull used by 13-step protocol (step 6, master fetches from slave)
         ("POST", "/lan/pull") => handle_pull(&state, &body),
         _ => (404, r#"{"ok":false,"error":"not found"}"#.to_string()),
@@ -763,6 +797,13 @@ fn handle_sync_progress(state: &LanSyncState) -> (u16, String) {
 
     let json = serde_json::to_string(&progress).unwrap_or_else(|_| r#"{"step":0}"#.to_string());
     (200, json)
+}
+
+fn handle_online_last_result(state: &LanSyncState) -> (u16, String) {
+    match state.get_online_outcome() {
+        Some(o) => (200, serde_json::to_string(&o).unwrap_or_else(|_| r#"{"ok":false}"#.into())),
+        None => (200, r#"{"ok":false,"phase":"none","error":null,"synced_hash":null,"finished_at":0}"#.to_string()),
+    }
 }
 
 fn handle_ping(state: &LanSyncState) -> (u16, String) {
@@ -1979,5 +2020,18 @@ mod tests {
             AUTO_UNFREEZE_TIMEOUT.as_secs(),
             budget
         );
+    }
+
+    #[test]
+    fn online_outcome_round_trips() {
+        let st = LanSyncState::new();
+        assert!(st.get_online_outcome().is_none());
+        st.set_online_outcome(super::OnlineSyncOutcome {
+            ok: true, phase: "completed".into(), error: None,
+            synced_hash: Some("abc".into()), finished_at: 123,
+        });
+        let o = st.get_online_outcome().unwrap();
+        assert!(o.ok);
+        assert_eq!(o.phase, "completed");
     }
 }
