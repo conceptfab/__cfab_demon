@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
 const SYNC_TIMEOUT: Duration = Duration::from_secs(1800); // 30 min
 const MAX_POLL_ATTEMPTS: u32 = 200; // ~10 min at 3s intervals
+const PEER_WAIT_ATTEMPTS: u32 = 20; // ~60s at 3s — peer was confirmed present at create time; no point blocking 10 min
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_RETRIES: u32 = 3;
 // Exponential backoff: 5s × 3^attempt → 5s, 15s, 45s (max total ~65s with jitter)
@@ -304,8 +305,8 @@ fn wait_for_peer(
     _sync_state: &LanSyncState,
     stop_signal: &AtomicBool,
     sync_start: Instant,
-) -> Result<(String, Option<StorageCredentialsWrapper>), String> {
-    for _ in 0..MAX_POLL_ATTEMPTS {
+) -> Result<Option<(String, Option<StorageCredentialsWrapper>)>, String> {
+    for _ in 0..PEER_WAIT_ATTEMPTS {
         check_timeout_and_stop(sync_start, stop_signal)?;
         thread::sleep(POLL_INTERVAL);
         if let Err(e) = send_heartbeat(server_url, token, session_id, device_id) {
@@ -317,10 +318,11 @@ fn wait_for_peer(
             let mode = status
                 .sync_mode
                 .unwrap_or_else(|| "full".to_string());
-            return Ok((mode, status.storage_credentials));
+            return Ok(Some((mode, status.storage_credentials)));
         }
     }
-    Err("Timeout waiting for peer".to_string())
+    // Peer never joined within the short window — not an error, just skip.
+    Ok(None)
 }
 
 fn wait_for_storage(
@@ -956,9 +958,9 @@ fn execute_online_sync(
     // Step 2: Wait for peer if master, or proceed if slave
     sync_state.set_progress(2, "awaiting_peer", "local");
     let (sync_mode, storage_creds) = if create_resp.status == "awaiting_peer" {
-        // We're master, wait for slave to join
+        // We're master, wait briefly for a slave to join.
         sync_log("[2/13] Oczekiwanie na drugiego klienta...");
-        wait_for_peer(
+        match wait_for_peer(
             server_url,
             token,
             &session_id,
@@ -966,7 +968,17 @@ fn execute_online_sync(
             sync_state,
             stop_signal,
             sync_start,
-        )?
+        )? {
+            Some(v) => v,
+            None => {
+                // Peer never showed up. Release the parked session and skip silently.
+                sync_log("[2/13] Drugie urządzenie nie dołączyło — pomijam (bez błędu)");
+                cancel_session(server_url, token, &session_id, &device_id, "peer_no_show").ok();
+                sync_state.set_progress(13, "not_needed", "local");
+                sync_state.sync_in_progress.store(false, Ordering::SeqCst);
+                return Ok(());
+            }
+        }
     } else {
         // We're slave, session already has peer
         sync_log(&format!(
