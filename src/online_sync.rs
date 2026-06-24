@@ -22,6 +22,30 @@ const MAX_RETRIES: u32 = 3;
 const RETRY_BASE_DELAY: Duration = Duration::from_secs(5);
 static ONLINE_SYNC_CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+/// How the server's `session/create` status should be handled before we touch
+/// the DB. Pure so it can be unit-tested without network/DB.
+#[derive(Debug, PartialEq, Eq)]
+enum CreateOutcome {
+    /// Run the full sync flow.
+    Proceed,
+    /// No second device is online — skip silently (no overlay error, no freeze).
+    SkipNoPeer,
+    /// Databases already identical — nothing to do.
+    SkipNotNeeded,
+}
+
+/// Decide what to do with the create response. `completed` / `syncMode == "none"`
+/// → already in sync; `no_peer` → device is alone; otherwise proceed.
+fn classify_create_status(status: &str, sync_mode: Option<&str>) -> CreateOutcome {
+    if status == "completed" || sync_mode == Some("none") {
+        return CreateOutcome::SkipNotNeeded;
+    }
+    if status == "no_peer" {
+        return CreateOutcome::SkipNoPeer;
+    }
+    CreateOutcome::Proceed
+}
+
 // ── Server response types ──
 
 #[derive(Deserialize)]
@@ -1472,5 +1496,25 @@ mod tests {
             msg.contains("/api/sync/session/create"),
             "message should include path: {msg}"
         );
+    }
+
+    #[test]
+    fn classify_completed_is_not_needed() {
+        assert_eq!(classify_create_status("completed", None), CreateOutcome::SkipNotNeeded);
+    }
+
+    #[test]
+    fn classify_sync_mode_none_is_not_needed() {
+        assert_eq!(classify_create_status("awaiting_peer", Some("none")), CreateOutcome::SkipNotNeeded);
+    }
+
+    #[test]
+    fn classify_no_peer_is_skip_no_peer() {
+        assert_eq!(classify_create_status("no_peer", None), CreateOutcome::SkipNoPeer);
+    }
+
+    #[test]
+    fn classify_awaiting_peer_proceeds() {
+        assert_eq!(classify_create_status("awaiting_peer", None), CreateOutcome::Proceed);
     }
 }
