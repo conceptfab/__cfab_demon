@@ -2251,6 +2251,7 @@
     "waiting_for_download": "Waiting for peer download...",
     "retry": "Retry",
     "dismiss": "Dismiss",
+    "cancel": "Cancel",
     "not_needed": "Synchronization not needed — databases identical",
     "frozen_notice": "Session recording is paused. Please do not close the application."
   },

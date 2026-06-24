@@ -28,9 +28,11 @@ interface SyncProgressOverlayProps {
   syncType?: 'lan' | 'online';
   /** Called to retry after error — if provided, shows retry button instead of auto-dismiss */
   onRetry?: () => void;
+  /** Called to cancel/abort an in-progress sync — if provided, shows a cancel button while running */
+  onCancel?: () => void;
 }
 
-export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRetry }: SyncProgressOverlayProps) {
+export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRetry, onCancel }: SyncProgressOverlayProps) {
   const { t } = useTranslation();
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [speed, setSpeed] = useState(0);
@@ -185,11 +187,22 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
           </div>
         )}
 
-        {/* Freeze notice */}
+        {/* Freeze notice + cancel */}
         {!isCompleted && !isError && (
-          <p className="text-[11px] text-amber-400/80 mb-2">
-            {t('sync_progress.frozen_notice', 'Recording is paused. Please do not close the application.')}
-          </p>
+          <>
+            <p className="text-[11px] text-amber-400/80 mb-2">
+              {t('sync_progress.frozen_notice', 'Recording is paused. Please do not close the application.')}
+            </p>
+            {onCancel && (
+              <button type="button"
+                onClick={onCancel}
+                className="flex items-center gap-1.5 text-xs font-medium text-red-400 hover:text-red-300 transition-colors mb-2"
+              >
+                <XCircle className="size-3.5" />
+                {t('sync_progress.cancel', 'Cancel')}
+              </button>
+            )}
+          </>
         )}
 
         {/* Progress bar — only for transfer phases */}

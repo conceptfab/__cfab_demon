@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { lanSyncApi } from '@/lib/tauri';
-import { triggerDaemonOnlineSync } from '@/lib/tauri/online-sync';
+import { triggerDaemonOnlineSync, cancelDaemonOnlineSync } from '@/lib/tauri/online-sync';
 import { SyncProgressOverlay } from './SyncProgressOverlay';
 import type { SyncProgress } from '@/lib/lan-sync-types';
 import { useDataStore } from '@/store/data-store';
@@ -51,6 +51,14 @@ export function DaemonSyncOverlay() {
     setCanDismiss(false);
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
   }, []);
+
+  // Przerwanie aktywnego online-syncu: daemon ustawia flagę cancel, pętla zwraca
+  // błąd i best-effort woła serwerowy /api/sync/session/{id}/cancel. Po wystrzeleniu
+  // od razu zamykamy overlay (nie czekamy 5 min na auto-dismiss).
+  const handleCancel = useCallback(() => {
+    cancelDaemonOnlineSync().catch(() => {});
+    handleDismiss();
+  }, [handleDismiss]);
 
   const lastSyncTypeRef = useRef<'lan' | 'online' | null>(null);
   // Zapis refa poza renderem (react-hooks/refs); czytany w handleRetry.
@@ -143,6 +151,7 @@ export function DaemonSyncOverlay() {
         syncType={activeSyncType}
         onFinished={handleFinished}
         onRetry={handleRetry}
+        onCancel={activeSyncType === 'online' ? handleCancel : undefined}
       />
       {canDismiss && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000]">
