@@ -17,6 +17,10 @@ fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {
 
 // ── Types ──
 
+/// Uwaga: ten struct świadomie zna tylko podzbiór pól pliku. Pozostałe pola demona
+/// (`sync_master_key`, `sync_mode`, `group_id`, `user_id`, przyszłe) NIE są tu
+/// wymienione — `save_online_sync_settings` scala, więc są zachowywane nietknięte.
+/// Gdy front zacznie nimi zarządzać, trafią do tego structu + formularza UI.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OnlineSyncSettings {
     pub enabled: bool,
@@ -59,11 +63,33 @@ pub fn get_online_sync_settings() -> Result<OnlineSyncSettings, String> {
     }
 }
 
-/// Save online sync settings. Wszystkie pola (z sekretami) zapisywane do pliku JSON.
+/// Save online sync settings. SCALA z istniejącym plikiem zamiast nadpisywać:
+/// nadpisuje tylko pola znane temu strukturowi, a zachowuje wszystkie pozostałe
+/// (np. ustawione przez demona pola, których ten front nie zna). Eliminuje parity
+/// trap — wcześniej `fs::write` całości kasował np. `group_id`/`sync_mode`.
 #[tauri::command]
-pub fn save_online_sync_settings(settings: OnlineSyncSettings) -> Result<(), String> {
+pub fn save_online_sync_settings(settings: serde_json::Value) -> Result<(), String> {
     let path = timeflow_data_dir()?.join("online_sync_settings.json");
-    let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+
+    let mut root = if path.exists() {
+        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    // `settings` jest nietypowane (Value), więc pola NIEZNANE temu backendowi
+    // (`sync_master_key`, `sync_mode`, `group_id` ustawiane przez demona/front)
+    // też przechodzą. Front wysyła sekrety tylko gdy mają wartość, więc pusty
+    // formularz nie nadpisze ich pustym stringiem.
+    if let (Some(obj), Some(inc)) = (root.as_object_mut(), settings.as_object()) {
+        for (k, v) in inc {
+            obj.insert(k.clone(), v.clone());
+        }
+    } else {
+        root = settings;
+    }
+
+    let json = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())
 }
 

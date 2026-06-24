@@ -352,6 +352,13 @@ pub struct OnlineSyncSettings {
     pub device_id: String,
     #[serde(default)]
     pub encryption_key: String,
+    /// Serwerowy `SYNC_ENCRYPTION_KEY` — master key do odszyfrowania kopert
+    /// `storageCredentials` (host/user/pass FTP) z async-delta. ODDZIELNY od
+    /// `encryption_key` (klucz grupy E2E): tamten szyfruje DANE tak, że serwer ich
+    /// nie czyta; ten odszyfrowuje tylko creds wydane przez serwer. Wklejany raz
+    /// po wdrożeniu, jak `auth_token`. Puste => ścieżka FTP nieaktywna.
+    #[serde(default)]
+    pub sync_master_key: String,
     #[serde(default)]
     pub sync_interval_minutes: u32,
     #[serde(default)]
@@ -394,6 +401,7 @@ impl Default for OnlineSyncSettings {
             auth_token: String::new(),
             device_id: String::new(),
             encryption_key: String::new(),
+            sync_master_key: String::new(),
             sync_interval_minutes: 30,
             auto_sync_on_startup: false,
             sync_mode: "session".to_string(),

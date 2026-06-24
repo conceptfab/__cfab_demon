@@ -15,6 +15,7 @@ import {
   type OnlineSyncSettings,
   type OnlineSyncState,
 } from '@/lib/online-sync';
+import type { DaemonOnlineSyncSettings } from '@/lib/tauri/online-sync';
 import { getErrorMessage, logTauriWarn } from '@/lib/utils';
 import {
   type StateUpdater,
@@ -135,7 +136,9 @@ export function useSyncSettings({
         savedOnlineSync.encryptionKey,
         loadLicenseInfo()?.groupId,
       );
-      await saveDaemonOnlineSyncSettings({
+      const groupId = loadLicenseInfo()?.groupId;
+      const masterKey = savedOnlineSync.syncMasterKey?.trim();
+      const daemonSettings: DaemonOnlineSyncSettings = {
         enabled: savedOnlineSync.enabled,
         server_url: savedOnlineSync.serverUrl,
         auth_token: authToken,
@@ -143,7 +146,14 @@ export function useSyncSettings({
         encryption_key: encryptionKey,
         sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
         auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
-      });
+      };
+      // Wysyłamy tylko niepuste — tauri scala, więc pusty UI nie wymaże klucza.
+      if (groupId) daemonSettings.group_id = groupId;
+      if (masterKey) {
+        daemonSettings.sync_master_key = masterKey;
+        daemonSettings.sync_mode = 'async'; // obecność master key → ścieżka plików na FTP
+      }
+      await saveDaemonOnlineSyncSettings(daemonSettings);
     },
     [],
   );

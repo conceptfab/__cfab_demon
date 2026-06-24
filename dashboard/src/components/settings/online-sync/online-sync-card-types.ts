@@ -32,6 +32,7 @@ export interface OnlineSyncCardProps {
   onResetServerUrl: () => void;
   onUserIdChange: (userId: string) => void;
   onApiTokenChange: (token: string) => void;
+  onMasterKeyChange: (key: string) => void;
   onShowTokenChange: (show: boolean) => void;
   onSyncNow: () => void;
   onLicenseKeyChange: (key: string) => void;

@@ -46,6 +46,10 @@ pub struct SftpCredentials {
     pub password: String,
     pub upload_path: String,
     pub download_path: String,
+    /// FTP: czy FTPS (AUTH TLS). Dostarczane przez serwer po fixie connection-info;
+    /// `None` gdy serwer nie podał (stara wersja / SFTP) → demon auto-wykrywa.
+    #[serde(default)]
+    pub secure: Option<bool>,
     pub file_encryption_key: String, // base64 key
 }
 

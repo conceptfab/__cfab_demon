@@ -108,6 +108,9 @@ export function SettingsSyncTab(controller: SettingsSyncTabProps) {
         onApiTokenChange={(apiToken) => {
           updateOnlineSyncSettings((prev) => ({ ...prev, apiToken }));
         }}
+        onMasterKeyChange={(syncMasterKey) => {
+          updateOnlineSyncSettings((prev) => ({ ...prev, syncMasterKey }));
+        }}
         onShowTokenChange={setShowOnlineSyncToken}
         onSyncNow={() => {
           void handleSyncNow(demoModeSyncDisabled);

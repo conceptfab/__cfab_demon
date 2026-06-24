@@ -31,6 +31,7 @@ export function HelpOnlineSyncSection() {
         t18n('help_page.online_sync_license_section'),
         t18n('help_page.online_sync_sftp_encryption_key'),
         t18n('help_page.online_sync_e2e_encryption'),
+        t18n('help_page.online_sync_sync_master_key'),
         t18n('help_page.online_sync_peer_presence'),
       ]}
     >

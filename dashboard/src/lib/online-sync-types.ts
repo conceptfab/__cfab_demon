@@ -20,6 +20,12 @@ export interface OnlineSyncSettings {
    * Jawna wartość (gdyby kiedyś doszło pole ręczne) ma priorytet nad derivacją.
    */
   encryptionKey?: string;
+  /**
+   * Master key synchronizacji = serwerowy SYNC_ENCRYPTION_KEY. Wymagany do
+   * odszyfrowania creds FTP na ścieżce „pliki na FTP" (async-delta). Oddzielny od
+   * `encryptionKey` (klucz grupy E2E). Wklejany raz; jego obecność włącza tryb FTP.
+   */
+  syncMasterKey?: string;
   deviceId: string;
   requestTimeoutMs: number;
   enableLogging: boolean;

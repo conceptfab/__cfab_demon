@@ -10,6 +10,7 @@ type OnlineSyncConnectionFieldsProps = Pick<
   | 'defaultServerUrl'
   | 'labelClassName'
   | 'onApiTokenChange'
+  | 'onMasterKeyChange'
   | 'onResetServerUrl'
   | 'onServerUrlChange'
   | 'onShowTokenChange'
@@ -22,6 +23,7 @@ export function OnlineSyncConnectionFields({
   defaultServerUrl,
   labelClassName,
   onApiTokenChange,
+  onMasterKeyChange,
   onResetServerUrl,
   onServerUrlChange,
   onShowTokenChange,
@@ -115,6 +117,23 @@ export function OnlineSyncConnectionFields({
             : t(
                 'settings_page.enter_the_raw_token_the_app_will_add_the_bearer_header_a',
               )}
+        </p>
+      </label>
+
+      <label className="grid gap-1.5 text-sm">
+        <span className={labelClassName}>
+          {t('settings_page.sync_master_key')}
+        </span>
+        <input
+          type="password"
+          autoComplete="off"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          placeholder={t('settings_page.sync_master_key_placeholder')}
+          value={settings.syncMasterKey ?? ''}
+          onChange={(e) => onMasterKeyChange(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t('settings_page.sync_master_key_hint')}
         </p>
       </label>
 

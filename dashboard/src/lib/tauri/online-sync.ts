@@ -10,6 +10,13 @@ export interface DaemonOnlineSyncSettings {
   encryption_key: string;
   sync_interval_minutes: number;
   auto_sync_on_startup: boolean;
+  /** Serwerowy SYNC_ENCRYPTION_KEY — do odszyfrowania creds FTP (ścieżka async-delta).
+   *  Wysyłane TYLKO gdy niepuste (tauri scala, nie nadpisuje pustym). */
+  sync_master_key?: string;
+  /** "session" | "async" (=pliki na FTP). Ustawiane na "async" gdy podano master key. */
+  sync_mode?: string;
+  /** Grupa licencyjna — wymagana przez ścieżkę async-delta (kluczowanie paczek). */
+  group_id?: string;
 }
 
 /**

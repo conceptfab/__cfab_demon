@@ -46,6 +46,8 @@ hmac = "0.12"
 base64 = "0.22"
 ureq = { version = "2", features = ["tls"] }
 getrandom = { workspace = true }
+suppaftp = { version = "9.0.0", features = ["rustls-ring"] }
+webpki-roots = "0.26"
 
 [target.'cfg(windows)'.dependencies]
 # GUI system tray (Windows)
