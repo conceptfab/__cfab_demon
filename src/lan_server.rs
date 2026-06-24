@@ -1257,6 +1257,18 @@ fn handle_online_trigger_sync(
         }
     }
 
+    // Twardy floor częstotliwości — dotyczy WSZYSTKICH non-force triggerów (także
+    // non-background: SSE „peer pushed", local_change). Bez tego udane syncy pętlą
+    // w kółko (push → serwerowy SSE echo → kolejny trigger → push) co ~1–2 s.
+    // `force` (manualny sync) omija floor.
+    if !req.force && crate::config::online_sync_within_min_floor() {
+        log::info!(
+            "Online trigger-sync: skipped (min-floor) — ostatni sync < {}s temu",
+            crate::config::ONLINE_SYNC_MIN_FLOOR_SECS
+        );
+        return (429, json_error("Online sync min interval not elapsed yet"));
+    }
+
     if req.background && !req.force {
         let settings = crate::config::load_online_sync_settings();
         if crate::config::online_sync_within_interval(settings.sync_interval_minutes) {
@@ -1276,6 +1288,11 @@ fn handle_online_trigger_sync(
     }
 
     let settings = crate::config::load_online_sync_settings();
+    if !settings.enabled {
+        state.sync_in_progress.store(false, Ordering::SeqCst);
+        log::info!("Online trigger-sync: skipped — online sync disabled in settings");
+        return (409, json_error("Online sync disabled"));
+    }
     if settings.server_url.is_empty() || settings.auth_token.is_empty() {
         state.sync_in_progress.store(false, Ordering::SeqCst);
         return (400, json_error("Online sync not configured (missing server_url or auth_token)"));

@@ -38,7 +38,16 @@ export function useOnlineSyncSSE() {
     const settings = loadOnlineSyncSettings();
     if (!settings.enabled) return;
 
+    const ownDeviceId = settings.deviceId;
     void connectSSE(async (event) => {
+      // Ignoruj echo WŁASNYCH pushy: serwer rozsyła SSE do wszystkich klientów,
+      // też do nadawcy. Bez tego push → echo → trigger → push tworzy pętlę
+      // (storm). Floor po stronie demona i tak by ją zdławił, ale tu odcinamy
+      // ją u źródła (zero zbędnych 429).
+      if (event.sourceDeviceId && event.sourceDeviceId === ownDeviceId) {
+        logger.log(`[SSE] Ignoruję echo własnego pushu (rev ${event.revision})`);
+        return;
+      }
       logger.log(`[SSE] Peer ${event.sourceDeviceId} pushed rev ${event.revision} — triggering daemon sync`);
       try {
         await triggerDaemonOnlineSync();

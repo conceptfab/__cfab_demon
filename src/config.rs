@@ -133,6 +133,24 @@ fn now_unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// Twardy minimalny odstęp (sekundy) między kolejnymi online syncami — chokepoint
+/// niezależny od liczby pętli/triggerów w dashboardzie. Triggery non-background,
+/// non-force (SSE „peer pushed", local_change) omijają interwał `sync_interval_minutes`
+/// i podlegają tylko cooldownowi po PORAŻKACH; gdy syncy się UDAJĄ, nic ich nie dławi
+/// i pętlą w kółko (push → serwer broadcastuje SSE → ten klient triggeruje znów → push).
+/// Ten floor kapuje częstotliwość dla WSZYSTKICH non-force triggerów. `force` (manualny
+/// sync z UI) omija go — user zawsze może zsynchronizować od razu.
+pub const ONLINE_SYNC_MIN_FLOOR_SECS: u64 = 15;
+
+/// Czy od ostatniego UKOŃCZONEGO online synca minęło mniej niż `ONLINE_SYNC_MIN_FLOOR_SECS`?
+/// `false` gdy nigdy nie synchronizowano (pierwszy sync nie jest dławiony).
+pub fn online_sync_within_min_floor() -> bool {
+    let Some(last) = online_sync_last_completed() else {
+        return false;
+    };
+    now_unix_secs().saturating_sub(last) < ONLINE_SYNC_MIN_FLOOR_SECS
+}
+
 /// Trwały stan store-and-forward online synca: ostatnia znana rewizja serwera
 /// (CAS base) oraz content-hash bazy z chwili ostatniego udanego sync.
 /// Trzymane na dysku (jak `online_sync_last_completed`), bo muszą przeżyć restart —
