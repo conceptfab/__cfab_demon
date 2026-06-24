@@ -831,6 +831,179 @@ pub fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String>
     Ok(())
 }
 
+// ── Non-blocking shadow merge ───────────────────────────────────────────────
+//
+// PROBLEM: the Faza-1 sync loop briefly FREEZES time-recording around the local
+// merge (it merges into the LIVE DB inside a transaction). This module removes
+// that freeze: the expensive merge of the peer's `incoming` snapshot runs on a
+// COPY of the DB (the "shadow"), off the live DB. Recording keeps writing to live
+// throughout the expensive merge; the live DB is only touched by the final, cheap
+// fold of the shadow's result back into live.
+//
+// RESIDUAL-WRITE-LOSS WINDOW (the whole risk) — and why this design has NONE:
+// A naive design snapshots live, merges incoming into the snapshot, then OVERWRITES
+// live with the snapshot. That overwrite loses any recording write that landed in
+// live after the snapshot — a real data-loss gap. We avoid the overwrite entirely.
+// Instead the final step MERGES the shadow's result (= live-snapshot ∪ incoming)
+// INTO the live DB using the same union/LWW engine (`merge_incoming_data`). The
+// merge only UPSERTS the rows carried in the shadow export; it never blanks a live
+// table and never reads live before deciding what to write. So a recording write
+// committed to live during the expensive merge is already present in live and is
+// PRESERVED by the fold (union keeps it; LWW keeps the newer copy). A write racing
+// the fold either commits before the fold's transaction (included) or after it
+// (applied to the post-fold live) — never overwritten, never lost. There is thus
+// no read-then-overwrite gap to close, because we never overwrite live with a
+// stale snapshot. The live write-lock is held only for the cheap fold (the
+// expensive incoming-merge already ran on the shadow).
+
+/// Path of the throwaway shadow DB next to the configured live DB. Kept as the
+/// spec deliverable; the merge itself derives the shadow as a sibling of the
+/// `live_path` it is handed (identical to this in production, and testable with a
+/// temp live path) via [`shadow_path_for`].
+#[allow(dead_code)]
+fn shadow_db_path() -> Result<std::path::PathBuf, String> {
+    let main = crate::config::dashboard_db_path().map_err(|e| e.to_string())?;
+    Ok(main.with_file_name("timeflow_dashboard-shadow.db"))
+}
+
+// NOTE: the non-blocking shadow-merge functions below are intentionally not yet
+// wired into the sync loop (that is the next task); until then they are reachable
+// only from this module's tests, so they carry `#[allow(dead_code)]`.
+
+/// Shadow DB path as a sibling of the given live DB path.
+#[allow(dead_code)]
+fn shadow_path_for(live_path: &std::path::Path) -> std::path::PathBuf {
+    live_path.with_file_name("timeflow_dashboard-shadow.db")
+}
+
+/// Open an on-disk DB read-write with the merge pragmas (FK OFF, synchronous
+/// NORMAL) and a busy_timeout so concurrent writers WAIT rather than fail.
+#[allow(dead_code)]
+fn open_rw_path(path: &std::path::Path) -> Result<rusqlite::Connection, String> {
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("open_rw_path({:?}): {}", path, e))?;
+    conn.busy_timeout(std::time::Duration::from_millis(5000))
+        .map_err(|e| format!("open_rw_path busy_timeout: {}", e))?;
+    // Merge requires FK OFF (manual_sessions sentinel project_id=0); set it here so
+    // the shadow connection that runs the merge has the same contract as the live one.
+    timeflow_shared::sync::connection::set_merge_pragmas(&conn)?;
+    Ok(conn)
+}
+
+/// Remove a shadow DB file plus its WAL/SHM sidecars (best-effort).
+#[allow(dead_code)]
+fn remove_shadow_file(path: &std::path::Path) {
+    let _ = std::fs::remove_file(path);
+    let _ = std::fs::remove_file(path.with_extension("db-wal"));
+    let _ = std::fs::remove_file(path.with_extension("db-shm"));
+}
+
+/// Online-backup `src` → `dest_path` via the rusqlite Backup API. Safe while
+/// recording writes concurrently to `src` (the backup retries on busy pages).
+#[allow(dead_code)]
+fn snapshot_db_to_path(
+    src: &rusqlite::Connection,
+    dest_path: &std::path::Path,
+) -> Result<(), String> {
+    let mut dest = rusqlite::Connection::open(dest_path)
+        .map_err(|e| format!("snapshot: cannot open dest {:?}: {}", dest_path, e))?;
+    let backup = rusqlite::backup::Backup::new(src, &mut dest)
+        .map_err(|e| format!("snapshot: backup init: {}", e))?;
+    backup
+        .run_to_completion(200, std::time::Duration::from_millis(25), None)
+        .map_err(|e| format!("snapshot: backup run: {}", e))?;
+    drop(backup);
+    drop(dest);
+    Ok(())
+}
+
+/// Non-blocking online-sync merge: merge `incoming` (PLAINTEXT export JSON,
+/// already decrypted by the caller) into the live DB at `live_path` WITHOUT
+/// pausing recording. See the module comment for the residual-gap argument.
+#[allow(dead_code)]
+pub fn merge_incoming_nonblocking(
+    live_path: &std::path::Path,
+    incoming: &str,
+) -> Result<(), String> {
+    merge_incoming_nonblocking_with_hook(live_path, incoming, || {})
+}
+
+/// Test-instrumented variant of [`merge_incoming_nonblocking`]. `after_snapshot`
+/// fires right AFTER step 2 (live → shadow snapshot) and BEFORE the incoming merge,
+/// so a test can simulate a recording write that lands ONLY in live (not yet in
+/// shadow). That write must survive via the final fold-merge of the shadow back
+/// into live; a design that OVERWROTE live with the shadow would lose it. The hook
+/// is a no-op in production.
+#[allow(dead_code)]
+pub(crate) fn merge_incoming_nonblocking_with_hook(
+    live_path: &std::path::Path,
+    incoming: &str,
+    after_snapshot: impl FnOnce(),
+) -> Result<(), String> {
+    let shadow_path = shadow_path_for(live_path);
+
+    // 1) Remove any stale shadow file (a previous crashed run).
+    remove_shadow_file(&shadow_path);
+
+    // 2) Snapshot live → shadow (online backup; safe under concurrent writes).
+    {
+        let live = open_rw_path(live_path)?;
+        snapshot_db_to_path(&live, &shadow_path)?;
+    }
+
+    // Test hook: a recording write that exists ONLY in live, not in shadow.
+    after_snapshot();
+
+    // 3) Merge `incoming` into shadow + verify (shadow opened FK OFF).
+    {
+        let mut shadow = open_rw_path(&shadow_path)?;
+        merge_incoming_data(&mut shadow, incoming)?;
+        verify_merge_integrity(&shadow)?;
+        // Checkpoint so the snapshot/merge WAL is folded into the shadow main file
+        // before we export it for the final fold.
+        shadow
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .map_err(|e| format!("shadow checkpoint after merge: {}", e))?;
+    }
+
+    // 4) Final fold: a SINGLE merge of the shadow's result INTO the live DB —
+    // NOT a wholesale overwrite. This is what eliminates the residual write-loss
+    // window (the whole risk):
+    //
+    // shadow now holds (live-snapshot ∪ incoming). We export shadow and merge it
+    // INTO live via the same union/LWW engine. Because the merge only UPSERTS rows
+    // from the export (it never blanks a live table and never reads live before
+    // deciding what to write), any recording write that landed in live DURING the
+    // expensive merge is already committed in live and is PRESERVED by the merge
+    // (union keeps it; LWW keeps the newer copy). A recording write racing the
+    // merge either commits before the merge's transaction (included) or after it
+    // (applied to the post-merge live) — never overwritten, never lost. There is
+    // therefore no read-then-overwrite gap to close: we never overwrite live with
+    // a stale snapshot.
+    //
+    // The lock on live is held only for this fold-merge (proportional to the union
+    // size), NOT for the expensive incoming-merge, which already ran on the shadow.
+    let shadow_export = {
+        let shadow = open_rw_path(&shadow_path)?;
+        build_full_export(&shadow)?
+    };
+
+    let mut live = open_rw_path(live_path)?;
+    merge_incoming_data(&mut live, &shadow_export)?;
+    verify_merge_integrity(&live)?;
+    live.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .map_err(|e| format!("live checkpoint after fold: {}", e))?;
+    drop(live);
+
+    // 6) Remove the shadow file.
+    remove_shadow_file(&shadow_path);
+
+    Ok(())
+}
+
 // ── JSON helpers przeniesione do timeflow_shared::sync::merge ──
 // (importowane na górze pliku; inline session block i testy korzystają stamtąd).
 
@@ -3114,5 +3287,206 @@ mod tests {
             h_before,
             "merge wlasnego eksportu w siebie nie moze zmienic table-hasha (idempotencja)"
         );
+    }
+
+    // ── Non-blocking shadow-merge tests ─────────────────────────────────────
+
+    /// Unique temp dir for an on-disk test DB (no extra dep; cleaned by the guard).
+    struct TempDbDir {
+        dir: std::path::PathBuf,
+    }
+    impl TempDbDir {
+        fn new(tag: &str) -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static COUNTER: AtomicU64 = AtomicU64::new(0);
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let pid = std::process::id();
+            let dir = std::env::temp_dir().join(format!("tf-nbmerge-{tag}-{pid}-{n}"));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("create temp dir");
+            Self { dir }
+        }
+        fn db_path(&self) -> std::path::PathBuf {
+            self.dir.join("timeflow_dashboard.db")
+        }
+    }
+    impl Drop for TempDbDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// Create an on-disk DB at `path` with the standard test schema (+ optional
+    /// seed). Reuses `open_test_db()` (in-memory) and backs it up to disk so the
+    /// giant DDL is never duplicated.
+    fn open_test_db_on_disk(path: &std::path::Path, seed_prefix: Option<&str>) {
+        let mem = open_test_db();
+        if let Some(p) = seed_prefix {
+            seed(&mem, p);
+        }
+        let mut dest = rusqlite::Connection::open(path).expect("open on-disk dest");
+        let backup =
+            rusqlite::backup::Backup::new(&mem, &mut dest).expect("backup init to disk");
+        backup
+            .run_to_completion(200, std::time::Duration::from_millis(10), None)
+            .expect("backup run to disk");
+        drop(backup);
+        // Open in WAL like the live DB so the swap exercises WAL semantics.
+        dest.execute_batch("PRAGMA journal_mode=WAL;").expect("wal");
+    }
+
+    fn open_disk_rw(path: &std::path::Path) -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open(path).expect("open disk db");
+        conn.execute_batch("PRAGMA foreign_keys=OFF;").expect("fk off");
+        conn
+    }
+
+    /// Test A — the non-blocking path must produce a DB byte-identical (by content
+    /// hash) to running `merge_incoming_data` directly on the live DB.
+    #[test]
+    fn merge_incoming_nonblocking_equivalent_to_direct_merge() {
+        let d1 = TempDbDir::new("equiv-direct");
+        let d2 = TempDbDir::new("equiv-shadow");
+        let p1 = d1.db_path();
+        let p2 = d2.db_path();
+        // Both live DBs seeded IDENTICALLY ("L"); incoming is a disjoint peer ("R").
+        open_test_db_on_disk(&p1, Some("L"));
+        open_test_db_on_disk(&p2, Some("L"));
+
+        let incoming = {
+            let peer = open_test_db();
+            seed(&peer, "R");
+            build_full_export(&peer).expect("export peer")
+        };
+
+        // DB1: direct merge into the live DB.
+        {
+            let mut c1 = open_disk_rw(&p1);
+            merge_incoming_data(&mut c1, &incoming).expect("direct merge");
+            verify_merge_integrity(&c1).expect("direct verify");
+        }
+        // DB2: non-blocking shadow merge.
+        merge_incoming_nonblocking(&p2, &incoming).expect("non-blocking merge");
+
+        let h1 = {
+            let c1 = open_disk_rw(&p1);
+            compute_tables_hash_string_conn(&c1)
+        };
+        let h2 = {
+            let c2 = open_disk_rw(&p2);
+            compute_tables_hash_string_conn(&c2)
+        };
+        assert_eq!(
+            h1, h2,
+            "non-blocking shadow merge must match direct merge content hash"
+        );
+
+        // Shadow file must be gone after a successful run.
+        assert!(
+            !shadow_path_for(&p2).exists(),
+            "shadow file must be cleaned up after merge"
+        );
+    }
+
+    /// Test B (THE GATE) — a recording write that lands AFTER the snapshot but
+    /// before the swap must SURVIVE. The hook inserts a recognizable session/
+    /// project into LIVE only (not yet in shadow). After the merge, live must
+    /// contain BOTH the incoming peer data AND the hook-injected row. If the
+    /// residual gap were open (final fold + swap not under one lock), the swap
+    /// would overwrite live with shadow and the hook row would be LOST.
+    #[test]
+    fn merge_incoming_nonblocking_preserves_write_during_merge_window() {
+        let d = TempDbDir::new("gate");
+        let live_path = d.db_path();
+        open_test_db_on_disk(&live_path, Some("L"));
+
+        let incoming = {
+            let peer = open_test_db();
+            seed(&peer, "R");
+            build_full_export(&peer).expect("export peer")
+        };
+
+        let live_for_hook = live_path.clone();
+        merge_incoming_nonblocking_with_hook(&live_path, &incoming, move || {
+            // Simulate a recording write landing in the merge window: a brand-new
+            // project + application + session, present ONLY in live (post-snapshot).
+            let c = open_disk_rw(&live_for_hook);
+            c.execute(
+                "INSERT INTO projects (name, color, updated_at) \
+                 VALUES ('GAP-proj', '#ff0000', '2026-04-22 12:00:00')",
+                [],
+            )
+            .expect("hook insert project");
+            c.execute(
+                "INSERT INTO applications (executable_name, display_name, updated_at) \
+                 VALUES ('gap-app.exe', 'Gap App', '2026-04-22 12:00:00')",
+                [],
+            )
+            .expect("hook insert app");
+            let app_id: i64 = c
+                .query_row(
+                    "SELECT id FROM applications WHERE executable_name='gap-app.exe'",
+                    [],
+                    |r| r.get(0),
+                )
+                .expect("hook app id");
+            c.execute(
+                "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, \
+                 rate_multiplier, project_name, updated_at) \
+                 VALUES (?1, '2026-04-22 12:00:00', '2026-04-22 12:10:00', 600, '2026-04-22', \
+                 1.0, 'GAP-proj', '2026-04-22 12:00:00')",
+                rusqlite::params![app_id],
+            )
+            .expect("hook insert session");
+        })
+        .expect("non-blocking merge with hook");
+
+        let live = open_disk_rw(&live_path);
+
+        // (a) Incoming peer data present (a project from `incoming`, prefix "R").
+        let incoming_present: i64 = live
+            .query_row(
+                "SELECT COUNT(*) FROM projects WHERE name = 'R-proj-1'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("query incoming project");
+        assert_eq!(incoming_present, 1, "incoming peer project must be present");
+
+        // (b) THE GATE — the hook-injected write SURVIVED the swap via the fold.
+        let gap_proj: i64 = live
+            .query_row(
+                "SELECT COUNT(*) FROM projects WHERE name = 'GAP-proj'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("query gap project");
+        let gap_app: i64 = live
+            .query_row(
+                "SELECT COUNT(*) FROM applications WHERE executable_name = 'gap-app.exe'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("query gap app");
+        let gap_session: i64 = live
+            .query_row(
+                "SELECT COUNT(*) FROM sessions WHERE project_name = 'GAP-proj'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("query gap session");
+        assert_eq!(gap_proj, 1, "GATE: project written during merge window was LOST");
+        assert_eq!(gap_app, 1, "GATE: application written during merge window was LOST");
+        assert_eq!(gap_session, 1, "GATE: session written during merge window was LOST");
+
+        // Original live data ("L") still present.
+        let orig: i64 = live
+            .query_row(
+                "SELECT COUNT(*) FROM projects WHERE name = 'L-proj-1'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("query original project");
+        assert_eq!(orig, 1, "original live project must survive");
     }
 }
