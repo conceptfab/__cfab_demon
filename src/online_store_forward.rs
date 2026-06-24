@@ -108,32 +108,68 @@ pub(crate) fn pull_snapshot(server: &str, token: &str, user: &str, device: &str,
     serde_json::from_str(&raw).map_err(|e| format!("pull parse: {e}"))
 }
 
-// ── Archive ↔ snapshot bridge ──
+// ── Archive ↔ snapshot bridge (E2E-encrypted) ──
 //
-// `build_full_export(&conn)` zwraca STRING JSON-obiektu, który już sam w sobie
-// ma własny klucz `data` (table_hashes/exported_at/device_id/data{projects,...}).
-// `merge_incoming_data(conn, slave_data)` parsuje DOKŁADNIE ten string i czyta
-// przez wskaźniki `/data/projects` itd. — czyli oczekuje pełnego obiektu eksportu.
+// `build_full_export(&conn)` zwraca STRING JSON-obiektu eksportu
+// (table_hashes/exported_at/device_id/data{projects,...}).
+// `merge_incoming_data(conn, slave_data)` parsuje DOKŁADNIE ten string.
 //
-// Serwer przechowuje i zwraca `archive` jako typ `SnapshotArchive = { data: object }`
-// verbatim. Owijamy więc pełny obiekt eksportu pod `archive.data`, a przy pull
-// wyciągamy `archive.data` i serializujemy z powrotem do stringa — to dokładnie to,
-// czego oczekuje merge. Round-trip jest symetryczny.
+// E2E: zamiast wysyłać eksport plaintextem, szyfrujemy jego bajty hasłem
+// (`encryption_key`) i pakujemy szyfrogram (base64, nonce-prefixed) w kopertę:
+//   archive = { "data": { "e2e": 1, "alg": "aes-256-gcm", "ct": "<base64>" } }
+// Serwer trzyma `archive` jako `{ data: object }` verbatim i gzipuje całość —
+// `data` traktuje nieprzezroczyście, więc widzi tylko szyfrogram. Przy pull
+// odwracamy: czytamy `archive.data.ct` → base64-decode → decrypt → string eksportu,
+// który `merge_incoming_data` przyjmuje bez zmian. Round-trip jest symetryczny.
+//
+// Uwaga (zbieżność): AES-GCM używa losowego nonce, więc ten sam eksport zaszyfrowany
+// dwa razy daje różny szyfrogram → serwerowa detekcja no-op po SHA nigdy nie zadziała.
+// To OK: KLIENT zbiega przez `compute_tables_hash_string_conn` (treść odszyfrowanej
+// bazy) i pushuje tylko gdy lokalnie „dirty". Tu nie dodajemy determinizmu.
 
-/// Owija string eksportu (`build_full_export`) w `archive = { "data": <export-object> }`.
-fn wrap_snapshot_to_archive(export_json: &str) -> Result<serde_json::Value, String> {
-    let export: serde_json::Value =
-        serde_json::from_str(export_json).map_err(|e| format!("wrap: zły eksport JSON: {e}"))?;
-    Ok(serde_json::json!({ "data": export }))
+const ENVELOPE_ALG: &str = "aes-256-gcm";
+
+/// Szyfruje string eksportu (`build_full_export`) hasłem i owija w kopertę E2E:
+/// `archive = { "data": { "e2e": 1, "alg": "aes-256-gcm", "ct": "<base64 szyfrogramu>" } }`.
+fn wrap_snapshot_to_archive(
+    export_json: &str,
+    encryption_key: &str,
+) -> Result<serde_json::Value, String> {
+    use base64::Engine;
+    let ciphertext =
+        crate::sync_encryption::encrypt_with_passphrase(export_json.as_bytes(), encryption_key)?;
+    let ct_b64 = base64::engine::general_purpose::STANDARD.encode(&ciphertext);
+    Ok(serde_json::json!({
+        "data": { "e2e": 1, "alg": ENVELOPE_ALG, "ct": ct_b64 }
+    }))
 }
 
-/// Wyciąga z `archive` obiekt eksportu (`archive.data`) i serializuje do stringa,
-/// który `merge_incoming_data` przyjmuje bez zmian.
-fn unwrap_archive_to_snapshot(archive: &serde_json::Value) -> Result<String, String> {
+/// Odwraca `wrap_snapshot_to_archive`: czyta kopertę E2E z `archive.data`,
+/// base64-dekoduje `ct`, deszyfruje hasłem i zwraca string eksportu gotowy dla
+/// `merge_incoming_data`. Waliduje marker `e2e`; przy złej kopercie lub błędzie
+/// deszyfracji zwraca czytelny Err (nigdy panic, nigdy „cichy śmieć").
+fn unwrap_archive_to_snapshot(
+    archive: &serde_json::Value,
+    encryption_key: &str,
+) -> Result<String, String> {
+    use base64::Engine;
     let data = archive
         .get("data")
         .ok_or("unwrap: archive nie ma pola 'data'")?;
-    serde_json::to_string(data).map_err(|e| format!("unwrap: serializacja data: {e}"))
+    let e2e = data.get("e2e").and_then(|v| v.as_i64());
+    if e2e != Some(1) {
+        return Err("unwrap: koperta nie jest E2E (brak/zły marker 'e2e')".into());
+    }
+    let ct_b64 = data
+        .get("ct")
+        .and_then(|v| v.as_str())
+        .ok_or("unwrap: koperta E2E nie ma pola 'ct'")?;
+    let ciphertext = base64::engine::general_purpose::STANDARD
+        .decode(ct_b64)
+        .map_err(|e| format!("unwrap: base64 ct: {e}"))?;
+    let plaintext =
+        crate::sync_encryption::decrypt_with_passphrase(&ciphertext, encryption_key)?;
+    String::from_utf8(plaintext).map_err(|e| format!("unwrap: UTF-8 eksportu: {e}"))
 }
 
 // ── Store-and-forward sync loop ──
@@ -187,6 +223,12 @@ fn execute_store_forward(
     let token = &settings.auth_token;
     let user = &settings.user_id;
     let device = &settings.device_id;
+
+    // E2E wymaga klucza — bez niego nie umiemy zaszyfrować pushu ani odszyfrować
+    // pulla. Fail loud PRZED jakąkolwiek siecią; nie ma cichego fallbacku do plaintextu.
+    if settings.encryption_key.is_empty() {
+        return Err("brak klucza szyfrowania (encryption_key) — online sync wymaga klucza".into());
+    }
 
     // (a) Granica startu — przerwij zanim w ogóle uderzymy w sieć/bazę.
     if should_abort(stop_signal) {
@@ -258,7 +300,7 @@ fn do_pull_merge(
     }
     let archive = pull.archive.ok_or("pull: hasUpdate ale brak archive")?;
     let server_rev = pull.revision.ok_or("pull: brak revision")?;
-    let slave_data = unwrap_archive_to_snapshot(&archive)?;
+    let slave_data = unwrap_archive_to_snapshot(&archive, &settings.encryption_key)?;
 
     // (b) Granica przed merge — przerwij zanim ruszymy lokalną bazę (freeze+merge).
     if should_abort(stop_signal) {
@@ -308,7 +350,7 @@ fn do_push(
             let conn = lan_common::open_dashboard_db()?;
             sync_common::build_full_export(&conn)?
         };
-        let archive = wrap_snapshot_to_archive(&export_json)?;
+        let archive = wrap_snapshot_to_archive(&export_json, &settings.encryption_key)?;
         let known = if base == 0 { None } else { Some(base) };
         let resp = push_snapshot(server, token, user, device, known, archive)?;
         if resp.accepted || resp.no_op {
@@ -345,26 +387,68 @@ mod tests {
     #[test] fn pull_when_behind_and_clean() { assert_eq!(decide(&v(4,5,false)), SyncDecision::Pull); }
     #[test] fn pull_then_push_when_behind_and_dirty() { assert_eq!(decide(&v(4,5,true)), SyncDecision::PullThenPush); }
 
-    /// wrap → unwrap musi oddać dokładnie ten sam obiekt eksportu (modulo whitespace JSON):
-    /// merge dostaje 1:1 to, co wyeksportował push. Porównujemy sparsowane Value, nie stringi.
+    const TEST_KEY: &str = "test-encryption-passphrase-7b";
+
+    /// Reprezentatywny kształt build_full_export.
+    const SAMPLE_EXPORT: &str = r#"{"table_hashes":{"projects":"abc"},"exported_at":"2026-06-24 10:00:00","device_id":"dev-1","data":{"projects":[{"id":1,"name":"P"}],"applications":[],"sessions":[],"manual_sessions":[],"tombstones":[],"clients":[],"assignment_feedback":[],"assignment_auto_runs":[]}}"#;
+
+    /// E2E round-trip: wrap (szyfruje) → unwrap (deszyfruje) tym samym kluczem musi
+    /// oddać DOKŁADNIE ten sam obiekt eksportu, który merge przyjmuje 1:1.
+    /// Koperta zawiera tylko szyfrogram — nie surowy eksport.
     #[test]
-    fn archive_round_trip_is_identity() {
-        // Kształt jak build_full_export: pełny obiekt z własnym wewnętrznym "data".
-        let export = r#"{"table_hashes":{"projects":"abc"},"exported_at":"2026-06-24 10:00:00","device_id":"dev-1","data":{"projects":[{"id":1,"name":"P"}],"applications":[],"sessions":[],"manual_sessions":[],"tombstones":[],"clients":[],"assignment_feedback":[],"assignment_auto_runs":[]}}"#;
+    fn archive_round_trip_is_identity_encrypted() {
+        let archive = wrap_snapshot_to_archive(SAMPLE_EXPORT, TEST_KEY).expect("wrap");
 
-        let archive = wrap_snapshot_to_archive(export).expect("wrap");
-        // Serwerowy kontrakt: { data: <export-object> }.
-        assert!(archive.get("data").is_some(), "archive musi mieć pole 'data'");
+        // Serwerowy kontrakt: { data: <object> }; koperta E2E w środku.
+        let data = archive.get("data").expect("archive musi mieć pole 'data'");
+        assert_eq!(data.get("e2e").and_then(|v| v.as_i64()), Some(1), "marker e2e=1");
+        assert_eq!(data.get("alg").and_then(|v| v.as_str()), Some("aes-256-gcm"));
+        let ct = data.get("ct").and_then(|v| v.as_str()).expect("ct base64 obecne");
+        // Serwer nie może odczytać eksportu: szyfrogram nie zawiera plaintextu.
+        assert!(!ct.contains("projects"), "ct musi być szyfrogramem, nie plaintextem");
 
-        let restored = unwrap_archive_to_snapshot(&archive).expect("unwrap");
-        let a: serde_json::Value = serde_json::from_str(export).unwrap();
+        let restored = unwrap_archive_to_snapshot(&archive, TEST_KEY).expect("unwrap");
+        let a: serde_json::Value = serde_json::from_str(SAMPLE_EXPORT).unwrap();
         let b: serde_json::Value = serde_json::from_str(&restored).unwrap();
         assert_eq!(a, b, "round-trip wrap→unwrap musi zachować eksport bit w bit");
+    }
+
+    /// AES-GCM ma losowy nonce → ten sam eksport daje dwa różne szyfrogramy.
+    /// (Świadome: zbieżność po stronie KLIENTA, nie po SHA serwera.)
+    #[test]
+    fn wrap_produces_distinct_ciphertext_each_call() {
+        let a = wrap_snapshot_to_archive(SAMPLE_EXPORT, TEST_KEY).unwrap();
+        let b = wrap_snapshot_to_archive(SAMPLE_EXPORT, TEST_KEY).unwrap();
+        let ct_a = a["data"]["ct"].as_str().unwrap();
+        let ct_b = b["data"]["ct"].as_str().unwrap();
+        assert_ne!(ct_a, ct_b, "losowy nonce → różny szyfrogram per push");
+    }
+
+    /// Zły klucz → Err (autentykacja GCM), nigdy panic ani śmieci psujące merge.
+    #[test]
+    fn unwrap_with_wrong_key_returns_err() {
+        let archive = wrap_snapshot_to_archive(SAMPLE_EXPORT, TEST_KEY).expect("wrap");
+        let r = unwrap_archive_to_snapshot(&archive, "zly-klucz");
+        assert!(r.is_err(), "zły klucz musi dać Err");
     }
 
     #[test]
     fn unwrap_rejects_archive_without_data() {
         let bad = serde_json::json!({ "version": "1" });
-        assert!(unwrap_archive_to_snapshot(&bad).is_err());
+        assert!(unwrap_archive_to_snapshot(&bad, TEST_KEY).is_err());
+    }
+
+    /// Brak koperty E2E (ani markera, ani ct) → czytelny Err, nie panic.
+    #[test]
+    fn unwrap_rejects_non_e2e_envelope() {
+        // Stary kształt plaintext { data: <export> } — bez markera e2e.
+        let legacy = serde_json::json!({ "data": { "projects": [] } });
+        assert!(unwrap_archive_to_snapshot(&legacy, TEST_KEY).is_err(),
+            "koperta bez markera e2e musi być odrzucona");
+
+        // Marker jest, ale brak ct.
+        let no_ct = serde_json::json!({ "data": { "e2e": 1, "alg": "aes-256-gcm" } });
+        assert!(unwrap_archive_to_snapshot(&no_ct, TEST_KEY).is_err(),
+            "koperta E2E bez 'ct' musi dać Err");
     }
 }

@@ -26,7 +26,6 @@ mod monitor;
 mod online_store_forward;
 mod online_sync;
 mod platform;
-mod sftp_client;
 mod storage;
 mod title_parser;
 mod sync_common;

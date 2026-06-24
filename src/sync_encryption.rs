@@ -1,15 +1,19 @@
-//! Szyfrowanie kredencjałów/plików dla starego sesyjnego online synca (SFTP).
-//! Nieużywane po przejściu na store-and-forward (snapshoty jadą przez HTTP,
-//! szyfrowanie warstwą transportu TLS). Zostaje jako gotowy moduł pod ewentualne
-//! przyszłe szyfrowanie-at-rest; do tego czasu wyciszamy dead_code na poziomie
-//! modułu, żeby nie kasować przetestowanego kodu.
-#![allow(dead_code)]
+//! Szyfrowanie payloadów online synca (AES-256-GCM).
+//!
+//! Używane przez store-and-forward online sync (E2E): klient szyfruje eksport
+//! lokalnej bazy hasłem (`encryption_key`) zanim wyśle go na serwer — serwer
+//! widzi wyłącznie szyfrogram. Funkcje `encrypt_with_passphrase` /
+//! `decrypt_with_passphrase` przyjmują dowolny ciąg-hasło i wyprowadzają z niego
+//! 32-bajtowy klucz AES (SHA-256), więc nie zakładamy konkretnego formatu klucza.
+//!
+//! Pozostałe funkcje (kredencjały/pliki) pochodzą ze starego transportu SFTP i
+//! część z nich jest obecnie nieużywana — oznaczona punktowo `#[allow(dead_code)]`.
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key};
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -20,6 +24,7 @@ type AesNonce = aes_gcm::aead::generic_array::GenericArray<
 >;
 
 /// Encrypted credentials as received from the server.
+#[allow(dead_code)] // Stary transport SFTP.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptedCredentials {
@@ -29,6 +34,7 @@ pub struct EncryptedCredentials {
 }
 
 /// Decrypted SFTP credentials.
+#[allow(dead_code)] // Stary transport SFTP.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SftpCredentials {
@@ -57,6 +63,7 @@ impl Drop for SftpCredentials {
 /// HMAC-based key derivation matching the server's algorithm.
 /// prk = HMAC-SHA256(master_key, session_id)
 /// okm = HMAC-SHA256(prk, purpose)
+#[allow(dead_code)] // Stary transport SFTP (derywacja klucza sesji kredencjałów).
 fn derive_session_key(master_key: &str, session_id: &str, purpose: &str) -> [u8; 32] {
     let mut mac = <HmacSha256 as Mac>::new_from_slice(master_key.as_bytes())
         .expect("HMAC accepts any key length");
@@ -75,7 +82,64 @@ fn make_nonce(bytes: &[u8]) -> AesNonce {
     AesNonce::clone_from_slice(bytes)
 }
 
+/// Wyprowadza 32-bajtowy klucz AES-256 z dowolnego ciągu-hasła (SHA-256).
+/// Dzięki temu `encryption_key` może być dowolnym tekstem — nie zakładamy
+/// konkretnego formatu (np. base64 32B). Deterministyczne: ten sam passphrase
+/// → ten sam klucz (warunek konieczny round-tripu między urządzeniami).
+fn derive_key_from_passphrase(passphrase: &str) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(passphrase.as_bytes());
+    hasher.finalize().into()
+}
+
+/// Szyfruje dowolne bajty hasłem (AES-256-GCM, klucz = SHA-256(passphrase)).
+/// Format wyjścia: [12 bajtów losowego IV][ciphertext + 16-bajtowy tag GCM].
+/// IV losowy per wywołanie (brak nonce reuse) i doklejony na początek, więc
+/// `decrypt_with_passphrase` odzyskuje go samodzielnie. NIE kompresuje —
+/// warstwa wyżej (serwer) i tak gzipuje całe archiwum.
+pub fn encrypt_with_passphrase(plaintext: &[u8], passphrase: &str) -> Result<Vec<u8>, String> {
+    let key_bytes = derive_key_from_passphrase(passphrase);
+
+    let mut iv_arr = [0u8; 12];
+    getrandom::getrandom(&mut iv_arr)
+        .map_err(|e| format!("Failed to generate random IV: {}", e))?;
+
+    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+    let cipher = Aes256Gcm::new(key);
+    let nonce = make_nonce(&iv_arr);
+
+    let encrypted = cipher
+        .encrypt(&nonce, plaintext)
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+
+    let mut result = Vec::with_capacity(12 + encrypted.len());
+    result.extend_from_slice(&iv_arr);
+    result.extend_from_slice(&encrypted);
+    Ok(result)
+}
+
+/// Odwrotność `encrypt_with_passphrase`. Wejście: [12B IV][ciphertext+tag].
+/// Zły klucz / uszkodzony szyfrogram → Err (autentykacja GCM), nigdy panic
+/// ani „cichy śmieć", który mógłby zepsuć merge.
+pub fn decrypt_with_passphrase(data: &[u8], passphrase: &str) -> Result<Vec<u8>, String> {
+    if data.len() < 12 {
+        return Err("Dane za krótkie na IV (min 12 bajtów)".to_string());
+    }
+    let iv = &data[..12];
+    let ciphertext = &data[12..];
+
+    let key_bytes = derive_key_from_passphrase(passphrase);
+    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+    let cipher = Aes256Gcm::new(key);
+    let nonce = make_nonce(iv);
+
+    cipher
+        .decrypt(&nonce, ciphertext)
+        .map_err(|e| format!("Decryption failed: {}", e))
+}
+
 /// Decrypt credentials received from the server.
+#[allow(dead_code)] // Stary transport SFTP — pozostaje pod ewentualny powrót.
 pub fn decrypt_credentials(
     encrypted: &EncryptedCredentials,
     session_id: &str,
@@ -119,6 +183,7 @@ pub fn decrypt_credentials(
 
 /// Encrypt file data: gzip compress then AES-256-GCM encrypt.
 /// Output format: [12 bytes IV][ciphertext + 16-byte GCM tag]
+#[allow(dead_code)] // Stary transport SFTP (E2E używa encrypt_with_passphrase).
 pub fn encrypt_file_data(data: &[u8], key_base64: &str) -> Result<Vec<u8>, String> {
     use base64::Engine;
     use flate2::write::GzEncoder;
@@ -170,6 +235,7 @@ pub fn encrypt_file_data(data: &[u8], key_base64: &str) -> Result<Vec<u8>, Strin
 
 /// Decrypt file data: AES-256-GCM decrypt then gzip decompress.
 /// Expects input format: [12 bytes IV][ciphertext + 16-byte GCM tag]
+#[allow(dead_code)] // Stary transport SFTP (E2E używa decrypt_with_passphrase).
 pub fn decrypt_file_data(data: &[u8], key_base64: &str) -> Result<Vec<u8>, String> {
     use base64::Engine;
     use flate2::read::GzDecoder;
@@ -253,6 +319,43 @@ mod tests {
         let a = encrypt_file_data(b"x", TEST_KEY).unwrap();
         let b = encrypt_file_data(b"x", TEST_KEY).unwrap();
         assert_ne!(a[..12], b[..12], "IV losowy per wywołanie (brak nonce reuse)");
+    }
+
+    const TEST_PASSPHRASE: &str = "moje-tajne-haslo-do-e2e";
+
+    #[test]
+    fn passphrase_roundtrip_utf8_empty_and_large() {
+        for payload in [
+            "żółć ąęś — € {\"data\":1}".as_bytes().to_vec(),
+            Vec::<u8>::new(),
+            b"with\0null\0bytes".to_vec(),
+            vec![7u8; 512 * 1024],
+        ] {
+            let enc = encrypt_with_passphrase(&payload, TEST_PASSPHRASE).unwrap();
+            let dec = decrypt_with_passphrase(&enc, TEST_PASSPHRASE).unwrap();
+            assert_eq!(dec, payload, "roundtrip musi zachować bajty 1:1");
+        }
+    }
+
+    #[test]
+    fn passphrase_nonce_is_random_per_call() {
+        let a = encrypt_with_passphrase(b"x", TEST_PASSPHRASE).unwrap();
+        let b = encrypt_with_passphrase(b"x", TEST_PASSPHRASE).unwrap();
+        assert_ne!(a[..12], b[..12], "IV losowy per wywołanie (brak nonce reuse)");
+        assert_ne!(a, b, "szyfrogram różny przy losowym nonce");
+    }
+
+    #[test]
+    fn passphrase_wrong_key_returns_err_not_garbage() {
+        let enc = encrypt_with_passphrase(b"sekret", TEST_PASSPHRASE).unwrap();
+        let r = decrypt_with_passphrase(&enc, "inne-haslo");
+        assert!(r.is_err(), "zły passphrase musi dać Err (autentykacja GCM), nie śmieci");
+    }
+
+    #[test]
+    fn passphrase_truncated_input_returns_err_not_panic() {
+        let r = decrypt_with_passphrase(b"short", TEST_PASSPHRASE);
+        assert!(r.is_err(), "za krótkie wejście (bez IV) musi dać Err, nie panic");
     }
 
     #[test]
