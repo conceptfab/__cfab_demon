@@ -339,15 +339,24 @@ fn update_sync_menu(
     lang: i18n::Lang,
     applied: &mut AppliedTray,
 ) {
-    // Synchronizacja jest możliwa tylko gdy: LAN sync włączony w ustawieniach
-    // ORAZ wykryto co najmniej jednego peera. Inaczej chowamy cały blok sync —
-    // spójnie z dashboardem ("Sync Off" / "No peers"). Pokazywanie aktywnych
-    // przycisków bez peera nie miałoby sensu (nie ma z czym synchronizować).
+    // Blok sync jest widoczny gdy synchronizacja jest w ogóle skonfigurowana:
+    // online (store-and-forward) LUB LAN. Nie wymagamy obecności LAN-peera do
+    // samej WIDOCZNOŚCI — spójnie z Windows (blok zawsze obecny) i z faktem, że
+    // klik i tak najpierw próbuje online (patrz sync_trigger). Wcześniej blok
+    // znikał gdy online był włączony ale LAN nie miał peera — przez co nie dało
+    // się odpalić online sync z menu.
+    let online = crate::config::load_online_sync_settings();
+    let online_ready = online.enabled
+        && !online.server_url.is_empty()
+        && !online.auth_token.is_empty();
     let lan_enabled = crate::config::load_lan_sync_settings().enabled;
     let peer_present = sync_state
         .map(|s| s.peer_present.load(Ordering::Relaxed))
         .unwrap_or(false);
-    let should_show = lan_enabled && peer_present;
+    let should_show = online_ready || lan_enabled;
+    // Akcje są klikalne tylko gdy istnieje realny cel: online gotowy albo
+    // wykryty LAN-peer. Bez tego pokazujemy blok wyszarzony „niedostępny".
+    let has_target = online_ready || peer_present;
 
     if applied.sync_block_visible != Some(should_show) {
         set_sync_block_visible(
@@ -379,10 +388,12 @@ fn update_sync_menu(
             let text = if syncing {
                 let frozen_label = lang.t(TrayText::SyncFrozenSuffix);
                 format!("{}: {} ({}={})", prefix, role, frozen_label, frozen)
+            } else if !has_target {
+                format!("{}: {}", prefix, lang.t(TrayText::SyncUnavailable))
             } else {
                 format!("{}: {}", prefix, role)
             };
-            (text, !syncing)
+            (text, !syncing && has_target)
         }
     };
 

@@ -4,12 +4,13 @@ Tracker znanych różnic w zachowaniu i stubów między platformami.
 
 | Obszar | macOS | Windows | Status / TODO |
 |---|---|---|---|
-| Tray — opcje sync gdy sync niemożliwy (wyłączony LUB brak peera) | Cały blok sync (status + 2 przyciski + separator) jest **ukrywany** z menu (muda `Menu::insert`/`remove`). | Przyciski **wyszarzone** + status „Sync: niedostępny" (nwg nie pozwala czysto usuwać/wstawiać pozycji menu w runtime, zwł. separatorów). | TODO: zaimplementować pełne ukrywanie na Windows przez Win32 `RemoveMenu`/`InsertMenuW` i **zweryfikować na realnym buildzie Windows** (cross-compile z macOS pada na zależności C `libsqlite3-sys`). |
+| Tray — blok sync (widoczność vs wyszarzenie) | Blok sync jest **widoczny** gdy sync skonfigurowany (online `enabled+url+token` LUB LAN `enabled`); **ukrywany** dopiero gdy sync całkiem wyłączony (`Menu::insert`/`remove`). Bez celu (brak LAN-peera i online nie gotowy) → przyciski wyszarzone, status „Sync: niedostępny". | Blok zawsze obecny (nwg nie usuwa pozycji); **wyszarzony** + status „Sync: niedostępny" gdy brak celu. Warunek `syncable` identyczny jak na macOS (`has_target`). | Różnica szczątkowa: gdy sync CAŁKIEM wyłączony macOS chowa blok, Windows pokazuje wyszarzony. TODO: pełne ukrywanie na Windows przez Win32 `RemoveMenu`/`InsertMenuW` + **weryfikacja na realnym buildzie Windows** (cross-compile z macOS pada na `libsqlite3-sys`). |
 | Detekcja statusu demona — zawężenie do zarządzanej binarki (`commands/daemon/mod.rs::query_daemon_process_status`) | `pgrep -f <pełna_ścieżka_z_find_daemon_exe>` zamiast gołej nazwy. Zweryfikowane na macu (demon startuje z absolutną ścieżką jako argv[0]). | `Get-CimInstance Win32_Process` + porównanie pełnej `ExecutablePath`; fallback do `tasklist /FI IMAGENAME` przy każdym błędzie/braku ścieżki. **NIEZWERYFIKOWANE na realnym Windows** (cross-compile pada). Ryzyko: quoting `-Command` w std::process oraz teoretyczny fałszywy „Stopped", gdy PowerShell zwróci sukces z pustym wyjściem. | TODO: zweryfikować scoped query na realnym buildzie Windows; rozważyć `-EncodedCommand` dla pewnego quotingu. |
 
 ## Notatki
 - Sygnał obecności peera: `LanSyncState.peer_present` (AtomicBool) aktualizowany w pętli `lan_discovery` na podstawie `!peers.is_empty()`; czytany przez oba traye.
-- Warunek dostępności sync w trayu: `config::load_lan_sync_settings().enabled && peer_present`.
+- Widoczność bloku sync w trayu: `online_ready || lan_enabled` (online_ready = `online.enabled && !url.is_empty() && !token.is_empty()`).
+- Klikalność akcji sync (`has_target`/`syncable`): `online_ready || peer_present` (i nie trwa już sync).
 
 ## Parity wersji (LAN sync)
 - **Scalanie projektów (`projects.merged_into`/`merged_at`):** marker w pełni synchronizuje się tylko między urządzeniami z tą samą wersją TIMEFLOW. Starszy peer nie zna kolumn — dostaje tylko `excluded_at` (blokada liczenia czasu działa wszędzie), a jego rekordy NIE wyzerują lokalnego markera (brak klucza w archiwum ⇒ zachowaj lokalną wartość; jawny `null` od nowego peera ⇒ wyczyść, bo to unmerge). Daemon ma defensywne `ALTER TABLE` (`ensure_project_merge_columns`) na wypadek startu przed migracją m23 dashboardu.

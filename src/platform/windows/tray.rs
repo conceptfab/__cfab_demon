@@ -264,14 +264,19 @@ impl TrayState {
                 let syncing = state.sync_in_progress.load(Ordering::Relaxed);
                 let frozen = state.db_frozen.load(Ordering::Acquire);
                 let prefix = lang.t(TrayText::SyncStatusPrefix);
-                // Synchronizacja możliwa tylko gdy LAN sync włączony w ustawieniach
-                // ORAZ jest wykryty peer (inaczej nie ma z czym/jak synchronizować).
-                // macOS chowa wtedy cały blok sync; nwg nie pozwala czysto
-                // usuwać/wstawiać pozycji menu w runtime (zwł. separatorów), więc
-                // tu wyszarzamy przyciski + status "niedostępny" — patrz PARITY.md.
+                // Synchronizacja możliwa gdy: online sync skonfigurowany
+                // (store-and-forward) LUB LAN włączony z wykrytym peerem. Klik i tak
+                // najpierw próbuje online (patrz trigger_sync), więc pominięcie
+                // online tutaj wyszarzało działające przyciski. nwg nie pozwala
+                // czysto usuwać pozycji menu w runtime, więc gdy niedostępne
+                // wyszarzamy przyciski + status "niedostępny" — patrz PARITY.md.
+                let online = crate::config::load_online_sync_settings();
+                let online_ready = online.enabled
+                    && !online.server_url.is_empty()
+                    && !online.auth_token.is_empty();
                 let lan_enabled = crate::config::load_lan_sync_settings().enabled;
                 let peer_present = state.peer_present.load(Ordering::Relaxed);
-                let syncable = lan_enabled && peer_present;
+                let syncable = online_ready || (lan_enabled && peer_present);
                 let status = if !syncable {
                     format!("{}: {}", prefix, lang.t(TrayText::SyncUnavailable))
                 } else if syncing {
