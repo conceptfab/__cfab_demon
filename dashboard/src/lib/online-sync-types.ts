@@ -14,7 +14,11 @@ export interface OnlineSyncSettings {
   serverUrl: string;
   userId: string;
   apiToken: string;
-  /** Reserved for future client-side encryption. Not yet implemented — do not show in UI. */
+  /**
+   * E2E passphrase. Normalnie pusty w warstwie web — klucz dla demona jest
+   * auto-derivowany z `groupId` licencji przy zapisie (patrz `resolveDaemonEncryptionKey`).
+   * Jawna wartość (gdyby kiedyś doszło pole ręczne) ma priorytet nad derivacją.
+   */
   encryptionKey?: string;
   deviceId: string;
   requestTimeoutMs: number;

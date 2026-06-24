@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { settingsApi } from '@/lib/tauri';
-import { saveOnlineSyncSettings } from '@/lib/online-sync';
+import { loadLicenseInfo, saveOnlineSyncSettings } from '@/lib/online-sync';
 import { logTauriWarn } from '@/lib/utils';
 import {
   type CurrencySettings,
@@ -111,21 +111,24 @@ export function useSettingsFormState({
     );
 
     void import('@/lib/tauri/online-sync')
-      .then(({ saveDaemonOnlineSyncSettings }) =>
-        saveDaemonOnlineSyncSettings({
+      .then(async ({ saveDaemonOnlineSyncSettings, resolveDaemonEncryptionKey }) => {
+        // E2E klucz auto-derivowany z grupy licencji — ten sam dla całej grupy.
+        const encryptionKey = await resolveDaemonEncryptionKey(
+          savedOnlineSync.encryptionKey,
+          loadLicenseInfo()?.groupId,
+        );
+        await saveDaemonOnlineSyncSettings({
           enabled: savedOnlineSync.enabled,
           server_url: savedOnlineSync.serverUrl,
           auth_token: uiApiToken,
           device_id: savedOnlineSync.deviceId,
-          encryption_key: savedOnlineSync.encryptionKey ?? '',
+          encryption_key: encryptionKey,
           sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
           auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
-        }).catch((err) => {
-          logTauriWarn('Failed to persist online sync settings to daemon:', err);
-        }),
-      )
-      .catch(() => {
-        // Daemon not available; local UI settings are still saved.
+        });
+      })
+      .catch((err) => {
+        logTauriWarn('Failed to persist online sync settings to daemon:', err);
       });
 
     const savedFreeze = saveFreezeSettings(generalSettings.freezeSettings);

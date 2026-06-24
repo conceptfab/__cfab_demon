@@ -12,6 +12,41 @@ export interface DaemonOnlineSyncSettings {
   auto_sync_on_startup: boolean;
 }
 
+/**
+ * Domain separator dla derivacji E2E klucza. Wersjonowany — gdyby kiedyś trzeba
+ * było zmienić schemat, bump `-v2` rozdziela stare i nowe klucze.
+ */
+const E2E_KDF_DOMAIN = 'timeflow-online-sync-e2e-v1';
+
+/**
+ * Wyprowadza E2E passphrase z `groupId` licencji: `SHA-256(domain | groupId)` → hex.
+ * Wszystkie urządzenia w tej samej grupie licencyjnej liczą identyczny klucz, więc
+ * snapshot zaszyfrowany na jednym odszyfruje się na drugim. Serwer nie widzi klucza
+ * (widzi tylko szyfrogram), choć zna `groupId` — to świadomy trade-off auto-derivacji.
+ * Pusty/whitespace `groupId` → `''` (brak grupy = brak klucza, demon padnie fail-loud).
+ */
+export async function deriveGroupEncryptionKey(groupId: string): Promise<string> {
+  const gid = groupId.trim();
+  if (!gid) return '';
+  const data = new TextEncoder().encode(`${E2E_KDF_DOMAIN}|${gid}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Efektywny `encryption_key` zapisywany dla demona: jawny klucz (jeśli kiedyś
+ * pojawi się pole ręczne) ma priorytet; inaczej derivacja z `groupId`; inaczej ''.
+ */
+export async function resolveDaemonEncryptionKey(
+  explicitKey: string | undefined,
+  groupId: string | undefined,
+): Promise<string> {
+  if (explicitKey && explicitKey.length > 0) return explicitKey;
+  return deriveGroupEncryptionKey(groupId ?? '');
+}
+
 export const getDaemonOnlineSyncSettings = () =>
   invoke<DaemonOnlineSyncSettings>('get_online_sync_settings');
 

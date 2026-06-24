@@ -63,6 +63,31 @@ export function useSyncSettings({
     });
   }, []);
 
+  // Self-heal E2E klucza: jeśli urządzenie jest zalicencjonowane (jest groupId),
+  // a demon ma pusty encryption_key (instalacja sprzed auto-derivacji), dopisujemy
+  // wyprowadzony klucz raz — zachowując pozostałe pola. Bez tego online sync padałby
+  // co interwał z "brak klucza szyfrowania".
+  useEffect(() => {
+    const groupId = loadLicenseInfo()?.groupId;
+    if (!groupId) return;
+    void (async () => {
+      try {
+        const {
+          getDaemonOnlineSyncSettings,
+          saveDaemonOnlineSyncSettings,
+          deriveGroupEncryptionKey,
+        } = await import('@/lib/tauri/online-sync');
+        const current = await getDaemonOnlineSyncSettings();
+        if (current.encryption_key && current.encryption_key.length > 0) return;
+        const encryption_key = await deriveGroupEncryptionKey(groupId);
+        if (!encryption_key) return;
+        await saveDaemonOnlineSyncSettings({ ...current, encryption_key });
+      } catch (err) {
+        logTauriWarn('[online-sync] E2E key self-heal failed:', err);
+      }
+    })();
+  }, []);
+
   const lastSyncLabel = onlineSyncState.lastSyncAt
     ? new Date(onlineSyncState.lastSyncAt).toLocaleString()
     : t('settings_page.never');
@@ -103,15 +128,19 @@ export function useSyncSettings({
 
   const persistDaemonOnlineSyncSettings = useCallback(
     async (savedOnlineSync: OnlineSyncSettings, authToken: string) => {
-      const { saveDaemonOnlineSyncSettings } = await import(
-        '@/lib/tauri/online-sync'
+      const { saveDaemonOnlineSyncSettings, resolveDaemonEncryptionKey } =
+        await import('@/lib/tauri/online-sync');
+      // E2E klucz auto-derivowany z grupy licencji — ten sam dla całej grupy.
+      const encryptionKey = await resolveDaemonEncryptionKey(
+        savedOnlineSync.encryptionKey,
+        loadLicenseInfo()?.groupId,
       );
       await saveDaemonOnlineSyncSettings({
         enabled: savedOnlineSync.enabled,
         server_url: savedOnlineSync.serverUrl,
         auth_token: authToken,
         device_id: savedOnlineSync.deviceId,
-        encryption_key: savedOnlineSync.encryptionKey ?? '',
+        encryption_key: encryptionKey,
         sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
         auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
       });
