@@ -74,6 +74,17 @@ export const triggerDaemonOnlineSync = (opts: { background?: boolean; force?: bo
 export const getDaemonOnlineSyncProgress = () =>
   invoke<SyncProgress>('get_online_sync_progress');
 
+export interface DaemonOnlineSyncResult {
+  ok: boolean;
+  phase: string;
+  error: string | null;
+  syncedHash: string | null;
+  finishedAt: number;
+}
+
+export const getDaemonOnlineSyncResult = () =>
+  invoke<DaemonOnlineSyncResult>('get_online_sync_result');
+
 export const cancelDaemonOnlineSync = () =>
   invokeMutation<void>('cancel_online_sync');
 
@@ -82,5 +93,6 @@ export const daemonOnlineSyncApi = {
   saveDaemonOnlineSyncSettings,
   triggerDaemonOnlineSync,
   getDaemonOnlineSyncProgress,
+  getDaemonOnlineSyncResult,
   cancelDaemonOnlineSync,
 } as const;

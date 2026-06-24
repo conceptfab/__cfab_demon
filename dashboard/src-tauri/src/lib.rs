@@ -335,6 +335,7 @@ pub fn run() {
             commands::save_online_sync_settings,
             commands::run_online_sync,
             commands::get_online_sync_progress,
+            commands::get_online_sync_result,
             commands::cancel_online_sync,
             commands::get_log_settings,
             commands::save_log_settings,

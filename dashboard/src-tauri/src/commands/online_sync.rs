@@ -147,6 +147,34 @@ pub async fn get_online_sync_progress() -> Result<super::lan_sync::SyncProgress,
     Ok(progress)
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct OnlineSyncResult {
+    pub ok: bool,
+    pub phase: String,
+    pub error: Option<String>,
+    #[serde(rename = "syncedHash", alias = "synced_hash")]
+    pub synced_hash: Option<String>,
+    #[serde(rename = "finishedAt", alias = "finished_at")]
+    pub finished_at: u64,
+}
+
+/// Get last online sync result from the daemon.
+#[tauri::command]
+pub async fn get_online_sync_result() -> Result<OnlineSyncResult, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get(format!("{}/online/last-result", DAEMON_BASE))
+        .send()
+        .await
+        .map_err(|e| format!("Daemon not reachable: {}", e))?;
+
+    resp.json::<OnlineSyncResult>().await.map_err(|e| e.to_string())
+}
+
 /// Cancel online sync via daemon HTTP endpoint.
 #[tauri::command]
 pub async fn cancel_online_sync() -> Result<(), String> {

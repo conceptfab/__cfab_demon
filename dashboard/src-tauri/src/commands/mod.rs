@@ -88,8 +88,8 @@ pub(crate) use types::DateRange;
 //                     unpair_device, upsert_lan_peer
 // log_management (6): clear_log_file, get_log_files_info, get_log_settings, open_logs_folder,
 //                     read_log_file, save_log_settings
-// online_sync (5):    cancel_online_sync, get_online_sync_progress, get_online_sync_settings,
-//                     run_online_sync, save_online_sync_settings
+// online_sync (6):    cancel_online_sync, get_online_sync_progress, get_online_sync_result,
+//                     get_online_sync_settings, run_online_sync, save_online_sync_settings
 // manual_sessions (5): create_manual_session, delete_manual_session, delete_manual_sessions,
 //                     get_manual_sessions, update_manual_session
 // monitored (6):      add_monitored_app, get_monitored_apps, inspect_dropped_app,
@@ -128,7 +128,7 @@ pub(crate) use types::DateRange;
 //                     pm_suggest_project_number, pm_update_project
 // webserver (5):      webserver_generate_pairing_code, webserver_list_sessions,
 //                     webserver_revoke_session, webserver_set_config, webserver_status
-// Total: 170 registered tauri commands across 29 modules.
+// Total: 171 registered tauri commands across 29 modules.
 pub use analysis::*;
 pub use assignment_model::*;
 pub use bughunter::*;
