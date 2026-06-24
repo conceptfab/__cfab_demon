@@ -1326,7 +1326,7 @@
     "online_sync": {
       "enableTitle": "Włącz synchronizację online",
       "loggingTitle": "Włącz logowanie synchronizacji",
-      "useRailwayDefault": "Użyj domyślnego Railway",
+      "useDefaultServer": "Użyj domyślnego serwera",
       "syncDisabledInDemo": "Sync wyłączony w demo"
     },
     "license": {

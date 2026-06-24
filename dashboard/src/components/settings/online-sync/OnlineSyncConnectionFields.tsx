@@ -49,7 +49,7 @@ export function OnlineSyncConnectionFields({
             className="h-7 px-2 text-xs"
             onClick={onResetServerUrl}
           >
-            {t('settings.online_sync.useRailwayDefault')}
+            {t('settings.online_sync.useDefaultServer')}
           </Button>
           <span className="text-xs text-muted-foreground break-all">
             {defaultServerUrl}

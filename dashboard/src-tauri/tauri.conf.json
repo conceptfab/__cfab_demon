@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "TIMEFLOW",
-  "version": "0.1.5741",
+  "version": "0.1.5742",
   "identifier": "com.timeflow.dashboard",
   "build": {
     "frontendDist": "../dist",
@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; base-uri 'self'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://cfabserver-production.up.railway.app; font-src 'self' data:",
+      "csp": "default-src 'self'; base-uri 'self'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://cfab-server.vercel.app; font-src 'self' data:",
       "freezePrototype": false
     }
   },

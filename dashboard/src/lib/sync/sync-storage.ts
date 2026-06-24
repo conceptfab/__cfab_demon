@@ -46,7 +46,7 @@ export function normalizeApiToken(input: unknown): string {
 
 export const DEFAULT_ONLINE_SYNC_SERVER_URL =
   normalizeServerUrl(import.meta.env.VITE_TIMEFLOW_SYNC_SERVER_URL) ||
-  'https://cfabserver-production.up.railway.app';
+  'https://cfab-server.vercel.app';
 
 export const DEFAULT_ONLINE_SYNC_SETTINGS: OnlineSyncSettings = {
   enabled: false,
