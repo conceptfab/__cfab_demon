@@ -259,6 +259,8 @@ fn execute_store_forward(
             lan_common::sync_log("[store-forward] przerwano (cancel/stop)");
             return Ok(());
         }
+        // Sprzątanie własnych dostarczonych/wygasłych uploadów (best-effort).
+        let _ = crate::online_async_delta::cleanup_own_uploads(settings, stop_signal);
         let local_hash = {
             let conn = lan_common::open_dashboard_db()?;
             sync_common::compute_tables_hash_string_conn(&conn)

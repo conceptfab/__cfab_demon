@@ -170,6 +170,29 @@ fn async_ack(s: &OnlineSyncSettings, package_id: &str, stop: &AtomicBool) -> Res
     server_post_cancellable(&s.server_url, "/api/sync/async/ack", &s.auth_token, &body, stop).map(|_| ())
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SentCleanupItem {
+    package_id: String,
+    #[allow(dead_code)]
+    storage_path: String,
+}
+
+#[derive(Deserialize)]
+struct SentCleanupResp {
+    packages: Vec<SentCleanupItem>,
+}
+
+fn async_sent_cleanup(s: &OnlineSyncSettings, stop: &AtomicBool) -> Result<SentCleanupResp, String> {
+    let body = serde_json::to_string(&AsyncPendingReq {
+        device_id: &s.device_id,
+        group_id: &s.group_id,
+    })
+    .map_err(|e| e.to_string())?;
+    let raw = server_post_cancellable(&s.server_url, "/api/sync/async/sent-cleanup", &s.auth_token, &body, stop)?;
+    serde_json::from_str(&raw).map_err(|e| format!("sent-cleanup parse: {e}"))
+}
+
 // ── Publiczne wejścia ──
 
 /// PUSH: publikuje bieżący stan lokalny jako paczkę async (E2E kluczem grupy) na
@@ -291,11 +314,9 @@ pub fn pull_pending(s: &OnlineSyncSettings, sync_state: &LanSyncState, stop_sign
         let merged_hash = merge_res?;
 
         config::save_online_sync_synced_hash(&merged_hash);
-        // KLIENT kasuje plik z FTP po udanym imporcie (serwer nie dotyka danych).
-        // Best-effort: błąd kasowania nie wywraca synca (plik i tak ma TTL), ale jest
-        // czytelnie zalogowany przez delete_file (USUNIĘCIE OK/BŁĄD).
-        let del_target = ftp_target_from_creds(&creds)?;
-        let _ = online_ftp_transport::delete_file(&del_target, &remote_path);
+        // Multi-receiver: ODBIORCA NIE kasuje pliku — inne urządzenia grupy mogą go
+        // jeszcze potrzebować. Plik kasuje NADAWCA, gdy paczka jest delivered/expired
+        // (patrz cleanup_own_uploads). Ack po udanym imporcie.
         async_ack(s, &pkg.id, stop_signal)?;
         applied = true;
         lan_common::sync_log(&format!(
@@ -306,6 +327,49 @@ pub fn pull_pending(s: &OnlineSyncSettings, sync_state: &LanSyncState, stop_sign
     }
     sync_state.set_progress(13, "completed", "local");
     Ok(applied)
+}
+
+/// NADAWCA sprząta swoje paczki, które serwer oznaczył delivered/expired:
+/// pobiera creds, kasuje plik z FTP (delete_file → log USUNIĘCIE). Best-effort —
+/// błąd nie wywraca synca (pliki i tak mają TTL). Domyka inwariant
+/// client-owns-deletion BEZ łamania multi-receiver (odbiorcy już go nie kasują).
+pub fn cleanup_own_uploads(s: &OnlineSyncSettings, stop_signal: &AtomicBool) -> Result<(), String> {
+    if s.group_id.is_empty() {
+        return Ok(());
+    }
+    let list = match async_sent_cleanup(s, stop_signal) {
+        Ok(l) => l,
+        Err(e) => {
+            lan_common::sync_log(&format!("[async-cleanup] pominięto (błąd listy): {e}"));
+            return Ok(());
+        }
+    };
+    if list.packages.is_empty() {
+        return Ok(());
+    }
+    for item in list.packages {
+        if should_abort(stop_signal) {
+            return Ok(());
+        }
+        let creds_resp = match async_credentials(s, &item.package_id, stop_signal) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let Some(creds_wrap) = creds_resp.storage_credentials else { continue };
+        let creds = match crate::sync_encryption::decrypt_credentials(
+            &creds_wrap.encrypted, &item.package_id, &s.encryption_key,
+        ) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let target = match ftp_target_from_creds(&creds) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let remote_path = format!("{}{}", creds.upload_path, BLOB_FILENAME);
+        let _ = online_ftp_transport::delete_file(&target, &remote_path);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -355,5 +419,13 @@ mod tests {
     fn short_truncates_to_8() {
         assert_eq!(short("0123456789"), "01234567");
         assert_eq!(short("abc"), "abc");
+    }
+
+    #[test]
+    fn parses_sent_cleanup_response() {
+        let raw = r#"{"ok":true,"packages":[{"packageId":"p1","storagePath":"/async/p1"}]}"#;
+        let resp: SentCleanupResp = serde_json::from_str(raw).unwrap();
+        assert_eq!(resp.packages.len(), 1);
+        assert_eq!(resp.packages[0].package_id, "p1");
     }
 }
