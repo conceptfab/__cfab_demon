@@ -1341,7 +1341,10 @@
       "active": "Active",
       "activated_success": "License activated successfully!",
       "no_server_url": "Set the server URL before activating a license.",
-      "deactivate": "Change license"
+      "deactivate": "Change license",
+      "token_persist_failed": "License activated, but failed to save the API token: {{error}}. The token may not survive a restart.",
+      "e2e_key_selfheal_failed": "Failed to write the E2E key to the daemon — online sync may not start. Click \"Save settings\".",
+      "daemon_persist_failed": "License activated, but failed to pass settings to the daemon: {{error}}. Click \"Save settings\"."
     },
     "webserver": {
       "title": "Web Server",
@@ -1643,6 +1646,7 @@
     "last_manual_sync_pull_applied_ack_pending": "Last manual sync: pull applied, ACK pending ({{detail}})",
     "last_manual_sync": "Last manual sync: {{action}} ({{reason}})",
     "last_manual_sync_failed": "Last manual sync failed: {{error}}",
+    "online_sync_daemon_save_failed": "Failed to save sync settings in the daemon: {{error}}",
     "general_settings": "General Settings",
     "tab_general": "General",
     "tab_sessions": "Sessions",
@@ -2074,7 +2078,7 @@
     "online_sync_setup_how_to_start": "How to start: enter the server URL, User ID, and raw Token, save settings, wait for Device ID generation, and only then run `Sync now` or enable `Sync on startup`.",
     "online_sync_setup_when_to_use": "When to use: enable it when you want off-device backups or want to sync work between multiple machines.",
     "online_sync_setup_limitations": "Limitations and consequences: Demo Mode disables sync, an invalid token blocks push/pull, and a reseed warning means you need to rebuild state with a local export or a fresh seed.",
-    "online_sync_daemon_mode": "Daemon-based sync: When the TIMEFLOW daemon is running, online sync runs as a background store-and-forward process — it uploads your encrypted snapshot to the server and downloads the other device's snapshot when available. No peer needs to be online at the same time. Progress is shown in the overlay while the brief local merge runs.",
+    "online_sync_daemon_mode": "Daemon-based sync: When the TIMEFLOW daemon is running, online sync runs as a background store-and-forward process — it uploads your encrypted snapshot to the server and downloads the other device's snapshot when available. No peer needs to be online at the same time. Online sync runs silently in the background (no blocking overlay) — its status and any errors appear in the Online Sync settings panel and the log.",
     "online_sync_cancel": "Cancel Online Sync — when a daemon-based online sync is running, TIMEFLOW can request cancellation. The sync stops at the next safe checkpoint and asks the server to cancel the active session.",
     "delta_sync_description": "Store-and-forward model: TIMEFLOW uploads a full encrypted snapshot to the server, then downloads and merges the other device's latest snapshot locally. No live connection to the second device is required — each device syncs independently on its own schedule.",
     "online_sync_clients_sync": "Clients & assignments sync: client definitions, each project's assigned client and its status now travel with Online Sync, so the Clients panel stays consistent across machines. Note: re-assigning a client always propagates; clearing an assignment may need one more sync to reach the other devices.",

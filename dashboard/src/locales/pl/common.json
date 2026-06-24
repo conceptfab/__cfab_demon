@@ -1341,7 +1341,10 @@
       "active": "Aktywna",
       "activated_success": "Licencja aktywowana pomyślnie!",
       "no_server_url": "Ustaw adres serwera przed aktywacją licencji.",
-      "deactivate": "Zmień licencję"
+      "deactivate": "Zmień licencję",
+      "token_persist_failed": "Licencja aktywowana, ale nie udało się zapisać tokena API: {{error}}. Token może nie przetrwać restartu.",
+      "e2e_key_selfheal_failed": "Nie udało się dopisać klucza E2E do demona — online sync może nie ruszyć. Kliknij „Zapisz ustawienia”.",
+      "daemon_persist_failed": "Licencja aktywowana, ale nie udało się przekazać ustawień do demona: {{error}}. Kliknij „Zapisz ustawienia”."
     },
     "webserver": {
       "title": "Serwer WWW",
@@ -1643,6 +1646,7 @@
     "last_manual_sync_pull_applied_ack_pending": "Ostatni ręczny sync: pull zastosowany, ACK oczekuje ({{detail}})",
     "last_manual_sync": "Ostatni ręczny sync: {{action}} ({{reason}})",
     "last_manual_sync_failed": "Ostatni ręczny sync nie powiódł się: {{error}}",
+    "online_sync_daemon_save_failed": "Nie udało się zapisać ustawień synchronizacji w demonie: {{error}}",
     "general_settings": "Ustawienia ogólne",
     "tab_general": "Ogolne",
     "tab_sessions": "Sesje",
@@ -2074,7 +2078,7 @@
     "online_sync_setup_how_to_start": "Jak zacząć: wpisz URL serwera, User ID i surowy Token, zapisz ustawienia, poczekaj na wygenerowanie Device ID i dopiero wtedy uruchom `Sync now` albo `Sync on startup`.",
     "online_sync_setup_when_to_use": "Kiedy użyć: włącz to, gdy chcesz mieć kopie danych poza lokalną bazą lub synchronizować pracę między maszynami.",
     "online_sync_setup_limitations": "Ograniczenia i konsekwencje: tryb demo wyłącza synchronizację, błędny token zablokuje push/pull, a po komunikacie o reseed trzeba odbudować stan lokalnym eksportem lub nowym seedem.",
-    "online_sync_daemon_mode": "Synchronizacja przez daemon: Gdy daemon TIMEFLOW jest uruchomiony, online sync działa jako proces store-and-forward w tle — przesyła zaszyfrowany snapshot na serwer i pobiera snapshot drugiego urządzenia, gdy jest dostępny. Drugie urządzenie nie musi być online w tym samym czasie. Postęp jest widoczny w nakładce podczas krótkiego lokalnego scalania.",
+    "online_sync_daemon_mode": "Synchronizacja przez daemon: Gdy daemon TIMEFLOW jest uruchomiony, online sync działa jako proces store-and-forward w tle — przesyła zaszyfrowany snapshot na serwer i pobiera snapshot drugiego urządzenia, gdy jest dostępny. Drugie urządzenie nie musi być online w tym samym czasie. Online sync działa cicho w tle (bez blokującej nakładki) — jego status i ewentualne błędy widać w panelu ustawień \"Synchronizacja online\" oraz w logu.",
     "online_sync_cancel": "Anulowanie Online Sync — gdy działa synchronizacja online przez daemon, TIMEFLOW może poprosić o anulowanie. Synchronizacja zatrzymuje się w najbliższym bezpiecznym punkcie i prosi serwer o anulowanie aktywnej sesji.",
     "delta_sync_description": "Model store-and-forward: TIMEFLOW wysyła pełny zaszyfrowany snapshot na serwer, a następnie pobiera i scala lokalnie ostatni snapshot drugiego urządzenia. Połączenie na żywo z drugim urządzeniem nie jest wymagane — każde urządzenie synchronizuje się niezależnie według własnego harmonogramu.",
     "online_sync_clients_sync": "Synchronizacja klientów i przypisań: definicje klientów oraz przypisany klient i status każdego projektu wędrują teraz z Online Sync, więc panel Klienci jest spójny między maszynami. Uwaga: ponowne przypisanie klienta zawsze się propaguje; usunięcie przypisania może wymagać jeszcze jednej synchronizacji, by dotrzeć do pozostałych urządzeń.",
