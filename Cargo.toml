@@ -1,6 +1,6 @@
 [package]
 name = "timeflow-demon"
-version = "0.1.5744"
+version = "0.1.5745"
 edition = "2021"
 description = "TIMEFLOW cross-platform tray daemon with application monitor"
 autobins = false
