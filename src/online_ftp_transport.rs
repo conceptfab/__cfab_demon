@@ -166,22 +166,74 @@ pub fn download_bytes(target: &FtpTarget, remote_path: &str) -> Result<Vec<u8>, 
 /// Usuwa zdalny plik z FTP i loguje czytelne potwierdzenie. Wywoływane przez
 /// KLIENTA po udanym imporcie — domyka cykl umieszczenie→odczyt→usunięcie i trzyma
 /// zasadę „serwer nie dotyka danych" (kasuje odbiorca, nie serwer).
-pub fn delete_file(target: &FtpTarget, remote_path: &str) -> Result<(), String> {
+/// Usuwa plik bloba ORAZ puste katalogi paczki (slave-upload + async/<id>) jedną
+/// sesją FTP. Bez tego `delete_file` zostawiał dziesiątki pustych katalogów UUID
+/// na FTP (spam). `dirs` to ścieżki katalogów do usunięcia po pliku, od
+/// najgłębszego do najpłytszego. rmdir best-effort: katalog może nie być pusty
+/// (inny plik) — wtedy log i kontynuacja, nie błąd całości.
+pub fn delete_file_and_dirs(
+    target: &FtpTarget,
+    remote_path: &str,
+    dirs: &[String],
+) -> Result<(), String> {
     let mut ftp = connect(target)?;
     let res = ftp
         .rm(remote_path)
         .map_err(|e| format!("FTP delete {remote_path}: {e}"));
-    let _ = ftp.quit();
     match &res {
         Ok(()) => sync_log(&format!("[ftp] USUNIĘCIE OK: {remote_path} (skasowane z FTP)")),
         Err(e) => sync_log(&format!("[ftp] USUNIĘCIE BŁĄD: {e}")),
     }
+    // Sprzątanie katalogów — tylko gdy plik zniknął (lub już go nie było).
+    if res.is_ok() {
+        for dir in dirs {
+            match ftp.rmdir(dir) {
+                Ok(()) => sync_log(&format!("[ftp] USUNIĘCIE KATALOGU OK: {dir}")),
+                Err(e) => {
+                    sync_log(&format!("[ftp] USUNIĘCIE KATALOGU pominięte ({dir}): {e}"));
+                    // Katalog nadrzędny nie zniknie, jeśli ten został — przerywamy łańcuch.
+                    break;
+                }
+            }
+        }
+    }
+    let _ = ftp.quit();
     res
+}
+
+/// Z `/async/<id>/slave-upload/delta.enc` wyciąga listę katalogów do skasowania
+/// po pliku: `["/async/<id>/slave-upload/", "/async/<id>/"]` (od najgłębszego).
+/// Zwraca pusty wektor, jeśli ścieżka nie pasuje do oczekiwanego kształtu.
+pub fn package_dirs_from_blob_path(remote_path: &str) -> Vec<String> {
+    // Odetnij nazwę pliku → katalog slave-upload (z trailing slash).
+    let Some(slash) = remote_path.rfind('/') else { return Vec::new() };
+    let slave_dir = &remote_path[..=slash]; // ".../slave-upload/"
+    let trimmed = slave_dir.trim_end_matches('/');
+    let Some(parent_slash) = trimmed.rfind('/') else { return Vec::new() };
+    let pkg_dir = &trimmed[..=parent_slash]; // ".../async/<id>/"
+    vec![slave_dir.to_string(), pkg_dir.to_string()]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn package_dirs_from_blob_path_extracts_two_dirs() {
+        let dirs = package_dirs_from_blob_path("/async/abc-123/slave-upload/delta.enc");
+        assert_eq!(
+            dirs,
+            vec![
+                "/async/abc-123/slave-upload/".to_string(),
+                "/async/abc-123/".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn package_dirs_from_blob_path_handles_no_slash() {
+        assert!(package_dirs_from_blob_path("delta.enc").is_empty());
+    }
 
     // resolve_addr — loopback rozwiązuje się bez sieci zewnętrznej.
     #[test]

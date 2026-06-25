@@ -226,6 +226,8 @@ export function useSyncSettings({
           setOnlineSyncState(loadOnlineSyncState());
           setManualSyncResult({ ok: true, action: 'push', reason: 'daemon_sync_completed', serverRevision: null });
         } else if (outcome && outcome.phase === 'error') {
+          saveOnlineSyncLastResult({ ok: false, error: outcome.error ?? null, finishedAt: outcome.finishedAt });
+          setOnlineSyncState(loadOnlineSyncState());
           setManualSyncResult({
             ok: false, action: 'none', reason: 'daemon_sync_failed',
             serverRevision: onlineSyncState.serverRevision,
@@ -296,6 +298,8 @@ export function useSyncSettings({
           setOnlineSyncState(loadOnlineSyncState());
           setManualSyncResult({ ok: true, action: 'push', reason: 'daemon_sync_completed', serverRevision: null });
         } else if (outcome && outcome.phase === 'error') {
+          saveOnlineSyncLastResult({ ok: false, error: outcome.error ?? null, finishedAt: outcome.finishedAt });
+          setOnlineSyncState(loadOnlineSyncState());
           setManualSyncResult({
             ok: false, action: 'none', reason: 'daemon_sync_failed',
             serverRevision: onlineSyncState.serverRevision,

@@ -308,6 +308,8 @@
     "details": {
       "no_sync_yet": "Brak wykonanej synchronizacji",
       "last_sync": "Ostatnia synchronizacja {{time}} • r{{revision}} • {{hash}}",
+      "failed": "Ostatnia synchronizacja NIE powiodła się",
+      "failed_with_error": "Ostatnia synchronizacja NIE powiodła się: {{error}}",
       "disabled": "Synchronizacja online jest wyłączona",
       "configure": "Uzupełnij adres serwera i ID użytkownika",
       "reseed_required": "Payload serwera został wyczyszczony i lokalne dane do reseedu są niedostępne",
@@ -2047,6 +2049,7 @@
     "auto_sync_interval_configure_automatic_synchronization_i": "Auto-sync interval – jedyny okresowy wyzwalacz automatycznej synchronizacji (1–1440 min, domyślnie 30). Poza nim sync wykonuje się tylko: raz po starcie (gdy Sync on startup włączone), tuż po lokalnej zmianie danych oraz na żądanie.",
     "ack_statuses_in_online_sync_the_status_area_shows_whethe": "Statusy ACK w Online Sync – sekcja stanu pokazuje czy zmiany lokalne oczekują na potwierdzenie po stronie serwera (ACK pending).",
     "online_sync_status_panel_shows_revision_hash_and_retr": "Panel statusu Online Sync – pokazuje rewizję i hash po stronie serwera oraz lokalnej, retry oczekującego ACK i ostrzeżenie o reseed, gdy snapshot serwera został przycięty.",
+    "online_sync_silent_status_and_autocleanup": "Cichy status i auto-sprzątanie – synchronizacja online działa w tle bez okien blokujących, ale wskaźnik „Sync” na pasku bocznym pokazuje jej wynik: zielony = OK, czerwony = ostatnia synchronizacja NIE powiodła się (najedź, by zobaczyć błąd). Stare paczki danych na FTP są kasowane automatycznie: po imporcie przez drugą maszynę oraz natychmiast, gdy wyślesz nowszą pełną bazę (poprzednie własne paczki są wtedy zbędne) – nie zostają puste katalogi ani niepobrane „delta”.",
     "server_snapshot_pruned_scenario_if_the_server_payload_wa": "Scenariusz server_snapshot_pruned – jeśli payload serwera został wyczyszczony po ACK, wykonaj lokalny reseed/eksport, aby odbudować stan synchronizacji.",
     "sync_logging_you_can_enable_file_logging_for_synchroniza": "Sync logging – możesz włączyć logowanie synchronizacji do pliku, aby diagnozować błędy pull/push i przekazać log do wsparcia.",
     "demo_mode_switch_to_a_demo_database_test_without_affecti": "Demo Mode – przełączanie na bazę demo (możliwość testowania bez wpływu na realne dane).",

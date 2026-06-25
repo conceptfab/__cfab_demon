@@ -19,6 +19,7 @@ export function HelpOnlineSyncSection() {
         t18n('help_page.auto_sync_interval_configure_automatic_synchronization_i'),
         t18n('help_page.ack_statuses_in_online_sync_the_status_area_shows_whethe'),
         t18n('help_page.online_sync_status_panel_shows_revision_hash_and_retr'),
+        t18n('help_page.online_sync_silent_status_and_autocleanup'),
         t18n('help_page.server_snapshot_pruned_scenario_if_the_server_payload_wa'),
         t18n('help_page.sync_logging_you_can_enable_file_logging_for_synchroniza'),
         t18n('help_page.online_sync_daemon_mode'),

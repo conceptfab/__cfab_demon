@@ -112,10 +112,29 @@ export function DaemonSyncOverlay() {
           return;
         }
 
-        // Idle or terminal: if a silent online sync was running, refresh the
-        // dashboard now that it has finished (skip on error — nothing changed).
+        // Idle or terminal: if a silent online sync was running, persist its
+        // outcome so the sidebar indicator can show success/FAILURE of background
+        // syncs (not just manual ones) — bez tego porażka tła była niewidoczna.
         if (onlineRunningRef.current) {
           onlineRunningRef.current = false;
+          try {
+            const [
+              { getDaemonOnlineSyncResult },
+              { saveOnlineSyncLastResult },
+              { refreshIndicatorFromStorage },
+            ] = await Promise.all([
+              import('@/lib/tauri/online-sync'),
+              import('@/lib/sync/sync-state'),
+              import('@/lib/sync/sync-indicator'),
+            ]);
+            const res = await getDaemonOnlineSyncResult();
+            if (res.phase === 'completed') {
+              saveOnlineSyncLastResult({ ok: true, syncedHash: res.syncedHash, finishedAt: res.finishedAt });
+            } else if (res.phase === 'error') {
+              saveOnlineSyncLastResult({ ok: false, error: res.error, finishedAt: res.finishedAt });
+            }
+            refreshIndicatorFromStorage();
+          } catch { /* demon nieosiągalny — zostaw poprzedni stan */ }
           if (!progress.phase.startsWith('error')) {
             triggerRefresh('daemon_sync_finished');
           }

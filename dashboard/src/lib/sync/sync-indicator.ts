@@ -146,6 +146,23 @@ function buildIndicatorSnapshotFromStorage(): OnlineSyncIndicatorSnapshot {
     });
   }
 
+  // Ostatni sync NIE powiódł się → twardy błąd widoczny dla usera. Bez tej gałęzi
+  // porażka spadała do „Gotowe" (status == success), więc user nie wiedział, że
+  // sync się wywalił. Ma pierwszeństwo nad pendingAck (warning).
+  if (state.lastOk === false) {
+    return buildSnapshot(state, {
+      status: 'error',
+      label: syncIndicatorT('online_sync_indicator.labels.error'),
+      detail: state.lastError
+        ? syncIndicatorT('online_sync_indicator.details.failed_with_error', {
+            error: state.lastError,
+          })
+        : syncIndicatorT('online_sync_indicator.details.failed'),
+      lastReason: 'sync_failed',
+      error: state.lastError,
+    });
+  }
+
   if (state.pendingAck) {
     return buildSnapshot(state, {
       status: 'warning',

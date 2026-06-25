@@ -167,6 +167,7 @@ export interface OnlineSyncLastResult {
   ok: boolean;
   syncedHash?: string | null;
   finishedAt?: number;
+  error?: string | null;
 }
 
 /** Zapisuje REALNY wynik ostatniego online sync do stanu czytanego przez panel (audyt H1). */
@@ -198,6 +199,10 @@ export function saveOnlineSyncLastResult(result: OnlineSyncLastResult): void {
     lastSyncAt,
     localHash,
     serverHash,
+    // Zapisz REALNY wynik — bez tego porażka (ok:false) wyglądała jak sukces
+    // (wskaźnik spadał do „Gotowe"). Teraz wskaźnik ma z czego pokazać błąd.
+    lastOk: result.ok,
+    lastError: result.ok ? null : (result.error ?? prev.lastError ?? null),
   };
 
   writeJsonStorage(ONLINE_SYNC_STATE_KEY, {

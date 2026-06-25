@@ -330,7 +330,7 @@ pub fn pull_pending(s: &OnlineSyncSettings, sync_state: &LanSyncState, stop_sign
 }
 
 /// NADAWCA sprząta swoje paczki, które serwer oznaczył delivered/expired:
-/// pobiera creds, kasuje plik z FTP (delete_file → log USUNIĘCIE). Best-effort —
+/// pobiera creds, kasuje plik+katalogi z FTP (delete_file_and_dirs → log USUNIĘCIE). Best-effort —
 /// błąd nie wywraca synca (pliki i tak mają TTL). Domyka inwariant
 /// client-owns-deletion BEZ łamania multi-receiver (odbiorcy już go nie kasują).
 pub fn cleanup_own_uploads(s: &OnlineSyncSettings, stop_signal: &AtomicBool) -> Result<(), String> {
@@ -367,7 +367,10 @@ pub fn cleanup_own_uploads(s: &OnlineSyncSettings, stop_signal: &AtomicBool) -> 
             Err(_) => continue,
         };
         let remote_path = format!("{}{}", creds.upload_path, BLOB_FILENAME);
-        let _ = online_ftp_transport::delete_file(&target, &remote_path);
+        // Kasujemy plik ORAZ puste katalogi paczki (slave-upload + async/<id>),
+        // inaczej na FTP zostają puste katalogi UUID (spam).
+        let dirs = online_ftp_transport::package_dirs_from_blob_path(&remote_path);
+        let _ = online_ftp_transport::delete_file_and_dirs(&target, &remote_path, &dirs);
     }
     Ok(())
 }

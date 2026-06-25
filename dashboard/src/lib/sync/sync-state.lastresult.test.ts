@@ -64,4 +64,19 @@ describe("saveOnlineSyncLastResult", () => {
     expect(st.localHash).toBe("first-hash");
     expect(st.lastSyncAt).toBe(new Date(2000 * 1000).toISOString());
   });
+
+  it("persists ok=false and error so a failure is no longer invisible", () => {
+    saveOnlineSyncLastResult({ ok: false, error: "FTP timeout", finishedAt: 3000 });
+    const st = loadOnlineSyncState();
+    expect(st.lastOk).toBe(false);
+    expect(st.lastError).toBe("FTP timeout");
+  });
+
+  it("clears lastError when a later sync succeeds", () => {
+    saveOnlineSyncLastResult({ ok: false, error: "boom", finishedAt: 3000 });
+    saveOnlineSyncLastResult({ ok: true, syncedHash: "h", finishedAt: 4000 });
+    const st = loadOnlineSyncState();
+    expect(st.lastOk).toBe(true);
+    expect(st.lastError).toBeNull();
+  });
 });

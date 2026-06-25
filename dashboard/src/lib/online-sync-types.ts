@@ -92,6 +92,10 @@ export interface OnlineSyncState {
   pendingAck: OnlineSyncPendingAck | null;
   lastSyncAt: string | null;
   needsReseed: boolean;
+  /** Wynik OSTATNIEGO synca: true=OK, false=błąd, null=jeszcze nie wiadomo. */
+  lastOk: boolean | null;
+  /** Komunikat błędu z ostatniego nieudanego synca (do tooltipa wskaźnika). */
+  lastError: string | null;
 }
 
 export interface OnlineSyncRunResult {

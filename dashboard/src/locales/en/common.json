@@ -308,6 +308,8 @@
     "details": {
       "no_sync_yet": "No sync yet",
       "last_sync": "Last sync {{time}} • r{{revision}} • {{hash}}",
+      "failed": "Last sync FAILED",
+      "failed_with_error": "Last sync FAILED: {{error}}",
       "disabled": "Online sync disabled",
       "configure": "Configure server URL and user ID",
       "reseed_required": "Server payload was cleaned up and local reseed data is unavailable",
@@ -2047,6 +2049,7 @@
     "auto_sync_interval_configure_automatic_synchronization_i": "Auto-sync interval – the only periodic trigger for automatic synchronization (1–1440 min, default 30). Apart from it, sync runs only: once at startup (when Sync on startup is enabled), shortly after a local data change, and on demand.",
     "ack_statuses_in_online_sync_the_status_area_shows_whethe": "ACK statuses in Online Sync – the status area shows whether local changes are still waiting for server confirmation (ACK pending).",
     "online_sync_status_panel_shows_revision_hash_and_retr": "Online Sync status panel – shows server/local revision, hash, pending ACK retries, and reseed warnings when the remote snapshot was pruned.",
+    "online_sync_silent_status_and_autocleanup": "Silent status & auto-cleanup – online sync runs in the background with no blocking dialogs, but the sidebar \"Sync\" indicator reports its outcome: green = OK, red = the last sync FAILED (hover to see the error). Old data packages on FTP are removed automatically: after another machine imports them, and immediately when you push a newer full database (your previous packages become redundant) – no empty folders or un-pulled \"delta\" left behind.",
     "server_snapshot_pruned_scenario_if_the_server_payload_wa": "server_snapshot_pruned scenario – if the server payload was cleaned after ACK, run a local reseed/export to rebuild sync state.",
     "sync_logging_you_can_enable_file_logging_for_synchroniza": "Sync logging – you can enable file logging for synchronization to diagnose pull/push issues and share logs with support.",
     "demo_mode_switch_to_a_demo_database_test_without_affecti": "Demo Mode – switch to a demo database (test without affecting real data).",

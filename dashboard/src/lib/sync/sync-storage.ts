@@ -68,6 +68,8 @@ const DEFAULT_ONLINE_SYNC_STATE: OnlineSyncState = {
   pendingAck: null,
   lastSyncAt: null,
   needsReseed: false,
+  lastOk: null,
+  lastError: null,
 };
 
 export function normalizeAutoSyncIntervalMinutes(input: unknown): number {
@@ -185,6 +187,9 @@ export function normalizeOnlineSyncState(input: unknown): OnlineSyncState {
     pendingAck: normalizePendingAck(parsed.pendingAck),
     lastSyncAt: normalizeNullableString(parsed.lastSyncAt),
     needsReseed: parsed.needsReseed === true,
+    lastOk:
+      typeof parsed.lastOk === 'boolean' ? parsed.lastOk : null,
+    lastError: normalizeNullableString(parsed.lastError),
   };
 }
 
