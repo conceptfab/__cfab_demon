@@ -106,7 +106,7 @@ export function formatDurationWithDaily(
 }
 
 /** Raw slim formatter — never shows the rounded alternative. */
-function formatDurationSlimRaw(seconds: number): string {
+export function formatDurationSlimRaw(seconds: number): string {
   const { hours, minutes, seconds: remainingSeconds } = getDurationParts(seconds);
 
   if (hours > 0) return `${hours}h`;

@@ -2,6 +2,10 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { formatDuration, formatDurationRaw, formatDurationWithDaily } from './utils';
 import { saveRoundingSettings, loadRoundingSettings } from './user-settings';
 import { DEFAULT_ROUNDING_SETTINGS } from './rounding';
+import {
+  computeReportDisplayValues,
+  createReportDurationFormatter,
+} from './report-view-formatting';
 
 afterEach(() => {
   saveRoundingSettings(DEFAULT_ROUNDING_SETTINGS); // reset cache between tests
@@ -63,5 +67,41 @@ describe('formatDurationWithDaily honors every rounding mode', () => {
     saveRoundingSettings({ enabled: true, intervalMinutes: 15, mode: 'per_day' });
     // empty daily → round 3h15m up to the next full hour (4h)
     expect(formatDurationWithDaily(11700, [])).toBe('3h 15m (≈4h 0m)');
+  });
+});
+
+describe('report formatter hides minutes when rounding to a FULL HOUR', () => {
+  const report = { project: { total_seconds: 11700 }, estimate: 0 }; // 3h 15m
+
+  it('full-hour interval → "Xh" without "0m"', () => {
+    const settings = { enabled: true, intervalMinutes: 60, mode: 'per_total' as const };
+    const dv = computeReportDisplayValues(report, true, settings);
+    expect(dv.fullHour).toBe(true);
+    const fmt = createReportDurationFormatter(true, dv.usePerDay, settings, dv.interval);
+    expect(fmt(11700)).toBe('4h'); // 3h15m → 4h, no minutes
+  });
+
+  it('per_day mode (always full hour) → "Xh" without "0m"', () => {
+    const settings = { enabled: true, intervalMinutes: 15, mode: 'per_day' as const };
+    const dv = computeReportDisplayValues(report, true, settings);
+    expect(dv.fullHour).toBe(true);
+    const fmt = createReportDurationFormatter(true, dv.usePerDay, settings, dv.interval);
+    expect(fmt(11700)).toBe('4h');
+  });
+
+  it('sub-hour interval → minutes stay visible', () => {
+    const settings = { enabled: true, intervalMinutes: 15, mode: 'per_total' as const };
+    const dv = computeReportDisplayValues(report, true, settings);
+    expect(dv.fullHour).toBe(false);
+    const fmt = createReportDurationFormatter(true, dv.usePerDay, settings, dv.interval);
+    expect(fmt(11700)).toBe('3h 15m');
+  });
+
+  it('rounding disabled → minutes stay visible even at 60 min interval', () => {
+    const settings = { enabled: false, intervalMinutes: 60, mode: 'per_total' as const };
+    const dv = computeReportDisplayValues(report, false, settings);
+    expect(dv.fullHour).toBe(false);
+    const fmt = createReportDurationFormatter(false, dv.usePerDay, settings, dv.interval);
+    expect(fmt(11700)).toBe('3h 15m');
   });
 });

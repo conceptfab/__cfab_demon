@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
 import { useCancellableAsync } from '@/lib/async-utils';
-import { formatDurationRaw, formatMoney } from '@/lib/utils';
+import { formatDurationRaw, formatDurationSlimRaw, formatMoney } from '@/lib/utils';
 import {
   buildEstimateReportModel,
   filterRowsByClients,
@@ -46,7 +46,16 @@ export function useEstimateReportController() {
     (v: number) => formatMoney(v, currencyCode, locale),
     [currencyCode, locale],
   );
-  const fmtDur = useCallback((seconds: number) => formatDurationRaw(seconds), []);
+  // Zaokrąglanie do PEŁNEJ godziny (interwał 60 min lub tryb per_day) → wartości są
+  // zawsze wielokrotnością godziny, więc minuty ("0m") są zbędne i je ukrywamy.
+  const interval =
+    roundingSettings.mode === 'per_day' ? 60 : roundingSettings.intervalMinutes;
+  const fullHour = rounded && interval === 60;
+  const fmtDur = useCallback(
+    (seconds: number) =>
+      (fullHour ? formatDurationSlimRaw : formatDurationRaw)(seconds),
+    [fullHour],
+  );
 
   useEffect(() => {
     if (!config) return;
@@ -109,8 +118,7 @@ export function useEstimateReportController() {
     goBack,
     handlePrint,
     has,
-    interval:
-      roundingSettings.mode === 'per_day' ? 60 : roundingSettings.intervalMinutes,
+    interval,
     model,
     rounded,
     setRounded,

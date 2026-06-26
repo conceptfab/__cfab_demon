@@ -1,6 +1,7 @@
-import { formatDurationRaw } from '@/lib/utils';
+import { formatDurationRaw, formatDurationSlimRaw } from '@/lib/utils';
 import {
   effectiveIntervalMinutes,
+  FULL_HOUR_MINUTES,
   roundDailyTotals,
   roundSeconds,
   scaleValueToRounded,
@@ -29,10 +30,15 @@ export function computeReportDisplayValues(
     ? scaleValueToRounded(report.estimate, realTotal, displayTotal)
     : report.estimate;
 
+  // Zaokrąglanie do PEŁNEJ godziny (interwał 60 min, też tryb per_day) → wartości są
+  // zawsze wielokrotnością godziny, więc minuty ("0m") są zbędne i je ukrywamy.
+  const fullHour = rounded && interval === FULL_HOUR_MINUTES;
+
   return {
     dailySeconds,
     displayTotal,
     displayValue,
+    fullHour,
     interval,
     usePerDay,
   };
@@ -44,8 +50,13 @@ export function createReportDurationFormatter(
   roundingSettings: RoundingSettings,
   interval: number,
 ) {
+  // Przy zaokrąglaniu do pełnej godziny pomijamy minuty (format „Xh" zamiast „Xh 0m").
+  const format =
+    rounded && interval === FULL_HOUR_MINUTES
+      ? formatDurationSlimRaw
+      : formatDurationRaw;
   return (seconds: number, daily?: readonly number[]) =>
-    formatDurationRaw(
+    format(
       rounded
         ? usePerDay && daily && daily.length > 0
           ? roundDailyTotals(daily, roundingSettings)

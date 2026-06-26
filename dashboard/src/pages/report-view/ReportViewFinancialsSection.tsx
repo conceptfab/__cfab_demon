@@ -1,4 +1,4 @@
-import { formatDurationRaw, formatMoney } from '@/lib/utils';
+import { formatDurationRaw, formatDurationSlimRaw, formatMoney } from '@/lib/utils';
 import type { ReportViewController } from '@/hooks/useReportViewController';
 
 type ReportViewFinancialsSectionProps = Pick<
@@ -39,7 +39,9 @@ export function ReportViewFinancialsSection({
             {t('report_view.work_time')}
           </div>
           <div className="text-xl font-bold print:text-black">
-            {formatDurationRaw(displayValues.displayTotal)}
+            {(displayValues.fullHour ? formatDurationSlimRaw : formatDurationRaw)(
+              displayValues.displayTotal,
+            )}
           </div>
         </div>
       </div>
