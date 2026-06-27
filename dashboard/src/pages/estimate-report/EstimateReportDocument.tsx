@@ -49,7 +49,12 @@ export function EstimateReportDocument({ controller }: Props) {
               })}
             </p>
             <p className="text-xs text-muted-foreground print:text-gray-500">
-              {t('estimate_report.clients_label')}: {clientLabels.join(', ')}
+              {t(
+                config.clients.length === 1
+                  ? 'estimate_report.client_label'
+                  : 'estimate_report.clients_label',
+              )}
+              : {clientLabels.join(', ')}
             </p>
           </div>
         )}

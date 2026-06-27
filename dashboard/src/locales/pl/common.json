@@ -2526,6 +2526,7 @@
     "title": "Raport estymacji",
     "range": "Zakres: {{start}} — {{end}}",
     "clients_label": "Klienci",
+    "client_label": "Klient",
     "all_clients": "Wszyscy klienci",
     "no_client": "Bez klienta",
     "summary_heading": "Projekty i czas",

@@ -2526,6 +2526,7 @@
     "title": "Estimate report",
     "range": "Range: {{start}} — {{end}}",
     "clients_label": "Clients",
+    "client_label": "Client",
     "all_clients": "All clients",
     "no_client": "No client",
     "summary_heading": "Projects & time",
