@@ -156,7 +156,11 @@ export function getErrorMessage(error: unknown, fallback: string): string {
 const isDev = import.meta.env.DEV;
 
 export function logTauriError(action: string, error: unknown): void {
-  console.error(`[TIMEFLOW] Failed to ${action}:`, error);
+  const msg = `Failed to ${action}: ${getErrorMessage(error, String(error))}`;
+  console.error(`[TIMEFLOW] ${msg}`, error);
+  import('@/lib/tauri/log-management')
+    .then((m) => m.appendFrontendLog('error', msg))
+    .catch(() => {});
 }
 
 export function logTauriWarn(action: string, ...args: unknown[]): void {

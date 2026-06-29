@@ -34,6 +34,12 @@ export const clearLogFile = (key: string) =>
 export const openLogsFolder = () =>
   invoke<void>('open_logs_folder');
 
+/** Forward pojedynczej linii logu frontu do pliku frontend.log (best-effort). */
+export function appendFrontendLog(level: string, message: string): void {
+  // Nigdy nie rzucamy — logowanie nie może wywrócić aplikacji.
+  void invoke('append_frontend_log', { level, message }).catch(() => {});
+}
+
 export const logManagementApi = {
   getLogSettings,
   saveLogSettings,
