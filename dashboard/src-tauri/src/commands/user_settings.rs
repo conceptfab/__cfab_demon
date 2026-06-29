@@ -3,6 +3,7 @@
 //! jedynym źródłem prawdy dla ustawień użytkownika — eliminuje rozjazd między
 //! localStorage przeglądarki a webview pulpitu.
 
+use crate::commands::error::CommandError;
 use crate::commands::helpers::timeflow_data_dir;
 use serde_json::{Map, Value};
 
@@ -21,11 +22,11 @@ fn read_object(base: &std::path::Path) -> Map<String, Value> {
 /// Cały magazyn ustawień jako obiekt JSON klucz→wartość (pusty obiekt, gdy plik
 /// nie istnieje). Frontend hydratuje z tego swój lokalny cache przy starcie.
 #[tauri::command]
-pub async fn get_all_user_settings() -> Result<Value, String> {
+pub async fn get_all_user_settings() -> Result<Value, CommandError> {
     let base = timeflow_data_dir()?;
     let obj = tokio::task::spawn_blocking(move || read_object(&base))
         .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))?;
+        .map_err(|e| CommandError::Other(format!("spawn_blocking join error: {e}")))?;
     Ok(Value::Object(obj))
 }
 
@@ -41,7 +42,7 @@ pub fn webui_is_headless_process() -> bool {
 /// Zapis pojedynczego ustawienia (read-modify-write na jednym pliku). `value`
 /// to dowolny JSON — klient trzyma własny kształt pod swoim kluczem.
 #[tauri::command]
-pub async fn set_user_setting(key: String, value: Value) -> Result<(), String> {
+pub async fn set_user_setting(key: String, value: Value) -> Result<(), CommandError> {
     let base = timeflow_data_dir()?;
     tokio::task::spawn_blocking(move || {
         let mut obj = read_object(&base);
@@ -52,5 +53,6 @@ pub async fn set_user_setting(key: String, value: Value) -> Result<(), String> {
             .map_err(|e| format!("write user_settings.json: {e}"))
     })
     .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    .map_err(|e| CommandError::Other(format!("spawn_blocking join error: {e}")))?
+    .map_err(CommandError::Other)
 }

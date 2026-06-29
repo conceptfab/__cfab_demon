@@ -1,5 +1,7 @@
 use tauri::AppHandle;
 
+use crate::commands::error::CommandError;
+
 use super::analysis::query_activity_date_range;
 use super::daemon::load_persisted_session_min_duration;
 use super::helpers::run_db_blocking;
@@ -112,7 +114,7 @@ pub async fn get_project_report_data(
     app: AppHandle,
     project_id: i64,
     date_range: DateRange,
-) -> Result<ProjectReportData, String> {
+) -> Result<ProjectReportData, CommandError> {
     log::info!(
         "[report] START project_id={}, date_range={:?}",
         project_id,
@@ -213,6 +215,6 @@ pub async fn get_project_report_data(
 /// `window.print()` z JS jest no-op w WKWebView (macOS desktop), dlatego front woła
 /// tę komendę; WRY wykonuje natywny print per platforma (WKWebView / WebView2 / WebKitGTK).
 #[tauri::command]
-pub fn print_report(window: tauri::WebviewWindow) -> Result<(), String> {
-    window.print().map_err(|e| e.to_string())
+pub fn print_report(window: tauri::WebviewWindow) -> Result<(), CommandError> {
+    window.print().map_err(|e| CommandError::Other(e.to_string()))
 }

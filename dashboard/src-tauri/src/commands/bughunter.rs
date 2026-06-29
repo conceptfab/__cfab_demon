@@ -5,6 +5,8 @@ use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use serde::Serialize;
 use tauri::AppHandle;
 
+use crate::commands::error::CommandError;
+
 #[derive(Serialize)]
 pub struct BugReportResponse {
     pub ok: bool,
@@ -18,7 +20,7 @@ pub async fn send_bug_report(
     message: String,
     version: String,
     attachments: Vec<(String, Vec<u8>)>,
-) -> Result<BugReportResponse, String> {
+) -> Result<BugReportResponse, CommandError> {
     // --- SMTP CONFIG ---
     // Use runtime environment variables so credentials are never embedded in the binary.
     // .trim() guards against CRLF line-endings in .env files (Windows-edited files contain \r).
@@ -100,6 +102,9 @@ pub async fn send_bug_report(
             ok: true,
             message: "Report sent directly via SMTP".into(),
         }),
-        Err(e) => Err(format!("Failed to send email via SMTP: {}", e)),
+        Err(e) => Err(CommandError::Other(format!(
+            "Failed to send email via SMTP: {}",
+            e
+        ))),
     }
 }

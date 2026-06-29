@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use tauri::AppHandle;
 
+use crate::commands::error::CommandError;
+
 use super::analysis::{
     build_stacked_bar_output, compute_project_activity_unique, daily_seconds_by_series,
     grand_daily_seconds, project_series_key,
@@ -210,7 +212,7 @@ pub async fn get_dashboard_data(
     top_limit: Option<i64>,
     timeline_limit: Option<i64>,
     timeline_granularity: Option<String>,
-) -> Result<DashboardData, String> {
+) -> Result<DashboardData, CommandError> {
     run_db_blocking(app, move |conn| {
         let top_limit = top_limit.unwrap_or(5).clamp(1, 50) as usize;
         let timeline_limit = timeline_limit.unwrap_or(8).clamp(1, 200) as usize;
@@ -277,13 +279,14 @@ pub async fn get_dashboard_data(
         })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn get_dashboard_stats(
     app: AppHandle,
     date_range: DateRange,
-) -> Result<DashboardStats, String> {
+) -> Result<DashboardStats, CommandError> {
     run_db_blocking(app, move |conn| {
         let (bucket_project_seconds, project_totals, series_meta_by_key, _, _) =
             compute_project_activity_unique(
@@ -305,6 +308,7 @@ pub async fn get_dashboard_stats(
         )
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 fn query_dashboard_counters(
@@ -408,7 +412,7 @@ fn query_project_counts(
 }
 
 #[tauri::command]
-pub async fn get_activity_date_span(app: AppHandle) -> Result<Option<DateRange>, String> {
+pub async fn get_activity_date_span(app: AppHandle) -> Result<Option<DateRange>, CommandError> {
     run_db_blocking(app, move |conn| {
         let sql = format!(
             "SELECT MIN(d), MAX(d)
@@ -431,13 +435,14 @@ pub async fn get_activity_date_span(app: AppHandle) -> Result<Option<DateRange>,
         }
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn get_timeline(
     app: AppHandle,
     date_range: DateRange,
-) -> Result<Vec<TimelinePoint>, String> {
+) -> Result<Vec<TimelinePoint>, CommandError> {
     run_db_blocking(app, move |conn| {
         let (bucket_map, _, _, _, _) =
             compute_project_activity_unique(
@@ -457,6 +462,7 @@ pub async fn get_timeline(
         Ok(out)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 pub(crate) fn generate_color_for_app(name: &str) -> String {
@@ -472,7 +478,7 @@ pub(crate) fn generate_color_for_app(name: &str) -> String {
 pub async fn get_applications(
     app: AppHandle,
     date_range: Option<DateRange>,
-) -> Result<Vec<AppWithStats>, String> {
+) -> Result<Vec<AppWithStats>, CommandError> {
     run_db_blocking(app, move |conn| {
         let daily_bounds = date_range.as_ref().map(|d| (d.start.clone(), d.end.clone()));
         let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
@@ -616,10 +622,11 @@ pub async fn get_applications(
         Ok(final_apps)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn update_app_color(app: AppHandle, id: i64, color: String) -> Result<(), String> {
+pub async fn update_app_color(app: AppHandle, id: i64, color: String) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         conn.execute(
             "UPDATE applications SET color = ?1 WHERE id = ?2",
@@ -629,6 +636,7 @@ pub async fn update_app_color(app: AppHandle, id: i64, color: String) -> Result<
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[cfg(test)]
