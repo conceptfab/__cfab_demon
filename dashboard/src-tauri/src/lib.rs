@@ -92,6 +92,22 @@ pub fn run() {
                 )?;
 
                 log::info!("TIMEFLOW Dashboard starting (log level: {})", dashboard_level);
+
+                // Każdy panic trafia do pliku logu dashboardu, nie tylko do stderr
+                // (analogicznie do daemona, main.rs:254-270).
+                std::panic::set_hook(Box::new(|info| {
+                    let location = info
+                        .location()
+                        .map(|l| format!("{}:{}", l.file(), l.line()))
+                        .unwrap_or_else(|| "<unknown>".into());
+                    let msg = info
+                        .payload()
+                        .downcast_ref::<&str>()
+                        .map(|s| s.to_string())
+                        .or_else(|| info.payload().downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "<non-string panic payload>".into());
+                    log::error!("PANIC at {}: {}", location, msg);
+                }));
             }
 
             // Initialize database (sync — rusqlite has no async IO)
