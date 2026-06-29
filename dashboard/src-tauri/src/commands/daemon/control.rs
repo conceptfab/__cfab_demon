@@ -1,5 +1,6 @@
 use std::process::Command;
 
+use crate::commands::error::CommandError;
 use crate::commands::helpers::{no_console, timeflow_data_dir, DAEMON_EXE_NAME};
 #[cfg(not(windows))]
 use crate::commands::helpers::DAEMON_AUTOSTART_LNK;
@@ -18,7 +19,7 @@ use super::autostart_win;
 /// migracji.
 #[cfg(windows)]
 #[tauri::command]
-pub async fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
+pub async fn set_autostart_enabled(enabled: bool) -> Result<(), CommandError> {
     // Cleanup po starym mechanizmie — niezależnie od `enabled`.
     if let Ok(dir) = startup_dir() {
         let legacy_lnk = dir.join(crate::commands::helpers::DAEMON_AUTOSTART_LNK);
@@ -43,9 +44,9 @@ pub async fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
 /// i usunięcie pliku plist.
 #[cfg(target_os = "macos")]
 #[tauri::command]
-pub async fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
+pub async fn set_autostart_enabled(enabled: bool) -> Result<(), CommandError> {
     let dir = startup_dir()?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| CommandError::Other(e.to_string()))?;
     let plist_path = dir.join(DAEMON_AUTOSTART_LNK);
 
     if enabled {
@@ -74,7 +75,7 @@ pub async fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
             label = label,
             exe = exe.to_string_lossy(),
         );
-        std::fs::write(&plist_path, plist).map_err(|e| e.to_string())?;
+        std::fs::write(&plist_path, plist).map_err(|e| CommandError::Other(e.to_string()))?;
 
         // Odśwież rejestrację w launchctl (unload ignoruje błąd gdy brak wpisu).
         let _ = Command::new("launchctl")
@@ -85,46 +86,46 @@ pub async fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
             .args(["load", "-w"])
             .arg(&plist_path)
             .output()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| CommandError::Other(e.to_string()))?;
         if !output.status.success() {
-            return Err(format!(
+            return Err(CommandError::Other(format!(
                 "launchctl load failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            )));
         }
     } else if plist_path.exists() {
         let _ = Command::new("launchctl")
             .args(["unload", "-w"])
             .arg(&plist_path)
             .output();
-        std::fs::remove_file(&plist_path).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&plist_path).map_err(|e| CommandError::Other(e.to_string()))?;
     }
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn start_daemon() -> Result<(), String> {
+pub async fn start_daemon() -> Result<(), CommandError> {
     let exe = find_daemon_exe()?;
     let mut cmd = Command::new(&exe);
     no_console(&mut cmd);
     cmd.spawn()
-        .map_err(|e| format!("Failed to start daemon: {}", e))?;    Ok(())
+        .map_err(|e| CommandError::Other(format!("Failed to start daemon: {}", e)))?;    Ok(())
 }
 
 #[cfg(windows)]
 #[tauri::command]
-pub async fn stop_daemon() -> Result<(), String> {
+pub async fn stop_daemon() -> Result<(), CommandError> {
     let mut cmd = Command::new("taskkill");
     no_console(&mut cmd);
     let output = cmd
         .args(["/F", "/T", "/IM", DAEMON_EXE_NAME])
         .output()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !stderr.contains("not found") {
-            return Err(format!("Failed to stop daemon: {}", stderr));
+            return Err(CommandError::Other(format!("Failed to stop daemon: {}", stderr)));
         }
     }    Ok(())
 }
@@ -133,25 +134,25 @@ pub async fn stop_daemon() -> Result<(), String> {
 /// gdy nie znajdzie procesu — interpretujemy to jako sukces ("nic do zabicia").
 #[cfg(not(windows))]
 #[tauri::command]
-pub async fn stop_daemon() -> Result<(), String> {
+pub async fn stop_daemon() -> Result<(), CommandError> {
     let output = Command::new("pkill")
         .args(["-TERM", "-f", DAEMON_EXE_NAME])
         .output()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
     // pkill exit codes: 0 = znaleziono+zabito, 1 = brak procesu (to też OK),
     // 2 = błąd składni, 3 = błąd wewnętrzny.
     let code = output.status.code().unwrap_or(-1);
     if !(code == 0 || code == 1) {
-        return Err(format!(
+        return Err(CommandError::Other(format!(
             "pkill zakończył się kodem {code}: {}",
             String::from_utf8_lossy(&output.stderr)
-        ));
+        )));
     }    Ok(())
 }
 
 #[cfg(windows)]
 #[tauri::command]
-pub async fn restart_daemon() -> Result<(), String> {
+pub async fn restart_daemon() -> Result<(), CommandError> {
     let mut kill_cmd = Command::new("taskkill");
     no_console(&mut kill_cmd);
     let _ = kill_cmd.args(["/F", "/T", "/IM", DAEMON_EXE_NAME]).output();    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
@@ -160,12 +161,12 @@ pub async fn restart_daemon() -> Result<(), String> {
     no_console(&mut start_cmd);
     start_cmd
         .spawn()
-        .map_err(|e| format!("Failed to start daemon: {}", e))?;    Ok(())
+        .map_err(|e| CommandError::Other(format!("Failed to start daemon: {}", e)))?;    Ok(())
 }
 
 #[cfg(not(windows))]
 #[tauri::command]
-pub async fn restart_daemon() -> Result<(), String> {
+pub async fn restart_daemon() -> Result<(), CommandError> {
     let _ = Command::new("pkill")
         .args(["-TERM", "-f", DAEMON_EXE_NAME])
         .output();    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
@@ -174,11 +175,11 @@ pub async fn restart_daemon() -> Result<(), String> {
     no_console(&mut start_cmd);
     start_cmd
         .spawn()
-        .map_err(|e| format!("Failed to start daemon: {}", e))?;    Ok(())
+        .map_err(|e| CommandError::Other(format!("Failed to start daemon: {}", e)))?;    Ok(())
 }
 
 #[tauri::command]
-pub async fn persist_language_for_daemon(code: String) -> Result<(), String> {
+pub async fn persist_language_for_daemon(code: String) -> Result<(), CommandError> {
     let base_dir = timeflow_data_dir()?;
     let lang_file = base_dir.join("language.json");
     let normalized = if code.to_lowercase().starts_with("pl") {
@@ -188,14 +189,14 @@ pub async fn persist_language_for_daemon(code: String) -> Result<(), String> {
     };
     let content = serde_json::json!({ "code": normalized });
     std::fs::write(&lang_file, content.to_string())
-        .map_err(|e| format!("Failed to write language.json: {}", e))
+        .map_err(|e| CommandError::Other(format!("Failed to write language.json: {}", e)))
 }
 
 /// Reads the shared language code from language.json (written by
 /// persist_language_for_daemon). This is the single source of truth shared by
 /// the desktop app, the daemon and the LAN web UI, so the browser stays 1:1.
 #[tauri::command]
-pub async fn get_persisted_language() -> Result<String, String> {
+pub async fn get_persisted_language() -> Result<String, CommandError> {
     let base_dir = timeflow_data_dir()?;
     let lang_file = base_dir.join("language.json");
     let raw = match std::fs::read_to_string(&lang_file) {
@@ -213,12 +214,12 @@ pub async fn get_persisted_language() -> Result<String, String> {
 #[tauri::command]
 pub async fn persist_session_settings_for_daemon(
     min_session_duration_seconds: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let base_dir = timeflow_data_dir()?;
     let settings = session_settings::SharedSessionSettings {
         min_session_duration_seconds,
     };
-    session_settings::write_session_settings(&base_dir, &settings)
+    session_settings::write_session_settings(&base_dir, &settings).map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -228,7 +229,7 @@ pub async fn persist_lan_sync_settings_for_daemon(
     enabled: bool,
     forced_role: Option<String>,
     auto_sync_on_peer_found: Option<bool>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let base_dir = timeflow_data_dir()?;
     let path = base_dir.join("lan_sync_settings.json");
     let content = serde_json::json!({
@@ -239,5 +240,5 @@ pub async fn persist_lan_sync_settings_for_daemon(
         "auto_sync_on_peer_found": auto_sync_on_peer_found.unwrap_or(false),
     });
     std::fs::write(&path, content.to_string())
-        .map_err(|e| format!("Failed to write lan_sync_settings.json: {}", e))
+        .map_err(|e| CommandError::Other(format!("Failed to write lan_sync_settings.json: {}", e)))
 }
