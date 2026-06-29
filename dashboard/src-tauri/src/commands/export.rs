@@ -4,6 +4,7 @@ use super::types::{
     AppDailyData, ApplicationRow, ClientRow, DailyData, DateRange, ExportArchive, ExportData,
     ExportMetadata, FileActivityExportRow, ManualSession, Project, SessionRow,
 };
+use crate::commands::error::CommandError;
 use crate::db;
 use rfd::AsyncFileDialog;
 use std::collections::BTreeMap;
@@ -473,7 +474,7 @@ pub async fn export_data(
     project_id: Option<i64>,
     date_start: Option<String>,
     date_end: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     let (archive, default_name) = run_app_blocking(app, move |app| {
         build_export_archive(&app, project_id, date_start, date_end)
     })
@@ -487,11 +488,11 @@ pub async fn export_data(
         .await;
 
     if let Some(file_handle) = path {
-        let json = serde_json::to_string_pretty(&archive).map_err(|e| e.to_string())?;
-        fs::write(file_handle.path(), json).map_err(|e| e.to_string())?;
+        let json = serde_json::to_string_pretty(&archive).map_err(|e| CommandError::Other(e.to_string()))?;
+        fs::write(file_handle.path(), json).map_err(|e| CommandError::Other(e.to_string()))?;
         Ok(file_handle.path().to_string_lossy().to_string())
     } else {
-        Err("Export cancelled".to_string())
+        Err(CommandError::Other("Export cancelled".to_string()))
     }
 }
 
@@ -501,7 +502,7 @@ pub async fn export_data_archive(
     project_id: Option<i64>,
     date_start: Option<String>,
     date_end: Option<String>,
-) -> Result<ExportArchive, String> {
+) -> Result<ExportArchive, CommandError> {
     let (archive, _default_name) = run_app_blocking(app, move |app| {
         build_export_archive(&app, project_id, date_start, date_end)
     })

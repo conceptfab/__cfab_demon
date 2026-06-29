@@ -1,5 +1,6 @@
 use super::helpers::{run_db_primary_blocking, timeflow_data_dir};
 use super::types::{MonitoredApp, MonitoredConfig};
+use crate::commands::error::CommandError;
 use rusqlite::params;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -174,8 +175,10 @@ pub struct MonitoredAppsSyncResult {
 }
 
 #[tauri::command]
-pub async fn get_monitored_apps(app: AppHandle) -> Result<Vec<MonitoredApp>, String> {
-    run_db_primary_blocking(app, move |conn| load_monitored_apps_from_conn(conn)).await
+pub async fn get_monitored_apps(app: AppHandle) -> Result<Vec<MonitoredApp>, CommandError> {
+    run_db_primary_blocking(app, move |conn| load_monitored_apps_from_conn(conn))
+        .await
+        .map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -185,7 +188,7 @@ pub async fn add_monitored_app(
     display_name: String,
     bundle_id: Option<String>,
     app_path: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     run_db_primary_blocking(app, move |conn| {
         ensure_monitored_apps_ready(conn)?;
         let exe = exe_name.trim().to_lowercase();
@@ -228,10 +231,11 @@ pub async fn add_monitored_app(
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn remove_monitored_app(app: AppHandle, exe_name: String) -> Result<(), String> {
+pub async fn remove_monitored_app(app: AppHandle, exe_name: String) -> Result<(), CommandError> {
     run_db_primary_blocking(app, move |conn| {
         ensure_monitored_apps_ready(conn)?;
         let exe = exe_name.trim().to_lowercase();
@@ -243,6 +247,7 @@ pub async fn remove_monitored_app(app: AppHandle, exe_name: String) -> Result<()
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -250,7 +255,7 @@ pub async fn rename_monitored_app(
     app: AppHandle,
     exe_name: String,
     display_name: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     run_db_primary_blocking(app, move |conn| {
         ensure_monitored_apps_ready(conn)?;
         let exe = exe_name.trim().to_lowercase();
@@ -273,12 +278,13 @@ pub async fn rename_monitored_app(
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn sync_monitored_apps_from_applications(
     app: AppHandle,
-) -> Result<MonitoredAppsSyncResult, String> {
+) -> Result<MonitoredAppsSyncResult, CommandError> {
     run_db_primary_blocking(app, move |conn| {
         ensure_monitored_apps_ready(conn)?;
 
@@ -332,6 +338,7 @@ pub async fn sync_monitored_apps_from_applications(
         })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 // ── Drag & drop: inspekcja upuszczonego pliku aplikacji ──────────────────
@@ -349,8 +356,8 @@ pub struct DroppedAppInfo {
 }
 
 #[tauri::command]
-pub async fn inspect_dropped_app(path: String) -> Result<DroppedAppInfo, String> {
-    inspect_dropped_app_path(std::path::Path::new(&path))
+pub async fn inspect_dropped_app(path: String) -> Result<DroppedAppInfo, CommandError> {
+    inspect_dropped_app_path(std::path::Path::new(&path)).map_err(CommandError::Other)
 }
 
 fn inspect_dropped_app_path(path: &std::path::Path) -> Result<DroppedAppInfo, String> {
