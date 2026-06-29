@@ -1,5 +1,6 @@
 use tauri::AppHandle;
 
+use crate::commands::error::CommandError;
 use super::types::{
     MultiProjectAnalysis, SessionFilters, SessionSplittableFlag, SessionWithApp, SplitPart,
 };
@@ -18,13 +19,13 @@ pub(crate) use manual_overrides::apply_manual_session_overrides;
 pub async fn get_sessions(
     app: AppHandle,
     filters: SessionFilters,
-) -> Result<Vec<SessionWithApp>, String> {
-    query::get_sessions(app, filters).await
+) -> Result<Vec<SessionWithApp>, CommandError> {
+    query::get_sessions(app, filters).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Result<i64, String> {
-    query::get_session_count(app, filters).await
+pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Result<i64, CommandError> {
+    query::get_session_count(app, filters).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -33,8 +34,8 @@ pub async fn assign_session_to_project(
     session_id: i64,
     project_id: Option<i64>,
     source: Option<String>,
-) -> Result<(), String> {
-    mutations::assign_session_to_project(app, session_id, project_id, source).await
+) -> Result<(), CommandError> {
+    mutations::assign_session_to_project(app, session_id, project_id, source).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -43,8 +44,8 @@ pub async fn assign_sessions_to_project(
     session_ids: Vec<i64>,
     project_id: Option<i64>,
     source: Option<String>,
-) -> Result<(), String> {
-    mutations::assign_sessions_to_project(app, session_ids, project_id, source).await
+) -> Result<(), CommandError> {
+    mutations::assign_sessions_to_project(app, session_ids, project_id, source).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -52,8 +53,8 @@ pub async fn update_session_rate_multiplier(
     app: AppHandle,
     session_id: i64,
     multiplier: Option<f64>,
-) -> Result<(), String> {
-    mutations::update_session_rate_multiplier(app, session_id, multiplier).await
+) -> Result<(), CommandError> {
+    mutations::update_session_rate_multiplier(app, session_id, multiplier).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -61,18 +62,18 @@ pub async fn update_session_rate_multipliers(
     app: AppHandle,
     session_ids: Vec<i64>,
     multiplier: Option<f64>,
-) -> Result<(), String> {
-    mutations::update_session_rate_multipliers(app, session_ids, multiplier).await
+) -> Result<(), CommandError> {
+    mutations::update_session_rate_multipliers(app, session_ids, multiplier).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn delete_session(app: AppHandle, session_id: i64) -> Result<(), String> {
-    mutations::delete_session(app, session_id).await
+pub async fn delete_session(app: AppHandle, session_id: i64) -> Result<(), CommandError> {
+    mutations::delete_session(app, session_id).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn delete_sessions(app: AppHandle, session_ids: Vec<i64>) -> Result<(), String> {
-    mutations::delete_sessions(app, session_ids).await
+pub async fn delete_sessions(app: AppHandle, session_ids: Vec<i64>) -> Result<(), CommandError> {
+    mutations::delete_sessions(app, session_ids).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -80,8 +81,8 @@ pub async fn update_session_comment(
     app: AppHandle,
     session_id: i64,
     comment: Option<String>,
-) -> Result<(), String> {
-    mutations::update_session_comment(app, session_id, comment).await
+) -> Result<(), CommandError> {
+    mutations::update_session_comment(app, session_id, comment).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -89,13 +90,13 @@ pub async fn update_session_comments(
     app: AppHandle,
     session_ids: Vec<i64>,
     comment: Option<String>,
-) -> Result<(), String> {
-    mutations::update_session_comments(app, session_ids, comment).await
+) -> Result<(), CommandError> {
+    mutations::update_session_comments(app, session_ids, comment).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i64, String> {
-    rebuild::rebuild_sessions(app, gap_fill_minutes).await
+pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i64, CommandError> {
+    rebuild::rebuild_sessions(app, gap_fill_minutes).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -105,8 +106,8 @@ pub async fn split_session(
     ratio: f64,
     project_a_id: Option<i64>,
     project_b_id: Option<i64>,
-) -> Result<(), String> {
-    split::split_session(app, session_id, ratio, project_a_id, project_b_id).await
+) -> Result<(), CommandError> {
+    split::split_session(app, session_id, ratio, project_a_id, project_b_id).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -115,8 +116,8 @@ pub async fn analyze_session_projects(
     session_id: i64,
     tolerance_threshold: f64,
     max_projects: i64,
-) -> Result<MultiProjectAnalysis, String> {
-    split::analyze_session_projects(app, session_id, tolerance_threshold, max_projects).await
+) -> Result<MultiProjectAnalysis, CommandError> {
+    split::analyze_session_projects(app, session_id, tolerance_threshold, max_projects).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -125,8 +126,8 @@ pub async fn analyze_sessions_splittable(
     session_ids: Vec<i64>,
     tolerance_threshold: f64,
     max_projects: i64,
-) -> Result<Vec<SessionSplittableFlag>, String> {
-    split::analyze_sessions_splittable(app, session_ids, tolerance_threshold, max_projects).await
+) -> Result<Vec<SessionSplittableFlag>, CommandError> {
+    split::analyze_sessions_splittable(app, session_ids, tolerance_threshold, max_projects).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -135,6 +136,6 @@ pub async fn split_session_multi(
     session_id: i64,
     splits: Vec<SplitPart>,
     not_modified_since: Option<String>,
-) -> Result<(), String> {
-    split::split_session_multi(app, session_id, splits, not_modified_since).await
+) -> Result<(), CommandError> {
+    split::split_session_multi(app, session_id, splits, not_modified_since).await.map_err(CommandError::Other)
 }

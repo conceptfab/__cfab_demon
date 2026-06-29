@@ -1,5 +1,6 @@
 use tauri::AppHandle;
 
+use crate::commands::error::CommandError;
 use super::helpers::run_db_blocking;
 use super::projects::project_id_is_active;
 use super::types::{
@@ -35,7 +36,7 @@ fn parse_session_datetimes(start: &str, end: &str) -> Result<(i64, String), Stri
 pub async fn create_manual_session(
     app: AppHandle,
     input: CreateManualSessionInput,
-) -> Result<ManualSession, String> {
+) -> Result<ManualSession, CommandError> {
     let (duration_seconds, date) = parse_session_datetimes(&input.start_time, &input.end_time)?;
 
     run_db_blocking(app, move |conn| {
@@ -86,13 +87,14 @@ pub async fn create_manual_session(
         .map_err(|e| format!("Failed to read created session: {}", e))
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn get_manual_sessions(
     app: AppHandle,
     filters: ManualSessionFilters,
-) -> Result<Vec<ManualSessionWithProject>, String> {
+) -> Result<Vec<ManualSessionWithProject>, CommandError> {
     run_db_blocking(app, move |conn| {
         let mut sql = String::from(
             "SELECT ms.id, ms.title, ms.session_type, ms.project_id, ms.app_id, p.name, p.color,
@@ -145,6 +147,7 @@ pub async fn get_manual_sessions(
         Ok(results)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -152,7 +155,7 @@ pub async fn update_manual_session(
     app: AppHandle,
     id: i64,
     input: CreateManualSessionInput,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let (duration_seconds, date) = parse_session_datetimes(&input.start_time, &input.end_time)?;
 
     run_db_blocking(app, move |conn| {
@@ -175,20 +178,22 @@ pub async fn update_manual_session(
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn delete_manual_session(app: AppHandle, id: i64) -> Result<(), String> {
+pub async fn delete_manual_session(app: AppHandle, id: i64) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         conn.execute("DELETE FROM manual_sessions WHERE id = ?1", [id])
             .map_err(|e| format!("Failed to delete manual session: {}", e))?;
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn delete_manual_sessions(app: AppHandle, ids: Vec<i64>) -> Result<(), String> {
+pub async fn delete_manual_sessions(app: AppHandle, ids: Vec<i64>) -> Result<(), CommandError> {
     let ids = sanitize_ids(ids);
     if ids.is_empty() {
         return Ok(());
@@ -209,4 +214,5 @@ pub async fn delete_manual_sessions(app: AppHandle, ids: Vec<i64>) -> Result<(),
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
