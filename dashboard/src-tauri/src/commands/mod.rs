@@ -86,8 +86,8 @@ pub(crate) use types::DateRange;
 //                     get_lan_sync_log, get_lan_sync_progress, get_paired_devices,
 //                     ping_lan_peer, run_lan_sync, scan_lan_subnet, submit_pairing_code,
 //                     unpair_device, upsert_lan_peer
-// log_management (6): clear_log_file, get_log_files_info, get_log_settings, open_logs_folder,
-//                     read_log_file, save_log_settings
+// log_management (7): append_frontend_log, clear_log_file, get_log_files_info, get_log_settings,
+//                     open_logs_folder, read_log_file, save_log_settings
 // online_sync (6):    cancel_online_sync, get_online_sync_progress, get_online_sync_result,
 //                     get_online_sync_settings, run_online_sync, save_online_sync_settings
 // manual_sessions (5): create_manual_session, delete_manual_session, delete_manual_sessions,

@@ -359,6 +359,7 @@ pub fn run() {
             commands::read_log_file,
             commands::clear_log_file,
             commands::open_logs_folder,
+            commands::append_frontend_log,
             commands::pm_get_projects,
             commands::pm_suggest_project_number,
             commands::pm_create_project,

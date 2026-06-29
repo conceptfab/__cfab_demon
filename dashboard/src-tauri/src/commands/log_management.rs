@@ -6,6 +6,7 @@ const LOG_FILES: &[(&str, &str)] = &[
     ("lan_sync", "lan_sync.log"),
     ("online_sync", "online_sync.log"),
     ("dashboard", "dashboard.log"),
+    ("frontend", "frontend.log"),
 ];
 
 fn logs_dir() -> Result<std::path::PathBuf, String> {
@@ -150,6 +151,32 @@ pub async fn clear_log_file(key: String) -> Result<(), String> {
             .map_err(|e| format!("spawn_blocking join error: {e}"))?
             .map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+/// Dopisuje pojedynczą linię logu z frontendu do logs/frontend.log.
+/// Poziom ograniczony do warn/error po stronie wywołującej (logger.ts).
+#[tauri::command]
+pub async fn append_frontend_log(level: String, message: String) -> Result<(), String> {
+    use std::io::Write;
+    let path = logs_dir()?.join("frontend.log");
+    let lvl = match level.to_uppercase().as_str() {
+        "ERROR" | "WARN" | "INFO" | "DEBUG" => level.to_uppercase(),
+        _ => "INFO".to_string(),
+    };
+    let line = format!(
+        "{} [{}] {}\n",
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+        lvl,
+        message.replace('\n', " ")
+    );
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("Failed to open frontend.log: {}", e))?;
+    f.write_all(line.as_bytes())
+        .map_err(|e| format!("Failed to write frontend.log: {}", e))?;
     Ok(())
 }
 
