@@ -1,6 +1,7 @@
 import { Component, lazy, Suspense } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import i18n from '@/i18n';
+import { logger } from '@/lib/logger';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { SplashScreen } from '@/components/layout/SplashScreen';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -146,7 +147,7 @@ class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('Uncaught render error:', error, info.componentStack);
+    logger.error('[ErrorBoundary]', error, info);
   }
 
   render() {
