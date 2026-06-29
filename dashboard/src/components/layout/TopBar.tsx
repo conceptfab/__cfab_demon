@@ -7,6 +7,7 @@ import { AppTooltip } from "@/components/ui/app-tooltip";
 import { useTranslation } from "react-i18next";
 import { tryStartWindowDrag } from "@/lib/window-drag";
 import { isMacOS } from "@/lib/platform";
+import { logger } from "@/lib/logger";
 
 function handleDragMouseDown(event: MouseEvent<HTMLDivElement>) {
   if (event.button !== 0) return;
@@ -73,7 +74,7 @@ export function TopBar({
   const withWindow = (action: (appWindow: ReturnType<typeof getCurrentWindow>) => Promise<void>) => {
     if (!tauriRuntime) return;
     void action(getCurrentWindow()).catch((error) => {
-      console.warn("Window action failed (permissions/capability?):", action.name || "anonymous", error);
+      logger.warn("Window action failed (permissions/capability?):", action.name || "anonymous", error);
     });
   };
 

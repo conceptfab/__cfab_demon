@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createManualSession, updateManualSession, deleteManualSession, getApplications } from "@/lib/tauri";
-import { getErrorMessage } from "@/lib/utils";
+import { getErrorMessage, logTauriError } from "@/lib/utils";
 import type { ProjectWithStats, ManualSessionWithProject } from "@/lib/db-types";
 import {
   buildManualSessionFormState,
@@ -67,7 +67,7 @@ function ManualSessionFormBody({
   useEffect(() => {
     getApplications()
       .then((nextApps) => dispatch({ type: 'set_apps', apps: nextApps }))
-      .catch(console.error);
+      .catch((e) => logTauriError('manual session dialog load applications', e));
   }, []);
 
   const handleDelete = async () => {

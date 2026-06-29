@@ -30,7 +30,7 @@ import {
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
 import { aiApi } from '@/lib/tauri';
-import { clampNumber } from '@/lib/utils';
+import { clampNumber, logTauriError } from '@/lib/utils';
 import {
   AI_FEEDBACK_TRIGGER,
   AI_REMINDER_SNOOZE_HOURS,
@@ -170,7 +170,7 @@ export function useAiPageController() {
       ]);
       setScanStatus(scan);
     } catch (e) {
-      console.error(e);
+      logTauriError('load AI status', e);
       showTranslatedError('ai_page.errors.status_load_failed', e);
     }
   }, [refreshAiStatus, showTranslatedError]);
@@ -190,7 +190,7 @@ export function useAiPageController() {
           areAssignmentMetricsEqual(current, nextMetrics) ? current : nextMetrics,
         );
       } catch (e) {
-        console.error(e);
+        logTauriError('load AI metrics', e);
         showTranslatedError('ai_page.errors.metrics_load_failed', e);
       } finally {
         clearTimeout(safetyTimer);
@@ -275,7 +275,7 @@ export function useAiPageController() {
       dirtyRef.current = false;
       await fetchMetrics(true);
     } catch (e) {
-      console.error(e);
+      logTauriError('save AI model settings', e);
       showError(
         tr('ai_page.text.failed_to_save_model_settings') + ` ${String(e)}`,
       );
