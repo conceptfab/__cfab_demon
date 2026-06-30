@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import type { AiSettingsFormValues } from '@/components/ai/AiSettingsForm';
 import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
+import { logger } from '@/lib/logger';
 import {
   areAssignmentMetricsEqual,
   buildTrainingReminder,
@@ -293,7 +294,7 @@ export function useAiPageController() {
       await fetchMetrics(true);
       showInfo(tr('ai_page.text.model_training_completed'));
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       await fetchStatus();
       showError(tr('ai_page.text.model_training_failed') + ` ${String(e)}`);
     } finally {
@@ -333,7 +334,7 @@ export function useAiPageController() {
           ),
         );
       } catch (e) {
-        console.error(e);
+        logger.error(e);
         showError(`${tr('ai_page.errors.knowledge_reset_failed')} ${String(e)}`);
       } finally {
         setResettingKnowledge(false);
@@ -388,7 +389,7 @@ export function useAiPageController() {
       await fetchStatus();
       await fetchMetrics(true);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       showError(tr('ai_page.text.auto_safe_failed') + ` ${String(e)}`);
     } finally {
       setRunningAuto(false);
@@ -416,7 +417,7 @@ export function useAiPageController() {
       await fetchStatus();
       await fetchMetrics(true);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       showError(tr('ai_page.text.rollback_failed') + ` ${String(e)}`);
     } finally {
       setRollingBack(false);
@@ -437,7 +438,7 @@ export function useAiPageController() {
         }),
       );
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       showError(tr('ai_page.text.failed_to_snooze_reminder') + ` ${String(e)}`);
     } finally {
       setSnoozingReminder(false);
@@ -457,7 +458,7 @@ export function useAiPageController() {
       );
       setScanStatus(await aiApi.getFolderScanStatus());
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       showError(`${tr('ai_page.errors.status_load_failed')} ${String(e)}`);
     } finally {
       setScanning(false);
@@ -474,7 +475,7 @@ export function useAiPageController() {
       showInfo(tr('ai_page.folder_scan.cleared'));
       setScanStatus(await aiApi.getFolderScanStatus());
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       showError(`${tr('ai_page.errors.status_load_failed')} ${String(e)}`);
     } finally {
       setClearingScan(false);

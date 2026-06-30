@@ -17,6 +17,7 @@ import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
 import type { ProjectWithStats } from '@/lib/db-types';
 import { findFolderByBasenameInName } from '@/lib/project-folder-match';
 import { isRecentProject } from '@/lib/project-utils';
+import { logger } from '@/lib/logger';
 import {
   assignAppToProjectEntry,
   createProjectEntry,
@@ -283,7 +284,7 @@ export function useProjectsPageController() {
       setFolderError(
         getErrorMessage(error, t('projects.errors.add_folder_failed')),
       );
-      console.error(error);
+      logger.error(error);
     } finally {
       setBusy(null);
     }
@@ -313,7 +314,7 @@ export function useProjectsPageController() {
     try {
       await projectsApi.removeProjectFolder(path);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setBusy(null);
     }
@@ -333,7 +334,7 @@ export function useProjectsPageController() {
     try {
       await projectsApi.updateProjectFolderMeta(path, color, category, badge);
     } catch (e) {
-      console.error('updateProjectFolderMeta failed:', e);
+      logger.error('updateProjectFolderMeta failed:', e);
     }
   };
 
@@ -342,7 +343,7 @@ export function useProjectsPageController() {
     try {
       await projectsApi.createProjectFromFolder(folderPath);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setBusy(null);
     }
@@ -353,7 +354,7 @@ export function useProjectsPageController() {
     try {
       await projectsApi.syncProjectsFromFolders();
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setBusy(null);
     }
@@ -428,7 +429,7 @@ export function useProjectsPageController() {
         2,
       );
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setBusy(null);
     }

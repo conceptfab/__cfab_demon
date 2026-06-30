@@ -13,6 +13,7 @@ import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { useUIStore } from '@/store/ui-store';
 import type { SettingsTab } from '@/pages/settings/settings-page-constants';
+import { logger } from '@/lib/logger';
 
 export function useSettingsPageController() {
   const { i18n, t } = useTranslation();
@@ -126,7 +127,7 @@ export function useSettingsPageController() {
       .catch((error) => {
         setTimeAlgorithm(previous);
         showError(t('settings_page.time_algorithm_save_failed'));
-        console.error('Failed to set time algorithm:', error);
+        logger.error('Failed to set time algorithm:', error);
       })
       .finally(() => setSavingTimeAlgorithm(false));
   };

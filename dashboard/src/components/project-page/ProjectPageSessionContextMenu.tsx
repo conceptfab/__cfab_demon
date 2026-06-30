@@ -10,6 +10,7 @@ import { RateMultiplierPanel } from '@/components/project-page/RateMultiplierPan
 import type { ProjectPageContextMenusProps } from '@/components/project-page/project-page-context-menu-props';
 import { getProjectPageContextMenuStyle } from '@/components/project-page/project-page-context-menu-utils';
 import type { ProjectPageContextMenu } from '@/components/project-page/project-page-context-menu-utils';
+import { logger } from '@/lib/logger';
 
 type SessionContextMenu = Extract<ProjectPageContextMenu, { type: 'session' }>;
 
@@ -49,7 +50,7 @@ export function ProjectPageSessionContextMenu({
         await deleteSessions(session.id);
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
     setCtxMenu(null);
   };

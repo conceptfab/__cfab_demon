@@ -9,6 +9,7 @@ import { pollLanSyncUntilComplete } from '@/lib/lan-sync-poll';
 import { useDataStore } from '@/store/data-store';
 import { helpTabForPage } from '@/lib/help-navigation';
 import { getAiModeLabel, hasPendingAssignmentModelTrainingData } from '@/lib/assignment-model';
+import { logger } from '@/lib/logger';
 import {
   getOnlineSyncIndicatorSnapshot,
   subscribeOnlineSyncIndicator,
@@ -118,7 +119,7 @@ export function useSidebarController({ onNavigate }: SidebarControllerOptions = 
       clearLanSyncMessageLater(8_000);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn('LAN sync failed:', msg);
+      logger.warn('LAN sync failed:', msg);
       if (
         msg.includes('Ping failed') ||
         msg.includes('refused') ||

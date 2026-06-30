@@ -7,6 +7,7 @@ import { deleteArchiveFile, getArchiveFiles, getImportedFiles, getBackupFiles } 
 import type { ArchivedFile, ImportedFile, BackupFile } from "@/lib/db-types";
 import { AppTooltip } from "@/components/ui/app-tooltip";
 import { formatBytes, logTauriError } from "@/lib/utils";
+import { logger } from '@/lib/logger';
 import {
   LOCAL_DATA_CHANGED_EVENT,
   type LocalDataChangedDetail,
@@ -104,7 +105,7 @@ export function DataHistory() {
       await deleteArchiveFile(fileName);
       await loadData();
     } catch (e: unknown) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setDeleting(null);
     }

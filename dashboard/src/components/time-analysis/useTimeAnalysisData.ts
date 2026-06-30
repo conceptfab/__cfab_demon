@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useMemo, useTransition } from "react"
 import { useTranslation } from 'react-i18next';
 import { getTimeline, getProjectTimeline, projectsWithClient, clientsList } from "@/lib/tauri";
 import { groupStackedByClient } from "@/lib/group-stacked-by-client";
+import { logger } from '@/lib/logger';
 import {
   addDays, addMonths, subMonths, format, parseISO, subDays,
   startOfMonth, endOfMonth, endOfWeek, eachWeekOfInterval,
@@ -193,7 +194,7 @@ export function useTimeAnalysisData() {
       }
     }).catch((error: unknown) => {
       if (cancelled) return;
-      console.error(error);
+      logger.error(error);
       const message = error instanceof Error ? error.message : "Unknown data loading error";
       setAnalysisView((prev) => ({ ...prev, loading: false, error: message }));
     });

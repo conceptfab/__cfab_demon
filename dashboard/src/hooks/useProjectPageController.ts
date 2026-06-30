@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { logger } from '@/lib/logger';
 
 import {
   dashboardApi,
@@ -68,7 +69,7 @@ export function useProjectPageController() {
   } = useSessionActions({
     onAfterMutation: () => triggerRefresh('project_page_session_mutation'),
     onError: (action, error) => {
-      console.error(`Project page session action failed (${action}):`, error);
+      logger.error(`Project page session action failed (${action}):`, error);
     },
   });
 
@@ -258,7 +259,7 @@ export function useProjectPageController() {
         )
         .catch((err) => {
           if (cancelled) return;
-          console.error('Critical error fetching project data:', err);
+          logger.error('Critical error fetching project data:', err);
           setPageState((prev) => ({ ...prev, loading: false }));
         });
     };
@@ -350,7 +351,7 @@ export function useProjectPageController() {
     try {
       await projectsApi.compactProjectData(project.id);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setBusy(null);
     }
@@ -364,7 +365,7 @@ export function useProjectPageController() {
     try {
       await action();
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   };
 
@@ -445,7 +446,7 @@ export function useProjectPageController() {
       }
       await updateSessionRateMultipliers(autoSessionIds, multiplier);
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
   };
 
@@ -472,7 +473,7 @@ export function useProjectPageController() {
               trimmed || null,
             );
           } catch (err) {
-            console.error(err);
+            logger.error(err);
           }
         },
       });
@@ -507,7 +508,7 @@ export function useProjectPageController() {
         'bulk_unassign',
       );
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
     setCtxMenu(null);
   };
@@ -535,7 +536,7 @@ export function useProjectPageController() {
         deleteSessions(autoIds),
       ]);
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
     setCtxMenu(null);
   };
@@ -555,7 +556,7 @@ export function useProjectPageController() {
         try {
           await updateSessionComment(sessionId, trimmed || null);
         } catch (err) {
-          console.error(err);
+          logger.error(err);
         }
       },
     });
@@ -604,7 +605,7 @@ export function useProjectPageController() {
         'manual_project_card_change',
       );
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
     setCtxMenu(null);
   };

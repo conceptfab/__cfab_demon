@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { DateRange } from '@/lib/db-types';
 import { DEFAULT_HELP_TAB, type HelpTabId } from '@/lib/help-navigation';
+import { logger } from '@/lib/logger';
 
 type PageChangeGuard = (
   nextPage: string,
@@ -51,7 +52,7 @@ function persistAssignProjectListMode(mode: AssignProjectListMode): void {
   try {
     window.localStorage.setItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY, mode);
   } catch (error) {
-    console.warn('Failed to persist assign project list mode', error);
+    logger.warn('Failed to persist assign project list mode', error);
   }
 }
 
