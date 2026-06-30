@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/toast-notification';
 import { databaseApi } from '@/lib/tauri';
 import type { DataFolderStats, DatabaseSettings, DbInfo } from '@/lib/db-types';
 import { formatBytes, logTauriError } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 
 export function useDatabaseManagementController() {
   const { t } = useTranslation();
@@ -135,7 +136,7 @@ export function useDatabaseManagementController() {
         }
       }
     } catch (e: unknown) {
-      console.error(e);
+      logger.error(e);
       showError(t('data_page.database_management.failed_to_open_directory_picker'));
     }
   };
@@ -223,7 +224,7 @@ export function useDatabaseManagementController() {
         }
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   };
 

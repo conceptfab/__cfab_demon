@@ -8,6 +8,7 @@ import { lanSyncApi } from '@/lib/tauri/lan-sync';
 import type { LanPeer } from '@/lib/lan-sync-types';
 import { useDaemonSyncUiSnapshot, useDaemonSyncPollInterval } from '@/lib/lan-sync-daemon-ui-store';
 import type { LanSyncCardProps } from '@/components/settings/lan-sync/lan-sync-card-types';
+import { logger } from '@/lib/logger';
 
 export function useLanSyncCardController({
   settings,
@@ -104,7 +105,7 @@ export function useLanSyncCardController({
     try {
       await lanSyncApi.scanLanSubnet();
     } catch (e) {
-      console.warn('LAN scan failed:', e);
+      logger.warn('LAN scan failed:', e);
     } finally {
       setScanning(false);
     }

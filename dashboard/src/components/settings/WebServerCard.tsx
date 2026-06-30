@@ -3,7 +3,7 @@ import { AlertTriangle, Link, Loader2, ShieldAlert, Smartphone } from 'lucide-re
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { webServerApi } from '@/lib/tauri/webserver';
-import { cn } from '@/lib/utils';
+import { cn, logTauriError } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import {
   DEFAULT_WEB_PORT,
@@ -53,7 +53,7 @@ export function WebServerCard({ myIp, title, description }: WebServerCardProps) 
         sessions: nextSessions,
       });
     } catch (err) {
-      console.error('Failed to load Web Server settings:', err);
+      logTauriError('load Web Server settings', err);
       dispatch({ type: 'load_error', error: t('settings.webserver.load_error') });
     } finally {
       dispatch({ type: 'load_end' });
@@ -102,7 +102,7 @@ export function WebServerCard({ myIp, title, description }: WebServerCardProps) 
             },
       });
     } catch (err) {
-      console.error('Failed to save Web Server settings:', err);
+      logTauriError('save Web Server settings', err);
       dispatch({ type: 'set_error', error: t('settings.webserver.save_error') });
     } finally {
       dispatch({ type: 'set_saving', saving: false });
@@ -120,7 +120,7 @@ export function WebServerCard({ myIp, title, description }: WebServerCardProps) 
         pairingRemaining: PAIRING_CODE_TTL_SECS,
       });
     } catch (err) {
-      console.error('Failed to generate Web Server pairing code:', err);
+      logTauriError('generate Web Server pairing code', err);
       dispatch({ type: 'set_error', error: t('settings.webserver.code_error') });
     } finally {
       dispatch({ type: 'set_busy_code', busyCode: false });
@@ -133,7 +133,7 @@ export function WebServerCard({ myIp, title, description }: WebServerCardProps) 
       await webServerApi.revokeSession(id);
       dispatch({ type: 'remove_session', sessionId: id });
     } catch (err) {
-      console.error('Failed to revoke Web Server session:', err);
+      logTauriError('revoke Web Server session', err);
       dispatch({ type: 'set_error', error: t('settings.webserver.revoke_error') });
     }
   };

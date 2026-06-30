@@ -1,4 +1,5 @@
 use super::pm_manager;
+use crate::commands::error::CommandError;
 use super::helpers::{timeflow_data_dir, run_db_blocking};
 use super::projects::load_project_folders_from_db;
 use tauri::AppHandle;
@@ -57,52 +58,52 @@ fn save_work_folder(path: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn pm_get_projects() -> Result<Vec<pm_manager::PmProject>, String> {
+pub fn pm_get_projects() -> Result<Vec<pm_manager::PmProject>, CommandError> {
     let folder = load_work_folder()?;
-    pm_manager::read_projects(&folder)
+    pm_manager::read_projects(&folder).map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub fn pm_create_project(
     project: pm_manager::PmNewProject,
-) -> Result<pm_manager::PmProject, String> {
+) -> Result<pm_manager::PmProject, CommandError> {
     let folder = load_work_folder()?;
-    pm_manager::create_project(&folder, project)
+    pm_manager::create_project(&folder, project).map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub fn pm_suggest_project_number() -> Result<String, String> {
+pub fn pm_suggest_project_number() -> Result<String, CommandError> {
     let folder = load_work_folder()?;
-    pm_manager::next_project_number(&folder)
+    pm_manager::next_project_number(&folder).map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub fn pm_update_project(
     index: usize,
     project: pm_manager::PmProject,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let folder = load_work_folder()?;
     let mut projects = pm_manager::read_projects(&folder)?;
     if index >= projects.len() {
-        return Err("Index out of range".to_string());
+        return Err(CommandError::Validation("Index out of range".into()));
     }
     projects[index] = project;
-    pm_manager::write_projects(&folder, &projects)
+    pm_manager::write_projects(&folder, &projects).map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub fn pm_delete_project(index: usize) -> Result<(), String> {
+pub fn pm_delete_project(index: usize) -> Result<(), CommandError> {
     let folder = load_work_folder()?;
     let mut projects = pm_manager::read_projects(&folder)?;
     if index >= projects.len() {
-        return Err("Index out of range".to_string());
+        return Err(CommandError::Validation("Index out of range".into()));
     }
     projects.remove(index);
-    pm_manager::write_projects(&folder, &projects)
+    pm_manager::write_projects(&folder, &projects).map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn pm_get_settings(app: AppHandle) -> Result<pm_manager::PmSettings, String> {
+pub async fn pm_get_settings(app: AppHandle) -> Result<pm_manager::PmSettings, CommandError> {
     // Try saved config first
     let folder = load_work_folder().unwrap_or_default();
     if !folder.is_empty() {
@@ -131,36 +132,36 @@ pub async fn pm_get_settings(app: AppHandle) -> Result<pm_manager::PmSettings, S
 
 /// Detect PM work folders from existing TIMEFLOW project_folders
 #[tauri::command]
-pub async fn pm_detect_work_folder(app: AppHandle) -> Result<Vec<String>, String> {
+pub async fn pm_detect_work_folder(app: AppHandle) -> Result<Vec<String>, CommandError> {
     run_db_blocking(app, move |conn| {
         detect_pm_folders_from_db(conn)
-    }).await
+    }).await.map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub fn pm_set_work_folder(path: String) -> Result<(), String> {
+pub fn pm_set_work_folder(path: String) -> Result<(), CommandError> {
     if !std::path::Path::new(&path).is_dir() {
-        return Err("Folder does not exist".to_string());
+        return Err(CommandError::Validation("Folder does not exist".into()));
     }
-    save_work_folder(&path)
+    save_work_folder(&path).map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub fn pm_get_folder_size(full_name: String) -> Result<Option<f64>, String> {
+pub fn pm_get_folder_size(full_name: String) -> Result<Option<f64>, CommandError> {
     let folder = load_work_folder()?;
     Ok(pm_manager::get_folder_size(&folder, &full_name))
 }
 
 #[tauri::command]
-pub fn pm_get_templates() -> Result<Vec<pm_manager::PmFolderTemplate>, String> {
+pub fn pm_get_templates() -> Result<Vec<pm_manager::PmFolderTemplate>, CommandError> {
     let folder = load_work_folder()?;
-    pm_manager::read_templates(&folder)
+    pm_manager::read_templates(&folder).map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub fn pm_save_template(
     template: pm_manager::PmFolderTemplate,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let folder = load_work_folder()?;
     let mut templates = pm_manager::read_templates(&folder)?;
     if let Some(existing) = templates.iter_mut().find(|t| t.id == template.id) {
@@ -168,40 +169,40 @@ pub fn pm_save_template(
     } else {
         templates.push(template);
     }
-    pm_manager::write_templates(&folder, &templates)
+    pm_manager::write_templates(&folder, &templates).map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub fn pm_delete_template(id: String) -> Result<(), String> {
+pub fn pm_delete_template(id: String) -> Result<(), CommandError> {
     if id == "default" {
-        return Err("Cannot delete default template".to_string());
+        return Err(CommandError::Validation("Cannot delete default template".into()));
     }
     let folder = load_work_folder()?;
     let mut templates = pm_manager::read_templates(&folder)?;
     templates.retain(|t| t.id != id);
-    pm_manager::write_templates(&folder, &templates)
+    pm_manager::write_templates(&folder, &templates).map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub fn pm_set_default_template(id: String) -> Result<(), String> {
+pub fn pm_set_default_template(id: String) -> Result<(), CommandError> {
     let folder = load_work_folder()?;
     let mut templates = pm_manager::read_templates(&folder)?;
     for t in templates.iter_mut() {
         t.is_default = t.id == id;
     }
-    pm_manager::write_templates(&folder, &templates)
+    pm_manager::write_templates(&folder, &templates).map_err(CommandError::Other)
 }
 
 // --- Client colors ---
 
 #[tauri::command]
-pub fn pm_get_client_colors() -> Result<std::collections::HashMap<String, pm_manager::ClientInfo>, String> {
+pub fn pm_get_client_colors() -> Result<std::collections::HashMap<String, pm_manager::ClientInfo>, CommandError> {
     let folder = load_work_folder()?;
-    pm_manager::read_client_colors(&folder)
+    pm_manager::read_client_colors(&folder).map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub fn pm_save_client_colors(colors: std::collections::HashMap<String, pm_manager::ClientInfo>) -> Result<(), String> {
+pub fn pm_save_client_colors(colors: std::collections::HashMap<String, pm_manager::ClientInfo>) -> Result<(), CommandError> {
     let folder = load_work_folder()?;
-    pm_manager::write_client_colors(&folder, &colors)
+    pm_manager::write_client_colors(&folder, &colors).map_err(CommandError::Other)
 }

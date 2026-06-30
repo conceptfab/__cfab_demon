@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { logger } from '@/lib/logger';
 
 import type {
   MultiProjectAnalysis,
@@ -76,7 +77,7 @@ export function useSessionSplitAnalysis({
       .then(
         (analysis) => ({ analysis }) as const,
         (error) => {
-          console.warn(
+          logger.warn(
             `Failed to analyze split candidates for session ${sessionId}:`,
             error,
           );
@@ -182,7 +183,7 @@ export function useSessionSplitAnalysis({
           batch.forEach((sessionId) => {
             splitEligibilityCacheRef.current.delete(sessionId);
           });
-          console.error(error);
+          logger.error(error);
         })
         .finally(() => {
           if (cancelled) return;

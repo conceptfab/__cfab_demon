@@ -1,4 +1,5 @@
 import { isValidTime, normalizeHexColor } from '@/lib/normalize';
+import { logger } from '@/lib/logger';
 import {
   type RoundingSettings,
   DEFAULT_ROUNDING_SETTINGS,
@@ -48,7 +49,7 @@ function migrateLegacySetting(
     window.localStorage.setItem(primaryKey, value);
     window.localStorage.removeItem(legacyKey);
   } catch (error) {
-    console.warn(`Failed to migrate local setting '${primaryKey}':`, error);
+    logger.warn(`Failed to migrate local setting '${primaryKey}':`, error);
   }
 }
 
@@ -102,7 +103,7 @@ function createSettingsManager<T>(config: {
             window.localStorage.removeItem(config.legacyKey);
           }
         } catch (error) {
-          console.warn(`Failed to save local setting '${config.key}':`, error);
+          logger.warn(`Failed to save local setting '${config.key}':`, error);
         }
         // Write-through do wspólnego magazynu, by drugi klient (web/desktop)
         // zobaczył tę samą wartość po hydratacji. Fire-and-forget.

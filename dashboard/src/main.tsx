@@ -4,6 +4,16 @@ import './index.css'
 import i18n from './i18n'
 import App from './App.tsx'
 import { hydrateUserSettings, loadLanguageSettings } from '@/lib/user-settings'
+import { logger } from '@/lib/logger'
+
+// Globalne handlery błędów — przechwytują nieobsłużone odrzucenia promise oraz
+// błędy okna i kierują je do centralnego loggera (konsola + plik frontend.log).
+window.addEventListener('unhandledrejection', (e) => {
+  logger.error('[unhandledrejection]', (e as PromiseRejectionEvent).reason)
+})
+window.addEventListener('error', (e) => {
+  logger.error('[window.error]', (e as ErrorEvent).message)
+})
 
 // Render po hydratacji wspólnych ustawień, by desktop i web UI startowały z tych
 // samych wartości (zaokrąglanie, waluta, język itd.). Timeout chroni pierwszy

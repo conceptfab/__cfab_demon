@@ -166,7 +166,11 @@ export function useJobPool() {
       try {
         const status = await lanSyncApi.getLanServerStatus();
         if (!status.running) await lanSyncApi.startLanServer(lanSettings.serverPort);
-      } catch { /* ignore */ }
+      } catch (e) {
+        // Nie blokuj synca, ale zaloguj — nieuruchomiony serwer LAN może
+        // tłumaczyć późniejsze niepowodzenia synchronizacji.
+        logger.warn('[useJobPool] LAN server status/start check failed', e);
+      }
 
       const state = loadLanSyncState();
       const since = state.peerSyncTimes?.[activePeer.device_id] || state.lastSyncAt || '1970-01-01T00:00:00Z';

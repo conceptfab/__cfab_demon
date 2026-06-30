@@ -1,4 +1,5 @@
 use super::helpers::timeflow_data_dir;
+use crate::commands::error::CommandError;
 use std::fs;
 use tauri::AppHandle;
 
@@ -17,7 +18,7 @@ fn secure_token_path() -> Result<std::path::PathBuf, String> {
 }
 
 #[tauri::command]
-pub async fn get_secure_token(_app: AppHandle) -> Result<String, String> {
+pub async fn get_secure_token(_app: AppHandle) -> Result<String, CommandError> {
     // Token w pliku w katalogu danych (bez keychaina). Windows: starsze pliki
     // zapisane DPAPI są nadal odczytywane przez decode_legacy_token.
     let path = secure_token_path()?;
@@ -25,7 +26,7 @@ pub async fn get_secure_token(_app: AppHandle) -> Result<String, String> {
         return Ok(String::new());
     }
     let raw = fs::read(&path).map_err(|e| format!("Failed to read secure token: {}", e))?;
-    decode_legacy_token(&raw)
+    decode_legacy_token(&raw).map_err(CommandError::Other)
 }
 
 fn decode_legacy_token(raw: &[u8]) -> Result<String, String> {
@@ -41,7 +42,7 @@ fn decode_legacy_token(raw: &[u8]) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn set_secure_token(_app: AppHandle, token: String) -> Result<(), String> {
+pub async fn set_secure_token(_app: AppHandle, token: String) -> Result<(), CommandError> {
     let trimmed = token.trim();
     let path = secure_token_path()?;
     // Pusty string = usunięcie pliku tokenu.
@@ -49,7 +50,8 @@ pub async fn set_secure_token(_app: AppHandle, token: String) -> Result<(), Stri
         let _ = fs::remove_file(&path);
         return Ok(());
     }
-    fs::write(&path, trimmed.as_bytes()).map_err(|e| format!("Failed to write secure token: {}", e))
+    fs::write(&path, trimmed.as_bytes())
+        .map_err(|e| CommandError::Other(format!("Failed to write secure token: {}", e)))
 }
 
 #[cfg(windows)]

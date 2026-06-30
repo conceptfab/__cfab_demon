@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useCancellableAsync } from '@/lib/async-utils';
 import { pollDaemonStatusUntil } from '@/lib/daemon-status-poll';
+import { logger } from '@/lib/logger';
 import {
   isDaemonControlDocumentVisible,
   parseDaemonLogLines,
@@ -139,7 +140,7 @@ export function useDaemonControlController() {
       await pollDaemonStatus(settlePredicate);
       refreshAll();
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       showError(String(e));
     } finally {
       setLoading('');
@@ -160,7 +161,7 @@ export function useDaemonControlController() {
       await daemonApi.setAutostartEnabled(newVal);
       setDaemonAutostart(newVal);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   };
 

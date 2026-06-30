@@ -1,5 +1,6 @@
 use tauri::AppHandle;
 
+use crate::commands::error::CommandError;
 use crate::commands::helpers::run_app_blocking;
 use crate::commands::types::{BackgroundDiagnostics, DateRange};
 
@@ -12,35 +13,38 @@ use super::{
 pub async fn get_daemon_status(
     app: AppHandle,
     min_duration: Option<i64>,
-) -> Result<super::DaemonStatus, String> {
+) -> Result<super::DaemonStatus, CommandError> {
     run_app_blocking(app, move |app| {
         build_daemon_status(&app, min_duration, true)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn get_daemon_runtime_status(app: AppHandle) -> Result<super::DaemonStatus, String> {
-    run_app_blocking(app, move |app| build_daemon_status(&app, None, false)).await
+pub async fn get_daemon_runtime_status(app: AppHandle) -> Result<super::DaemonStatus, CommandError> {
+    run_app_blocking(app, move |app| build_daemon_status(&app, None, false))
+        .await
+        .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn get_daemon_logs(tail_lines: Option<usize>) -> Result<String, String> {
+pub async fn get_daemon_logs(tail_lines: Option<usize>) -> Result<String, CommandError> {
     let log_path = daemon_log_path()?;
     if !log_path.exists() {
         return Ok(String::new());
     }
     let n = tail_lines.unwrap_or(100).clamp(1, 5000);
-    read_last_n_lines(&log_path, n)
+    read_last_n_lines(&log_path, n).map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn get_autostart_enabled() -> Result<bool, String> {
+pub async fn get_autostart_enabled() -> Result<bool, CommandError> {
     Ok(autostart_enabled_probe())
 }
 
 #[tauri::command]
-pub async fn get_background_diagnostics(app: AppHandle) -> Result<BackgroundDiagnostics, String> {
+pub async fn get_background_diagnostics(app: AppHandle) -> Result<BackgroundDiagnostics, CommandError> {
     use crate::commands::get_assignment_model_status;
     use crate::commands::get_session_count;
     use crate::commands::types::SessionFilters;

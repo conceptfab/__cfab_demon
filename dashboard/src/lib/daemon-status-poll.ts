@@ -1,4 +1,5 @@
 import { sleep } from '@/lib/lan-sync-poll';
+import { logger } from '@/lib/logger';
 
 export async function pollDaemonStatusUntil<T>(
   fetchStatus: () => Promise<T>,
@@ -20,7 +21,7 @@ export async function pollDaemonStatusUntil<T>(
       options?.onStatus?.(next);
       if (predicate(next)) return;
     } catch (error) {
-      console.warn('Failed to poll daemon status:', error);
+      logger.warn('Failed to poll daemon status:', error);
     }
 
     /* eslint-disable-next-line react-doctor/async-await-in-loop -- poll until predicate passes */

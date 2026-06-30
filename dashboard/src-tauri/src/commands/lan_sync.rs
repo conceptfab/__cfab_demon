@@ -3,6 +3,7 @@
 
 use super::delta_export::TableHashes;
 use super::helpers::{build_table_hashes, timeflow_data_dir};
+use crate::commands::error::CommandError;
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
 use tauri::AppHandle;
@@ -92,25 +93,25 @@ pub struct SyncProgress {
 // ── Commands ──
 
 #[tauri::command]
-pub async fn get_lan_peers() -> Result<Vec<LanPeer>, String> {
+pub async fn get_lan_peers() -> Result<Vec<LanPeer>, CommandError> {
     let path = timeflow_data_dir()?.join("lan_peers.json");
     if !path.exists() {
         return Ok(Vec::new());
     }
     let content = tokio::task::spawn_blocking(move || std::fs::read_to_string(&path))
         .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))?
-        .map_err(|e| e.to_string())?;
-    let file: LanPeersFile = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(format!("spawn_blocking join error: {e}")))?
+        .map_err(|e| CommandError::Other(e.to_string()))?;
+    let file: LanPeersFile = serde_json::from_str(&content).map_err(|e| CommandError::Other(e.to_string()))?;
     Ok(file.peers)
 }
 
 /// Insert or update a peer in lan_peers.json (used after manual ping).
 #[tauri::command]
-pub fn upsert_lan_peer(peer: LanPeer) -> Result<(), String> {
+pub fn upsert_lan_peer(peer: LanPeer) -> Result<(), CommandError> {
     let path = timeflow_data_dir()?.join("lan_peers.json");
     let mut file = if path.exists() {
-        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let content = std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
         serde_json::from_str::<LanPeersFile>(&content).unwrap_or(LanPeersFile {
             updated_at: String::new(),
             peers: Vec::new(),
@@ -131,14 +132,14 @@ pub fn upsert_lan_peer(peer: LanPeer) -> Result<(), String> {
     } else {
         file.peers.push(peer);
     }
-    let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&file).map_err(|e| CommandError::Other(e.to_string()))?;
+    std::fs::write(&path, json).map_err(|e| CommandError::Other(e.to_string()))?;
     Ok(())
 }
 
 /// Read the last N lines from logs/lan_sync.log.
 #[tauri::command]
-pub fn get_lan_sync_log(lines: Option<usize>) -> Result<String, String> {
+pub fn get_lan_sync_log(lines: Option<usize>) -> Result<String, CommandError> {
     let dir = timeflow_data_dir()?;
     // Try new location first, fall back to legacy
     let path = {
@@ -152,7 +153,7 @@ pub fn get_lan_sync_log(lines: Option<usize>) -> Result<String, String> {
     if !path.exists() {
         return Ok(String::new());
     }
-    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let content = std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
     let max = lines.unwrap_or(50);
     let all: Vec<&str> = content.lines().collect();
     let start = if all.len() > max { all.len() - max } else { 0 };
@@ -170,22 +171,22 @@ pub struct PingLanPeerResult {
 }
 
 #[tauri::command]
-pub async fn ping_lan_peer(ip: String, port: u16) -> Result<PingLanPeerResult, String> {
+pub async fn ping_lan_peer(ip: String, port: u16) -> Result<PingLanPeerResult, CommandError> {
     ensure_private_peer(&ip)?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let url = format!("http://{}:{}/lan/ping", ip, port);
     let resp = client
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("Cannot reach {}:{} — {}", ip, port, e))?;
+        .map_err(|e| CommandError::Other(format!("Cannot reach {}:{} — {}", ip, port, e)))?;
 
     if !resp.status().is_success() {
-        return Err(format!("Peer responded with status {}", resp.status()));
+        return Err(CommandError::Other(format!("Peer responded with status {}", resp.status())));
     }
 
     #[derive(Deserialize)]
@@ -198,7 +199,7 @@ pub async fn ping_lan_peer(ip: String, port: u16) -> Result<PingLanPeerResult, S
     let ping: PingResp = resp
         .json()
         .await
-        .map_err(|e| format!("Invalid response: {}", e))?;
+        .map_err(|e| CommandError::Other(format!("Invalid response: {}", e)))?;
 
     Ok(PingLanPeerResult {
         device_id: ping.device_id,
@@ -252,22 +253,22 @@ async fn ping_lan_scan_host(client: reqwest::Client, ip: String) -> Option<PingL
 /// Scan the local /24 subnet for TIMEFLOW peers by pinging port 47891 on each IP.
 /// Returns all peers that responded. Runs requests in batches of 32 with a short timeout.
 #[tauri::command]
-pub async fn scan_lan_subnet() -> Result<Vec<PingLanPeerResult>, String> {
+pub async fn scan_lan_subnet() -> Result<Vec<PingLanPeerResult>, CommandError> {
     // 1. Determine our own IP (default route)
     let my_ip_addr = {
-        let socket = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
-        socket.connect("8.8.8.8:80").map_err(|e| e.to_string())?;
-        match socket.local_addr().map_err(|e| e.to_string())?.ip() {
+        let socket = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|e| CommandError::Other(e.to_string()))?;
+        socket.connect("8.8.8.8:80").map_err(|e| CommandError::Other(e.to_string()))?;
+        match socket.local_addr().map_err(|e| CommandError::Other(e.to_string()))?.ip() {
             std::net::IpAddr::V4(ip) => ip,
-            other => return Err(format!("Cannot scan LAN from non-IPv4 address: {}", other)),
+            other => return Err(CommandError::Other(format!("Cannot scan LAN from non-IPv4 address: {}", other))),
         }
     };
 
     if !is_private_lan_ip(my_ip_addr) {
-        return Err(format!(
+        return Err(CommandError::Other(format!(
             "LAN scan supports private IPv4 ranges only: {}",
             my_ip_addr
-        ));
+        )));
     }
     let octets = my_ip_addr.octets();
     let my_ip = my_ip_addr.to_string();
@@ -281,7 +282,7 @@ pub async fn scan_lan_subnet() -> Result<Vec<PingLanPeerResult>, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_millis(800))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     // 2. Ping all 254 hosts, capped at 32 concurrent requests.
     let mut found = Vec::new();
@@ -324,25 +325,27 @@ pub async fn scan_lan_subnet() -> Result<Vec<PingLanPeerResult>, String> {
 }
 
 #[tauri::command]
-pub async fn get_lan_sync_progress() -> Result<SyncProgress, String> {
+pub async fn get_lan_sync_progress() -> Result<SyncProgress, CommandError> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(2))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let resp = client
         .get("http://127.0.0.1:47891/lan/sync-progress")
         .send()
         .await
-        .map_err(|e| format!("Daemon not reachable: {}", e))?;
+        .map_err(|e| CommandError::Other(format!("Daemon not reachable: {}", e)))?;
 
-    let progress: SyncProgress = resp.json().await.map_err(|e| e.to_string())?;
+    let progress: SyncProgress = resp.json().await.map_err(|e| CommandError::Other(e.to_string()))?;
     Ok(progress)
 }
 
 #[tauri::command]
-pub async fn build_table_hashes_only(app: AppHandle) -> Result<TableHashes, String> {
-    super::helpers::run_db_blocking(app, |conn| Ok(build_table_hashes(conn))).await
+pub async fn build_table_hashes_only(app: AppHandle) -> Result<TableHashes, CommandError> {
+    super::helpers::run_db_blocking(app, |conn| Ok(build_table_hashes(conn)))
+        .await
+        .map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -353,7 +356,7 @@ pub async fn run_lan_sync(
     _since: String,
     force: Option<bool>,
     background: Option<bool>,
-) -> Result<LanSyncResult, String> {
+) -> Result<LanSyncResult, CommandError> {
     let force = force.unwrap_or(false);
     let background = background.unwrap_or(false);
     ensure_private_peer(&peer_ip)?;
@@ -405,7 +408,7 @@ pub async fn run_lan_sync(
             local_version, peer_version
         );
         sync_log(&format!("LAN sync: ABORTED — {}", msg));
-        return Err(msg);
+        return Err(CommandError::Conflict(msg));
     }
 
     sync_log("LAN sync: versions match — triggering daemon sync...");
@@ -472,7 +475,7 @@ pub struct PairedDeviceInfo {
 // ── Pairing commands ──
 
 #[tauri::command]
-pub async fn generate_pairing_code() -> Result<PairingCodeInfo, String> {
+pub async fn generate_pairing_code() -> Result<PairingCodeInfo, CommandError> {
     let result = tokio::task::spawn_blocking(move || {
         let client = build_http_client()?;
         let url = "http://127.0.0.1:47891/lan/generate-pairing-code";
@@ -507,7 +510,7 @@ pub async fn submit_pairing_code(
     peer_ip: String,
     peer_port: u16,
     code: String,
-) -> Result<PairedDeviceInfo, String> {
+) -> Result<PairedDeviceInfo, CommandError> {
     // The bridge no longer reads or forwards the local secret — the daemon
     // owns that. We just hand it the peer address + code and the daemon
     // does the full handshake locally (`/lan/initiate-pair`). This was
@@ -579,7 +582,7 @@ pub async fn submit_pairing_code(
 }
 
 #[tauri::command]
-pub async fn unpair_device(device_id: String) -> Result<bool, String> {
+pub async fn unpair_device(device_id: String) -> Result<bool, CommandError> {
     let result = tokio::task::spawn_blocking(move || {
         let client = build_http_client()?;
         let body = serde_json::json!({ "device_id": device_id });
@@ -597,7 +600,7 @@ pub async fn unpair_device(device_id: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn get_paired_devices() -> Result<Vec<PairedDeviceInfo>, String> {
+pub async fn get_paired_devices() -> Result<Vec<PairedDeviceInfo>, CommandError> {
     let result = tokio::task::spawn_blocking(move || {
         let client = build_http_client()?;
         let url = "http://127.0.0.1:47891/lan/paired-devices";

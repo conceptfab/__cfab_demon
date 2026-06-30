@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { lanSyncApi, settingsApi } from '@/lib/tauri';
+import { logger } from '@/lib/logger';
 import {
   loadLanSyncSettings,
   saveLanSyncSettings,
@@ -137,7 +138,7 @@ export function useLanSyncManager() {
   useEffect(() => {
     if (lanSettings.enabled) {
       lanSyncApi.startLanServer(lanSettings.serverPort).catch((e) => {
-        console.warn('Failed to start LAN server:', e);
+        logger.warn('Failed to start LAN server:', e);
       });
     } else {
       lanSyncApi.stopLanServer().catch(() => {});
@@ -274,7 +275,7 @@ export function useLanSyncManager() {
             next.autoSyncOnPeerFound,
           )
           .catch((e) =>
-            console.warn(
+            logger.warn(
               'Failed to persist LAN sync settings for daemon:',
               e,
             ),

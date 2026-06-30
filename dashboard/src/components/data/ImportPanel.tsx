@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { logger } from '@/lib/logger';
 import {
   Upload,
   AlertTriangle,
@@ -48,7 +49,7 @@ export function ImportPanel() {
         dispatch({ type: 'set_validation', validation: result });
         archivePathRef.current = path;
       } catch (e) {
-        console.error('Validation failed:', e);
+        logger.error('Validation failed:', e);
         dispatch({ type: 'set_error', error: String(e) });
       } finally {
         dispatch({ type: 'set_validating', validating: false });
@@ -73,7 +74,7 @@ export function ImportPanel() {
         handleValidate(selected);
       }
     } catch (e) {
-      console.error('File selection failed:', e);
+      logger.error('File selection failed:', e);
       dispatch({ type: 'set_error', error: String(e) });
     }
   };
@@ -124,7 +125,7 @@ export function ImportPanel() {
       const result = await importData(archivePathRef.current);
       dispatch({ type: 'set_summary', summary: result });
     } catch (e) {
-      console.error('Import failed:', e);
+      logger.error('Import failed:', e);
       dispatch({ type: 'set_error', error: String(e) });
     } finally {
       dispatch({ type: 'set_importing', importing: false });

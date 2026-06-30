@@ -1,5 +1,6 @@
 use super::daily_store_bridge;
 use super::helpers::{run_app_blocking, timeflow_data_dir, validate_import_path};
+use crate::commands::error::CommandError;
 use super::types::{
     ExportArchive, FileActivityExportRow, ImportSummary, ImportValidation, SessionConflict,
     SessionRow,
@@ -58,7 +59,7 @@ fn parse_export_archive(content: &str) -> Result<ExportArchive, String> {
 pub async fn validate_import(
     app: AppHandle,
     archive_path: String,
-) -> Result<ImportValidation, String> {
+) -> Result<ImportValidation, CommandError> {
     run_app_blocking(app, move |app| {
         validate_import_path(&archive_path)?;
         let content = fs::read_to_string(&archive_path).map_err(|e| e.to_string())?;
@@ -193,10 +194,11 @@ pub async fn validate_import(
         })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportSummary, String> {
+pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportSummary, CommandError> {
     run_app_blocking(app, move |app| {
         validate_import_path(&archive_path)?;
         let content = fs::read_to_string(&archive_path).map_err(|e| e.to_string())?;
@@ -239,6 +241,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         Ok(summary)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 /// Import archive data into a transaction (shared logic for import_data and import_data_archive).
@@ -742,7 +745,7 @@ fn import_file_activities(
 pub async fn import_data_archive(
     app: AppHandle,
     archive: ExportArchive,
-) -> Result<ImportSummary, String> {
+) -> Result<ImportSummary, CommandError> {
     // Persistent backup to user-configured Backup Destination (before any sync changes)
     run_app_blocking(app.clone(), |app| {
         create_pre_sync_backup(&app, "online")
@@ -804,10 +807,10 @@ pub async fn import_data_archive(
                 e,
                 backup_path.display()
             );
-            Err(format!(
+            Err(CommandError::Other(format!(
                 "Sync import failed (data preserved, nothing was deleted): {}",
                 e
-            ))
+            )))
         }
     }
 }

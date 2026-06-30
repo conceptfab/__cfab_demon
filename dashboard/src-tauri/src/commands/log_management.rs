@@ -1,4 +1,5 @@
 use super::helpers::timeflow_data_dir;
+use crate::commands::error::CommandError;
 use serde::{Deserialize, Serialize};
 
 const LOG_FILES: &[(&str, &str)] = &[
@@ -6,6 +7,7 @@ const LOG_FILES: &[(&str, &str)] = &[
     ("lan_sync", "lan_sync.log"),
     ("online_sync", "online_sync.log"),
     ("dashboard", "dashboard.log"),
+    ("frontend", "frontend.log"),
 ];
 
 fn logs_dir() -> Result<std::path::PathBuf, String> {
@@ -47,7 +49,7 @@ impl Default for LogSettings {
 }
 
 #[tauri::command]
-pub async fn get_log_settings() -> Result<LogSettings, String> {
+pub async fn get_log_settings() -> Result<LogSettings, CommandError> {
     let base = timeflow_data_dir()?;
     let path = base.join("log_settings.json");
     if !path.exists() {
@@ -55,20 +57,20 @@ pub async fn get_log_settings() -> Result<LogSettings, String> {
     }
     let content = tokio::task::spawn_blocking(move || std::fs::read_to_string(&path))
         .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))?
-        .map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+        .map_err(|e| CommandError::Other(format!("spawn_blocking join error: {e}")))?
+        .map_err(|e| CommandError::Other(e.to_string()))?;
+    serde_json::from_str(&content).map_err(|e| CommandError::Other(e.to_string()))
 }
 
 #[tauri::command]
-pub async fn save_log_settings(settings: LogSettings) -> Result<(), String> {
+pub async fn save_log_settings(settings: LogSettings) -> Result<(), CommandError> {
     let base = timeflow_data_dir()?;
     let path = base.join("log_settings.json");
-    let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&settings).map_err(|e| CommandError::Other(e.to_string()))?;
     tokio::task::spawn_blocking(move || std::fs::write(&path, json))
         .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))?
-        .map_err(|e| e.to_string())
+        .map_err(|e| CommandError::Other(format!("spawn_blocking join error: {e}")))?
+        .map_err(|e| CommandError::Other(e.to_string()))
 }
 
 // ── Log Reading ──
@@ -82,7 +84,7 @@ pub struct LogFileInfo {
 }
 
 #[tauri::command]
-pub async fn get_log_files_info() -> Result<Vec<LogFileInfo>, String> {
+pub async fn get_log_files_info() -> Result<Vec<LogFileInfo>, CommandError> {
     let dir = logs_dir()?;
     tokio::task::spawn_blocking(move || {
         let mut files = Vec::new();
@@ -104,16 +106,17 @@ pub async fn get_log_files_info() -> Result<Vec<LogFileInfo>, String> {
         Ok(files)
     })
     .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    .map_err(|e| CommandError::Other(format!("spawn_blocking join error: {e}")))?
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn read_log_file(key: String, tail_lines: Option<usize>) -> Result<String, String> {
+pub async fn read_log_file(key: String, tail_lines: Option<usize>) -> Result<String, CommandError> {
     let filename = LOG_FILES
         .iter()
         .find(|(k, _)| *k == key.as_str())
         .map(|(_, f)| *f)
-        .ok_or_else(|| format!("Unknown log key: {}", key))?;
+        .ok_or_else(|| CommandError::Validation(format!("Unknown log key: {}", key)))?;
 
     let dir = logs_dir()?;
     let path = dir.join(filename);
@@ -122,8 +125,8 @@ pub async fn read_log_file(key: String, tail_lines: Option<usize>) -> Result<Str
     }
     let content = tokio::task::spawn_blocking(move || std::fs::read_to_string(&path))
         .await
-        .map_err(|e| format!("spawn_blocking join error: {e}"))?
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(format!("spawn_blocking join error: {e}")))?
+        .map_err(|e| CommandError::Other(e.to_string()))?;
     match tail_lines {
         Some(n) => {
             let all: Vec<&str> = content.lines().collect();
@@ -135,26 +138,52 @@ pub async fn read_log_file(key: String, tail_lines: Option<usize>) -> Result<Str
 }
 
 #[tauri::command]
-pub async fn clear_log_file(key: String) -> Result<(), String> {
+pub async fn clear_log_file(key: String) -> Result<(), CommandError> {
     let filename = LOG_FILES
         .iter()
         .find(|(k, _)| *k == key.as_str())
         .map(|(_, f)| *f)
-        .ok_or_else(|| format!("Unknown log key: {}", key))?;
+        .ok_or_else(|| CommandError::Validation(format!("Unknown log key: {}", key)))?;
 
     let dir = logs_dir()?;
     let path = dir.join(filename);
     if path.exists() {
         tokio::task::spawn_blocking(move || std::fs::write(&path, ""))
             .await
-            .map_err(|e| format!("spawn_blocking join error: {e}"))?
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| CommandError::Other(format!("spawn_blocking join error: {e}")))?
+            .map_err(|e| CommandError::Other(e.to_string()))?;
     }
     Ok(())
 }
 
+/// Dopisuje pojedynczą linię logu z frontendu do logs/frontend.log.
+/// Poziom ograniczony do warn/error po stronie wywołującej (logger.ts).
 #[tauri::command]
-pub async fn open_logs_folder() -> Result<(), String> {
+pub async fn append_frontend_log(level: String, message: String) -> Result<(), CommandError> {
+    use std::io::Write;
+    let path = logs_dir()?.join("frontend.log");
+    let lvl = match level.to_uppercase().as_str() {
+        "ERROR" | "WARN" | "INFO" | "DEBUG" => level.to_uppercase(),
+        _ => "INFO".to_string(),
+    };
+    let line = format!(
+        "{} [{}] {}\n",
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+        lvl,
+        message.replace('\n', " ")
+    );
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| CommandError::Other(format!("Failed to open frontend.log: {}", e)))?;
+    f.write_all(line.as_bytes())
+        .map_err(|e| CommandError::Other(format!("Failed to write frontend.log: {}", e)))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_logs_folder() -> Result<(), CommandError> {
     let dir = logs_dir()?;
     #[cfg(target_os = "windows")]
     {
@@ -163,21 +192,21 @@ pub async fn open_logs_folder() -> Result<(), String> {
             .arg(dir.to_string_lossy().to_string())
             .creation_flags(0x08000000)
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| CommandError::Other(e.to_string()))?;
     }
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
             .arg(dir.to_string_lossy().to_string())
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| CommandError::Other(e.to_string()))?;
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         std::process::Command::new("xdg-open")
             .arg(dir.to_string_lossy().to_string())
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| CommandError::Other(e.to_string()))?;
     }
     Ok(())
 }

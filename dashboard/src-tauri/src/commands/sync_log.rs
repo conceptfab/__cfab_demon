@@ -1,4 +1,5 @@
 use super::helpers::timeflow_data_dir;
+use crate::commands::error::CommandError;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 
@@ -13,7 +14,7 @@ fn sync_log_path() -> Result<std::path::PathBuf, String> {
 }
 
 #[tauri::command]
-pub async fn append_sync_log(lines: Vec<String>) -> Result<(), String> {
+pub async fn append_sync_log(lines: Vec<String>) -> Result<(), CommandError> {
     let log_path = sync_log_path()?;
 
     // Rotate if the log file exceeds the size limit.
@@ -32,24 +33,25 @@ pub async fn append_sync_log(lines: Vec<String>) -> Result<(), String> {
         .create(true)
         .append(true)
         .open(&log_path)
-        .map_err(|e| format!("Failed to open sync log: {}", e))?;
+        .map_err(|e| CommandError::Other(format!("Failed to open sync log: {}", e)))?;
 
     for line in &lines {
-        writeln!(file, "{}", line).map_err(|e| format!("Failed to write sync log: {}", e))?;
+        writeln!(file, "{}", line)
+            .map_err(|e| CommandError::Other(format!("Failed to write sync log: {}", e)))?;
     }
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_sync_log(tail_lines: Option<usize>) -> Result<String, String> {
+pub async fn get_sync_log(tail_lines: Option<usize>) -> Result<String, CommandError> {
     let log_path = sync_log_path()?;
 
     if !log_path.exists() {
         return Ok(String::new());
     }
 
-    let content = fs::read_to_string(&log_path).map_err(|e| e.to_string())?;
+    let content = fs::read_to_string(&log_path).map_err(|e| CommandError::Other(e.to_string()))?;
 
     match tail_lines {
         Some(n) => {

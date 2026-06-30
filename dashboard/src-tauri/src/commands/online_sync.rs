@@ -1,5 +1,6 @@
 //! Online Sync — Tauri commands for server-based synchronization.
 
+use crate::commands::error::CommandError;
 use serde::{Deserialize, Serialize};
 
 const DAEMON_BASE: &str = "http://127.0.0.1:47891";
@@ -53,11 +54,11 @@ impl Default for OnlineSyncSettings {
 /// Get online sync settings. Wszystkie pola — w tym sekrety — są w pliku JSON
 /// w katalogu danych (bez keychaina). Demon czyta ten sam plik.
 #[tauri::command]
-pub fn get_online_sync_settings() -> Result<OnlineSyncSettings, String> {
+pub fn get_online_sync_settings() -> Result<OnlineSyncSettings, CommandError> {
     let path = timeflow_data_dir()?.join("online_sync_settings.json");
     if path.exists() {
-        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        serde_json::from_str::<OnlineSyncSettings>(&content).map_err(|e| e.to_string())
+        let content = std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
+        serde_json::from_str::<OnlineSyncSettings>(&content).map_err(|e| CommandError::Other(e.to_string()))
     } else {
         Ok(OnlineSyncSettings::default())
     }
@@ -68,11 +69,11 @@ pub fn get_online_sync_settings() -> Result<OnlineSyncSettings, String> {
 /// (np. ustawione przez demona pola, których ten front nie zna). Eliminuje parity
 /// trap — wcześniej `fs::write` całości kasował np. `group_id`/`sync_mode`.
 #[tauri::command]
-pub fn save_online_sync_settings(settings: serde_json::Value) -> Result<(), String> {
+pub fn save_online_sync_settings(settings: serde_json::Value) -> Result<(), CommandError> {
     let path = timeflow_data_dir()?.join("online_sync_settings.json");
 
     let mut root = if path.exists() {
-        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let content = std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
         serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -89,8 +90,8 @@ pub fn save_online_sync_settings(settings: serde_json::Value) -> Result<(), Stri
         root = settings;
     }
 
-    let json = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    let json = serde_json::to_string_pretty(&root).map_err(|e| CommandError::Other(e.to_string()))?;
+    std::fs::write(&path, json).map_err(|e| CommandError::Other(e.to_string()))
 }
 
 /// Trigger online sync via daemon HTTP endpoint.
@@ -103,7 +104,7 @@ pub fn save_online_sync_settings(settings: serde_json::Value) -> Result<(), Stri
 /// po nieudanych próbach. Auto-wyzwalacze wysyłają `force=false` i podlegają cooldownowi,
 /// dzięki czemu padający serwer nie wywołuje retry stormu.
 #[tauri::command]
-pub async fn run_online_sync(background: Option<bool>, force: Option<bool>) -> Result<String, String> {
+pub async fn run_online_sync(background: Option<bool>, force: Option<bool>) -> Result<String, CommandError> {
     let background = background.unwrap_or(false);
     let force = force.unwrap_or(false);
     let result = tokio::task::spawn_blocking(move || {
@@ -124,26 +125,26 @@ pub async fn run_online_sync(background: Option<bool>, force: Option<bool>) -> R
         Ok(body)
     })
     .await
-    .map_err(|e| format!("Task failed: {}", e))??;
+    .map_err(|e| CommandError::Other(format!("Task failed: {}", e)))??;
 
     Ok(result)
 }
 
 /// Get online sync progress (reuses LAN sync progress endpoint since they share state).
 #[tauri::command]
-pub async fn get_online_sync_progress() -> Result<super::lan_sync::SyncProgress, String> {
+pub async fn get_online_sync_progress() -> Result<super::lan_sync::SyncProgress, CommandError> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(2))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let resp = client
         .get(format!("{}/online/sync-progress", DAEMON_BASE))
         .send()
         .await
-        .map_err(|e| format!("Daemon not reachable: {}", e))?;
+        .map_err(|e| CommandError::Other(format!("Daemon not reachable: {}", e)))?;
 
-    let progress: super::lan_sync::SyncProgress = resp.json().await.map_err(|e| e.to_string())?;
+    let progress: super::lan_sync::SyncProgress = resp.json().await.map_err(|e| CommandError::Other(e.to_string()))?;
     Ok(progress)
 }
 
@@ -160,24 +161,24 @@ pub struct OnlineSyncResult {
 
 /// Get last online sync result from the daemon.
 #[tauri::command]
-pub async fn get_online_sync_result() -> Result<OnlineSyncResult, String> {
+pub async fn get_online_sync_result() -> Result<OnlineSyncResult, CommandError> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(2))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let resp = client
         .get(format!("{}/online/last-result", DAEMON_BASE))
         .send()
         .await
-        .map_err(|e| format!("Daemon not reachable: {}", e))?;
+        .map_err(|e| CommandError::Other(format!("Daemon not reachable: {}", e)))?;
 
-    resp.json::<OnlineSyncResult>().await.map_err(|e| e.to_string())
+    resp.json::<OnlineSyncResult>().await.map_err(|e| CommandError::Other(e.to_string()))
 }
 
 /// Cancel online sync via daemon HTTP endpoint.
 #[tauri::command]
-pub async fn cancel_online_sync() -> Result<(), String> {
+pub async fn cancel_online_sync() -> Result<(), CommandError> {
     tokio::task::spawn_blocking(move || {
         let client = build_http_client();
         let url = format!("{}/online/cancel-sync", DAEMON_BASE);
@@ -195,5 +196,6 @@ pub async fn cancel_online_sync() -> Result<(), String> {
         Ok(())
     })
     .await
-    .map_err(|e| format!("Task failed: {}", e))?
+    .map_err(|e| CommandError::Other(format!("Task failed: {}", e)))?
+    .map_err(CommandError::Other)
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { getErrorMessage } from '@/lib/utils';
 
@@ -31,5 +31,18 @@ describe('getErrorMessage', () => {
 
   it('returns fallback for object with empty message string', () => {
     expect(getErrorMessage({ code: 'error', message: '   ' }, 'fallback')).toBe('fallback');
+  });
+});
+
+describe('logTauriError', () => {
+  it('forwards error to file via appendFrontendLog', async () => {
+    vi.resetModules();
+    const spy = vi.fn();
+    vi.doMock('@/lib/tauri/log-management', () => ({ appendFrontendLog: spy }));
+    const { logTauriError } = await import('@/lib/utils');
+    logTauriError('save settings', new Error('boom'));
+    await new Promise((r) => setTimeout(r, 0)); // poczekaj na dynamiczny import
+    expect(spy).toHaveBeenCalledWith('error', expect.stringContaining('save settings'));
+    vi.doUnmock('@/lib/tauri/log-management');
   });
 });

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use super::helpers::run_db_blocking;
+use crate::commands::error::CommandError;
 
 const MAX_SYNC_BACKUPS: usize = 5;
 
@@ -40,7 +41,7 @@ pub async fn insert_sync_marker(
     device_id: String,
     peer_id: Option<String>,
     full_sync: bool,
-) -> Result<SyncMarker, String> {
+) -> Result<SyncMarker, CommandError> {
     run_db_blocking(app, move |conn| {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let marker_hash = generate_marker_hash(conn, &tables_hash, &now, &device_id)?;
@@ -64,10 +65,11 @@ pub async fn insert_sync_marker(
         })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn get_latest_sync_marker(app: AppHandle) -> Result<Option<SyncMarker>, String> {
+pub async fn get_latest_sync_marker(app: AppHandle) -> Result<Option<SyncMarker>, CommandError> {
     run_db_blocking(app, move |conn| {
         let result = conn.query_row(
             "SELECT id, marker_hash, created_at, device_id, peer_id, tables_hash, full_sync
@@ -92,17 +94,18 @@ pub async fn get_latest_sync_marker(app: AppHandle) -> Result<Option<SyncMarker>
         }
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 /// Create a backup of the database before sync. Rotates old backups (max 5).
 #[tauri::command]
-pub async fn backup_before_sync(app: AppHandle) -> Result<String, String> {
+pub async fn backup_before_sync(app: AppHandle) -> Result<String, CommandError> {
     let data_dir = super::helpers::timeflow_data_dir()?;
     let backup_dir = data_dir.join("sync_backups");
 
     if !backup_dir.exists() {
         std::fs::create_dir_all(&backup_dir)
-            .map_err(|e| format!("Failed to create sync backup dir: {}", e))?;
+            .map_err(|e| CommandError::Other(format!("Failed to create sync backup dir: {}", e)))?;
     }
 
     let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
@@ -126,7 +129,7 @@ pub async fn backup_before_sync(app: AppHandle) -> Result<String, String> {
 
     // Rotate: keep only MAX_SYNC_BACKUPS newest files
     let mut backups: Vec<std::path::PathBuf> = std::fs::read_dir(&backup_dir)
-        .map_err(|e| e.to_string())?
+        .map_err(|e| CommandError::Other(e.to_string()))?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| {
@@ -153,7 +156,7 @@ pub async fn backup_before_sync(app: AppHandle) -> Result<String, String> {
 pub async fn markers_match(
     app: AppHandle,
     remote_marker_hash: Option<String>,
-) -> Result<bool, String> {
+) -> Result<bool, CommandError> {
     let local = get_latest_sync_marker(app).await?;
     match (local, remote_marker_hash) {
         (Some(local_marker), Some(remote_hash)) => Ok(local_marker.marker_hash == remote_hash),

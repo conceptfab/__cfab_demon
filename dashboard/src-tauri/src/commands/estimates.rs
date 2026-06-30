@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use rusqlite::OptionalExtension;
 use tauri::AppHandle;
 
+use crate::commands::error::CommandError;
+
 use super::analysis::{
     compute_project_activity_unique, daily_seconds_by_series, project_series_key,
 };
@@ -306,18 +308,19 @@ pub(crate) fn build_estimate_rows(
 }
 
 #[tauri::command]
-pub async fn get_estimate_settings(app: AppHandle) -> Result<EstimateSettings, String> {
+pub async fn get_estimate_settings(app: AppHandle) -> Result<EstimateSettings, CommandError> {
     run_db_blocking(app, move |conn| {
         Ok(EstimateSettings {
             global_hourly_rate: get_global_hourly_rate(conn)?,
         })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn update_global_hourly_rate(app: AppHandle, rate: f64) -> Result<(), String> {
-    validate_hourly_rate(rate)?;
+pub async fn update_global_hourly_rate(app: AppHandle, rate: f64) -> Result<(), CommandError> {
+    validate_hourly_rate(rate).map_err(CommandError::Validation)?;
     run_db_blocking(app, move |conn| {
         conn.execute(
             "INSERT INTO estimate_settings (key, value, updated_at)
@@ -331,6 +334,7 @@ pub async fn update_global_hourly_rate(app: AppHandle, rate: f64) -> Result<(), 
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -338,9 +342,9 @@ pub async fn update_project_hourly_rate(
     app: AppHandle,
     project_id: i64,
     rate: Option<f64>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     if let Some(v) = rate {
-        validate_hourly_rate(v)?;
+        validate_hourly_rate(v).map_err(CommandError::Validation)?;
     }
     run_db_blocking(app, move |conn| {
         let updated = conn
@@ -355,21 +359,24 @@ pub async fn update_project_hourly_rate(
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn get_project_estimates(
     app: AppHandle,
     date_range: DateRange,
-) -> Result<Vec<EstimateProjectRow>, String> {
-    run_db_blocking(app, move |conn| build_estimate_rows(conn, &date_range)).await
+) -> Result<Vec<EstimateProjectRow>, CommandError> {
+    run_db_blocking(app, move |conn| build_estimate_rows(conn, &date_range))
+        .await
+        .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn get_estimates_summary(
     app: AppHandle,
     date_range: DateRange,
-) -> Result<EstimateSummary, String> {
+) -> Result<EstimateSummary, CommandError> {
     run_db_blocking(app, move |conn| {
         let rows = build_estimate_rows(conn, &date_range)?;
 
@@ -391,6 +398,7 @@ pub async fn get_estimates_summary(
         })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[cfg(test)]

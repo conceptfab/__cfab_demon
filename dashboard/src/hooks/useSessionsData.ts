@@ -8,6 +8,7 @@ import {
 import type { DateRange, SessionWithApp } from '@/lib/db-types';
 import { areSessionListsEqual, SESSION_PAGE_SIZE } from '@/lib/session-utils';
 import { sessionsApi } from '@/lib/tauri';
+import { logger } from '@/lib/logger';
 
 type SessionsFetchParams = Parameters<
   (typeof sessionsApi)['getSessions']
@@ -61,7 +62,7 @@ export function useSessionsData(params: {
       replaceSessionsPage(data);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error('Sessions load failed:', msg);
+      logger.error('Sessions load failed:', msg);
       setError(msg);
     } finally {
       isLoadingRef.current = false;
@@ -76,7 +77,7 @@ export function useSessionsData(params: {
   });
 
   const handleVisibleSessionsRefresh = useCallback(() => {
-    void loadFirstPageRef.current().catch(console.error);
+    void loadFirstPageRef.current().catch(logger.error);
   }, []);
 
   if (
@@ -105,7 +106,7 @@ export function useSessionsData(params: {
       .catch((e) => {
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : String(e);
-        console.error('Sessions initial load failed:', msg);
+        logger.error('Sessions initial load failed:', msg);
         setError(msg);
       })
       .finally(() => {
@@ -157,7 +158,7 @@ export function useSessionsData(params: {
         hasMoreRef.current = nextHasMore;
         setHasMore(nextHasMore);
       })
-      .catch(console.error)
+      .catch(logger.error)
       .finally(() => {
         isLoadingRef.current = false;
       });

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useCancellableAsync } from '@/lib/async-utils';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
 import type { ProjectReportData } from '@/lib/db-types';
+import { logger } from '@/lib/logger';
 import {
   computeReportDisplayValues,
   createReportDurationFormatter,
@@ -85,7 +86,7 @@ export function useReportViewController() {
         });
       },
       onError: (err) => {
-        console.error('Report error:', err);
+        logger.error('Report error:', err);
         const errStr = String(err);
         if (errStr.includes('not found')) {
           setCurrentPage('projects');

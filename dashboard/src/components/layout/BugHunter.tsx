@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast-notification";
+import { usePageError } from "@/hooks/usePageError";
 import {
   bugHunterReducer,
   initialBugHunterState,
@@ -29,6 +30,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
   const { t } = useTranslation();
   const { showError } = useToast();
+  const reportError = usePageError();
   const [state, dispatch] = useReducer(bugHunterReducer, initialBugHunterState);
   const { attachments, description, isSending, isSent, title } = state;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,8 +91,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
         onClose();
       }, 2000);
     } catch (error) {
-      console.error("BugHunter failed to send:", error);
-      showError(t("components.bughunter.errors.send_failed", { error: String(error) }));
+      reportError('send bug report', error, t("components.bughunter.errors.send_failed", { error: String(error) }));
       dispatch({ type: 'set_is_sending', isSending: false });
     }
   };

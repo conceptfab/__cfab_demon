@@ -1,4 +1,5 @@
 import { getSecureToken, setSecureToken } from '@/lib/tauri';
+import { logger } from '@/lib/logger';
 import type {
   OnlineSyncSettings,
   OnlineSyncState,
@@ -100,7 +101,7 @@ export function saveOnlineSyncSettingsRaw(
   if (next.apiToken !== undefined) {
     const tokenToStore = normalizeApiToken(next.apiToken);
     setSecureToken(tokenToStore).catch(() => {
-      console.warn(
+      logger.warn(
         '[online-sync] Failed to persist API token to secure storage',
       );
     });

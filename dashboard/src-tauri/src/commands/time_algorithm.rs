@@ -23,6 +23,8 @@ use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use tauri::AppHandle;
 
+use crate::commands::error::CommandError;
+
 use super::analysis::{project_series_key, UNASSIGNED_PROJECT_SERIES_KEY};
 use super::datetime::parse_datetime_local;
 use super::helpers::{disambiguate_name, duplicate_name_counts, run_db_blocking};
@@ -145,7 +147,7 @@ pub(crate) fn distribute_app_seconds(apps: &mut [TopApp], clock_total: f64, raw_
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn list_time_algorithms(app: AppHandle) -> Result<Vec<TimeAlgorithmInfo>, String> {
+pub async fn list_time_algorithms(app: AppHandle) -> Result<Vec<TimeAlgorithmInfo>, CommandError> {
     run_db_blocking(app, |conn| {
         let active = active_algorithm_id(conn);
         Ok(registry()
@@ -159,17 +161,22 @@ pub async fn list_time_algorithms(app: AppHandle) -> Result<Vec<TimeAlgorithmInf
             .collect())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn get_time_algorithm(app: AppHandle) -> Result<String, String> {
-    run_db_blocking(app, |conn| Ok(active_algorithm_id(conn))).await
+pub async fn get_time_algorithm(app: AppHandle) -> Result<String, CommandError> {
+    run_db_blocking(app, |conn| Ok(active_algorithm_id(conn)))
+        .await
+        .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn set_time_algorithm(app: AppHandle, algorithm: String) -> Result<(), String> {
+pub async fn set_time_algorithm(app: AppHandle, algorithm: String) -> Result<(), CommandError> {
     if !registry().iter().any(|s| s.id() == algorithm) {
-        return Err(format!("Unknown time algorithm: {algorithm}"));
+        return Err(CommandError::Validation(format!(
+            "Unknown time algorithm: {algorithm}"
+        )));
     }
     run_db_blocking(app, move |conn| {
         conn.execute(
@@ -184,6 +191,7 @@ pub async fn set_time_algorithm(app: AppHandle, algorithm: String) -> Result<(),
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 // ---------------------------------------------------------------------------

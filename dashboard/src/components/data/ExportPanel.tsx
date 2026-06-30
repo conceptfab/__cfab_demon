@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { exportData } from "@/lib/tauri";
 import { useToast } from "@/components/ui/toast-notification";
 import { loadProjectsAllTime } from "@/store/projects-cache-store";
+import { logger } from '@/lib/logger';
 import {
   exportPanelReducer,
   initialExportPanelState,
@@ -36,7 +37,7 @@ export function ExportPanel() {
         dispatch({ type: 'set_projects', projects: nextProjects });
       })
       .catch((e) => {
-        console.error('Failed to load projects:', e);
+        logger.error('Failed to load projects:', e);
         showError(String(e));
       });
   }, [showError]);

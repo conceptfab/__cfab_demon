@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import { settingsApi } from '@/lib/tauri';
 import type { DemoModeStatus } from '@/lib/db-types';
 import { getErrorMessage } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 
 interface UseSettingsDemoModeOptions {
   t: TFunction;
@@ -75,7 +76,7 @@ export function useSettingsDemoMode({
               ),
         );
       } catch (e) {
-        console.error(e);
+        logger.error(e);
         const errorMessage = getErrorMessage(e, t('ui.common.unknown_error'));
         setDemoModeError(errorMessage);
         showError(t('settings_page.failed_to_switch_demo_mode') + errorMessage);

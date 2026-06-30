@@ -68,6 +68,14 @@ export function HelpSettingsSection() {
           t18n('help_page.rounding_detail_limitations'),
         ]}
       />
+      <HelpDetailsBlock
+        title={t18n('help_page.diagnostics_detail_title')}
+        items={[
+          t18n('help_page.diagnostics_detail_what_it_does'),
+          t18n('help_page.diagnostics_detail_when_to_use'),
+          t18n('help_page.diagnostics_detail_limitations'),
+        ]}
+      />
     </SectionHelp>
   );
 }

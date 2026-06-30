@@ -1,5 +1,6 @@
 use super::helpers::build_table_hashes;
 use super::types::{ApplicationRow, AssignmentAutoRunRow, AssignmentFeedbackRow, ClientRow, ManualSession, Project, SessionRow, Tombstone};
+use crate::commands::error::CommandError;
 use crate::db;
 use serde::{Deserialize, Serialize};
 
@@ -62,7 +63,7 @@ pub struct DeltaArchive {
 pub fn build_delta_archive(
     app: tauri::AppHandle,
     since: String,
-) -> Result<(DeltaArchive, String), String> {
+) -> Result<(DeltaArchive, String), CommandError> {
     let conn = db::get_connection(&app)?;
     let machine_id = super::helpers::get_machine_id();
 
@@ -83,7 +84,7 @@ pub fn build_delta_archive(
     // project status converge through online sync, mirroring the LAN export.
     let mut stmt = conn
         .prepare(timeflow_shared::sync::columns::PROJECT_SELECT)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let projects: Vec<Project> = stmt
         .query_map([], |row| {
@@ -104,15 +105,15 @@ pub fn build_delta_archive(
                 status: row.get(13)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(|e| CommandError::Other(e.to_string()))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     // Clients (m24 entity — always full, tiny reference table). Identified by name.
     let mut stmt = conn
         .prepare("SELECT name, contact, address, tax_id, currency, default_hourly_rate, color, archived_at, created_at, updated_at
                   FROM clients")
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let clients: Vec<ClientRow> = stmt
         .query_map([], |row| {
@@ -129,15 +130,15 @@ pub fn build_delta_archive(
                 updated_at: row.get(9)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(|e| CommandError::Other(e.to_string()))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     // Applications (all — needed as lookup table for app_id resolution)
     let mut stmt = conn
         .prepare("SELECT id, executable_name, display_name, project_id, is_imported, updated_at
                   FROM applications")
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let applications: Vec<ApplicationRow> = stmt
         .query_map([], |row| {
@@ -150,16 +151,16 @@ pub fn build_delta_archive(
                 updated_at: row.get(5)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(|e| CommandError::Other(e.to_string()))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     // Sessions
     let mut stmt = conn
         .prepare("SELECT id, app_id, project_id, start_time, end_time, duration_seconds, date
                   , COALESCE(rate_multiplier, 1.0), comment, is_hidden, updated_at, project_name
                   FROM sessions WHERE updated_at > ?1")
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let sessions: Vec<SessionRow> = stmt
         .query_map([since.as_str()], |row| {
@@ -178,16 +179,16 @@ pub fn build_delta_archive(
                 project_name: row.get(11)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(|e| CommandError::Other(e.to_string()))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     // Manual Sessions
     let mut stmt = conn
         .prepare("SELECT id, title, session_type, project_id, app_id, start_time, end_time,
                          duration_seconds, date, created_at, updated_at
                   FROM manual_sessions WHERE updated_at > ?1")
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
     
     let manual_sessions: Vec<ManualSession> = stmt
         .query_map([since.as_str()], |row| {
@@ -205,15 +206,15 @@ pub fn build_delta_archive(
                 updated_at: row.get(10)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(|e| CommandError::Other(e.to_string()))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     // Tombstones
     let mut stmt = conn
         .prepare("SELECT table_name, record_id, record_uuid, deleted_at, sync_key
                   FROM tombstones WHERE deleted_at > ?1")
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
     
     let tombstones: Vec<Tombstone> = stmt
         .query_map([since.as_str()], |row| {
@@ -226,15 +227,15 @@ pub fn build_delta_archive(
                 sync_key: row.get(4)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(|e| CommandError::Other(e.to_string()))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     // Assignment Feedback (delta — only rows created after `since`)
     let mut stmt = conn
         .prepare("SELECT id, session_id, app_id, from_project_id, to_project_id, source, COALESCE(weight, 1.0), created_at
                   FROM assignment_feedback WHERE created_at > ?1")
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let assignment_feedback: Vec<AssignmentFeedbackRow> = stmt
         .query_map([since.as_str()], |row| {
@@ -249,15 +250,15 @@ pub fn build_delta_archive(
                 created_at: row.get(7)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(|e| CommandError::Other(e.to_string()))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     // Assignment Auto Runs (delta — only rows started after `since`)
     let mut stmt = conn
         .prepare("SELECT id, started_at, finished_at, sessions_scanned, sessions_assigned, sessions_suggested, rolled_back_at
                   FROM assignment_auto_runs WHERE started_at > ?1")
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let assignment_auto_runs: Vec<AssignmentAutoRunRow> = stmt
         .query_map([since.as_str()], |row| {
@@ -271,9 +272,9 @@ pub fn build_delta_archive(
                 rolled_back_at: row.get(6)?,
             })
         })
-        .map_err(|e| e.to_string())?
+        .map_err(|e| CommandError::Other(e.to_string()))?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::Other(e.to_string()))?;
 
     log::info!(
         "Delta export (since={}): projects={}, clients={}, apps={}, sessions={}, manual={}, tombstones={}, feedback={}, auto_runs={}",

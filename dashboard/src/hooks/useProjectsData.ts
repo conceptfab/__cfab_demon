@@ -1,4 +1,5 @@
 import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
+import { logger } from '@/lib/logger';
 
 import type {
   AppWithStats,
@@ -124,7 +125,7 @@ function applyFolderProjectsBundle(
   if (candidatesRes.status === 'fulfilled') {
     next.folderCandidates = candidatesRes.value;
   } else {
-    console.error(
+    logger.error(
       'Failed to load folder candidates:',
       candidatesRes.reason,
     );
@@ -324,7 +325,7 @@ export function useProjectsData(projectDialogId: number | null) {
         projectExtraInfoCacheRef.current[projectDialogId] = info;
         setExtraInfo(info);
       })
-      .catch(console.error)
+      .catch(logger.error)
       .finally(() => {
         if (!cancelled) setLoadingExtra(false);
       });

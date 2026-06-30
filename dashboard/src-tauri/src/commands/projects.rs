@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use tauri::AppHandle;
 
+use crate::commands::error::CommandError;
+
 use super::analysis::{
     compute_project_activity_unique, compute_project_clock_totals_by_id, daily_seconds_by_series,
     query_activity_date_range,
@@ -743,12 +745,14 @@ pub(crate) fn freeze_project_in_conn(
 }
 
 #[tauri::command]
-pub async fn freeze_project(app: AppHandle, id: i64) -> Result<(), String> {
-    run_db_blocking(app, move |conn| freeze_project_in_conn(conn, id)).await
+pub async fn freeze_project(app: AppHandle, id: i64) -> Result<(), CommandError> {
+    run_db_blocking(app, move |conn| freeze_project_in_conn(conn, id))
+        .await
+        .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn unfreeze_project(app: AppHandle, id: i64) -> Result<(), String> {
+pub async fn unfreeze_project(app: AppHandle, id: i64) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         conn.execute(
             "UPDATE projects
@@ -761,6 +765,7 @@ pub async fn unfreeze_project(app: AppHandle, id: i64) -> Result<(), String> {
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 /// Logically merges `source` project into `target`:
@@ -858,16 +863,23 @@ pub(crate) fn unmerge_project_in_conn(
 }
 
 #[tauri::command]
-pub async fn merge_project(app: AppHandle, source_id: i64, target_id: i64) -> Result<(), String> {
+pub async fn merge_project(
+    app: AppHandle,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         merge_project_in_conn(conn, source_id, target_id)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn unmerge_project(app: AppHandle, id: i64) -> Result<(), String> {
-    run_db_blocking(app, move |conn| unmerge_project_in_conn(conn, id)).await
+pub async fn unmerge_project(app: AppHandle, id: i64) -> Result<(), CommandError> {
+    run_db_blocking(app, move |conn| unmerge_project_in_conn(conn, id))
+        .await
+        .map_err(CommandError::Other)
 }
 
 /// Core logic for `auto_freeze_projects`, exposed for unit tests.
@@ -932,7 +944,7 @@ pub struct AutoFreezeResult {
 pub async fn auto_freeze_projects(
     app: AppHandle,
     threshold_days: Option<i64>,
-) -> Result<AutoFreezeResult, String> {
+) -> Result<AutoFreezeResult, CommandError> {
     run_db_blocking(app, move |conn| {
         let days = threshold_days.unwrap_or(14).max(1);
         let frozen_count = auto_freeze_stale_projects(conn, days)
@@ -940,51 +952,56 @@ pub async fn auto_freeze_projects(
         Ok(AutoFreezeResult { frozen_count })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn get_projects(
     app: AppHandle,
     date_range: Option<DateRange>,
-) -> Result<Vec<ProjectWithStats>, String> {
+) -> Result<Vec<ProjectWithStats>, CommandError> {
     run_db_blocking(app, move |conn| {
         prune_if_stale(conn)?;
         query_projects_with_stats(conn, ProjectListFilter::Active, date_range.as_ref())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn get_project(app: AppHandle, id: i64) -> Result<ProjectWithStats, String> {
+pub async fn get_project(app: AppHandle, id: i64) -> Result<ProjectWithStats, CommandError> {
     run_db_blocking(app, move |conn| {
         prune_if_stale(conn)?;
         query_active_project_with_stats(conn, id)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn get_excluded_projects(
     app: AppHandle,
     date_range: Option<DateRange>,
-) -> Result<Vec<ProjectWithStats>, String> {
+) -> Result<Vec<ProjectWithStats>, CommandError> {
     run_db_blocking(app, move |conn| {
         prune_if_stale(conn)?;
         query_projects_with_stats(conn, ProjectListFilter::Excluded, date_range.as_ref())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn get_merged_projects(
     app: AppHandle,
     date_range: Option<DateRange>,
-) -> Result<Vec<ProjectWithStats>, String> {
+) -> Result<Vec<ProjectWithStats>, CommandError> {
     run_db_blocking(app, move |conn| {
         prune_if_stale(conn)?;
         query_projects_with_stats(conn, ProjectListFilter::Merged, date_range.as_ref())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -993,7 +1010,7 @@ pub async fn create_project(
     name: String,
     color: String,
     assigned_folder_path: Option<String>,
-) -> Result<Project, String> {
+) -> Result<Project, CommandError> {
     run_db_blocking(app, move |conn| {
         let name = name.trim().to_string();
         if name.is_empty() {
@@ -1050,10 +1067,11 @@ pub async fn create_project(
         })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn update_project(app: AppHandle, id: i64, color: String) -> Result<(), String> {
+pub async fn update_project(app: AppHandle, id: i64, color: String) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         let updated = conn
             .execute(
@@ -1067,10 +1085,11 @@ pub async fn update_project(app: AppHandle, id: i64, color: String) -> Result<()
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn exclude_project(app: AppHandle, id: i64) -> Result<(), String> {
+pub async fn exclude_project(app: AppHandle, id: i64) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         tx.execute(
@@ -1089,6 +1108,7 @@ pub async fn exclude_project(app: AppHandle, id: i64) -> Result<(), String> {
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 pub(crate) fn restore_project_in_conn(
@@ -1130,8 +1150,10 @@ pub(crate) fn restore_project_in_conn(
 }
 
 #[tauri::command]
-pub async fn restore_project(app: AppHandle, id: i64) -> Result<(), String> {
-    run_db_blocking(app, move |conn| restore_project_in_conn(conn, id)).await
+pub async fn restore_project(app: AppHandle, id: i64) -> Result<(), CommandError> {
+    run_db_blocking(app, move |conn| restore_project_in_conn(conn, id))
+        .await
+        .map_err(CommandError::Other)
 }
 
 pub(crate) fn delete_project_in_conn(
@@ -1170,12 +1192,17 @@ pub(crate) fn delete_project_in_conn(
 }
 
 #[tauri::command]
-pub async fn delete_project(app: AppHandle, id: i64) -> Result<(), String> {
-    run_db_blocking(app, move |conn| delete_project_in_conn(conn, id)).await
+pub async fn delete_project(app: AppHandle, id: i64) -> Result<(), CommandError> {
+    run_db_blocking(app, move |conn| delete_project_in_conn(conn, id))
+        .await
+        .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn blacklist_project_names(app: AppHandle, names: Vec<String>) -> Result<usize, String> {
+pub async fn blacklist_project_names(
+    app: AppHandle,
+    names: Vec<String>,
+) -> Result<usize, CommandError> {
     run_db_blocking(app, move |conn| {
         let mut count = 0usize;
         for name in &names {
@@ -1194,6 +1221,7 @@ pub async fn blacklist_project_names(app: AppHandle, names: Vec<String>) -> Resu
         Ok(count)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 pub(crate) fn delete_all_excluded_projects_in_conn(
@@ -1237,8 +1265,10 @@ pub(crate) fn delete_all_excluded_projects_in_conn(
 }
 
 #[tauri::command]
-pub async fn delete_all_excluded_projects(app: AppHandle) -> Result<usize, String> {
-    run_db_blocking(app, move |conn| delete_all_excluded_projects_in_conn(conn)).await
+pub async fn delete_all_excluded_projects(app: AppHandle) -> Result<usize, CommandError> {
+    run_db_blocking(app, move |conn| delete_all_excluded_projects_in_conn(conn))
+        .await
+        .map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -1246,7 +1276,7 @@ pub async fn assign_app_to_project(
     app: AppHandle,
     app_id: i64,
     project_id: Option<i64>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         if let Some(pid) = project_id {
             if !project_id_is_active(conn, pid)? {
@@ -1312,19 +1342,21 @@ pub async fn assign_app_to_project(
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn get_project_folders(app: AppHandle) -> Result<Vec<ProjectFolder>, String> {
+pub async fn get_project_folders(app: AppHandle) -> Result<Vec<ProjectFolder>, CommandError> {
     run_db_blocking(app, move |conn| {
         cleanup_missing_project_folders(conn)?;
         load_project_folders_from_db(conn)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn add_project_folder(app: AppHandle, path: String) -> Result<(), String> {
+pub async fn add_project_folder(app: AppHandle, path: String) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         let raw = path.trim();
         if raw.is_empty() {
@@ -1367,10 +1399,11 @@ pub async fn add_project_folder(app: AppHandle, path: String) -> Result<(), Stri
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn remove_project_folder(app: AppHandle, path: String) -> Result<(), String> {
+pub async fn remove_project_folder(app: AppHandle, path: String) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         let normalized = path.trim().to_string();
         conn.execute(
@@ -1381,6 +1414,7 @@ pub async fn remove_project_folder(app: AppHandle, path: String) -> Result<(), S
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -1390,7 +1424,7 @@ pub async fn update_project_folder_meta(
     color: String,
     category: String,
     badge: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         conn.execute(
             "UPDATE project_folders SET color = ?1, category = ?2, badge = ?3 WHERE lower(path) = lower(?4)",
@@ -1400,12 +1434,13 @@ pub async fn update_project_folder_meta(
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn get_folder_project_candidates(
     app: AppHandle,
-) -> Result<Vec<FolderProjectCandidate>, String> {
+) -> Result<Vec<FolderProjectCandidate>, CommandError> {
     run_db_blocking(app, move |conn| {
         let roots = load_project_folders_from_db(conn)?;
         let mut out = Vec::new();
@@ -1422,13 +1457,14 @@ pub async fn get_folder_project_candidates(
         Ok(out)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn create_project_from_folder(
     app: AppHandle,
     folder_path: String,
-) -> Result<Project, String> {
+) -> Result<Project, CommandError> {
     run_db_blocking(app, move |conn| {
         let canonical = std::fs::canonicalize(folder_path.trim()).map_err(|e| e.to_string())?;
         if !canonical.is_dir() {
@@ -1470,10 +1506,11 @@ pub async fn create_project_from_folder(
         })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn sync_projects_from_folders(app: AppHandle) -> Result<FolderSyncResult, String> {
+pub async fn sync_projects_from_folders(app: AppHandle) -> Result<FolderSyncResult, CommandError> {
     run_db_blocking(app, move |conn| {
         let roots = load_project_folders_from_db(conn)?;
         let mut created_projects: Vec<String> = Vec::new();
@@ -1526,6 +1563,7 @@ pub async fn sync_projects_from_folders(app: AppHandle) -> Result<FolderSyncResu
         })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
@@ -1533,7 +1571,7 @@ pub async fn auto_create_projects_from_detection(
     app: AppHandle,
     date_range: DateRange,
     min_occurrences: i64,
-) -> Result<usize, String> {
+) -> Result<usize, CommandError> {
     run_db_blocking(app, move |conn| {
         let project_roots = load_project_folders_from_db(conn)?;
         if project_roots.is_empty() {
@@ -1584,6 +1622,7 @@ pub async fn auto_create_projects_from_detection(
         Ok(created)
     })
     .await
+    .map_err(CommandError::Other)
 }
 /// Session filter for ProjectPage aggregates: matches the project itself AND
 /// its merged children, so card counts/values stay consistent with the rolled
@@ -1852,15 +1891,16 @@ pub async fn get_project_extra_info(
     app: AppHandle,
     id: i64,
     date_range: DateRange,
-) -> Result<ProjectExtraInfo, String> {
+) -> Result<ProjectExtraInfo, CommandError> {
     run_db_blocking(app, move |conn| {
         query_project_extra_info(conn, id, &date_range)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn compact_project_data(app: AppHandle, id: i64) -> Result<(), String> {
+pub async fn compact_project_data(app: AppHandle, id: i64) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         conn.execute("DELETE FROM file_activities WHERE project_id = ?1", [id])
             .map_err(|e| e.to_string())?;
@@ -1872,6 +1912,7 @@ pub async fn compact_project_data(app: AppHandle, id: i64) -> Result<(), String>
         Ok(())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[cfg(test)]

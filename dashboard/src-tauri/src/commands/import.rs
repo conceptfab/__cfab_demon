@@ -8,6 +8,7 @@ use super::types::{
     ArchivedFileInfo, AutoImportResult, DailyData, DateRange, DetectedProject, ImportResult,
     ImportedFileInfo,
 };
+use crate::commands::error::CommandError;
 use crate::db;
 
 fn mode_import_dir(base_dir: &std::path::Path, demo_mode: bool) -> std::path::PathBuf {
@@ -47,7 +48,7 @@ fn normalize_file_path(raw: &str) -> String {
 pub async fn import_json_files(
     app: AppHandle,
     file_paths: Vec<String>,
-) -> Result<Vec<ImportResult>, String> {
+) -> Result<Vec<ImportResult>, CommandError> {
     run_db_blocking(app, move |conn| {
         let mut results = Vec::new();
 
@@ -67,6 +68,7 @@ pub async fn import_json_files(
         Ok(results)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 /// Checks if a file path corresponds to today's data file.
@@ -507,7 +509,7 @@ fn purge_unregistered_apps(
 }
 
 #[tauri::command]
-pub async fn get_imported_files(app: AppHandle) -> Result<Vec<ImportedFileInfo>, String> {
+pub async fn get_imported_files(app: AppHandle) -> Result<Vec<ImportedFileInfo>, CommandError> {
     run_db_blocking(app, move |conn| {
         let mut stmt = conn
             .prepare_cached(
@@ -530,6 +532,7 @@ pub async fn get_imported_files(app: AppHandle) -> Result<Vec<ImportedFileInfo>,
             .collect())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 fn archive_json_file(
@@ -560,7 +563,7 @@ fn archive_json_file(
 }
 
 #[tauri::command]
-pub async fn auto_import_from_data_dir(app: AppHandle) -> Result<AutoImportResult, String> {
+pub async fn auto_import_from_data_dir(app: AppHandle) -> Result<AutoImportResult, CommandError> {
     run_app_blocking(app, move |app| {
         let base_dir = timeflow_data_dir()?;
         let demo_mode = db::is_demo_mode_enabled(&app)?;
@@ -663,10 +666,11 @@ pub async fn auto_import_from_data_dir(app: AppHandle) -> Result<AutoImportResul
         })
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn get_archive_files(app: AppHandle) -> Result<Vec<ArchivedFileInfo>, String> {
+pub async fn get_archive_files(app: AppHandle) -> Result<Vec<ArchivedFileInfo>, CommandError> {
     run_app_blocking(app, move |app| {
         let base_dir = timeflow_data_dir()?;
         let demo_mode = db::is_demo_mode_enabled(&app)?;
@@ -714,17 +718,18 @@ pub async fn get_archive_files(app: AppHandle) -> Result<Vec<ArchivedFileInfo>, 
         Ok(files)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
-pub async fn delete_archive_file(app: AppHandle, file_name: String) -> Result<(), String> {
+pub async fn delete_archive_file(app: AppHandle, file_name: String) -> Result<(), CommandError> {
     let safe_name = std::path::Path::new(&file_name)
         .file_name()
-        .ok_or_else(|| "Invalid file name".to_string())?
+        .ok_or_else(|| CommandError::Validation("Invalid file name".to_string()))?
         .to_string_lossy()
         .to_string();
     if safe_name.is_empty() || safe_name != file_name {
-        return Err("Invalid file name".to_string());
+        return Err(CommandError::Validation("Invalid file name".to_string()));
     }
 
     run_app_blocking(app, move |app| {
@@ -739,13 +744,14 @@ pub async fn delete_archive_file(app: AppHandle, file_name: String) -> Result<()
         std::fs::remove_file(target).map_err(|e| e.to_string())
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]
 pub async fn get_detected_projects(
     app: AppHandle,
     date_range: DateRange,
-) -> Result<Vec<DetectedProject>, String> {
+) -> Result<Vec<DetectedProject>, CommandError> {
     use super::projects::{infer_project_from_path_pub, project_name_is_blacklisted};
 
     run_db_blocking(app, move |conn| {
@@ -842,6 +848,7 @@ pub async fn get_detected_projects(
         Ok(results)
     })
     .await
+    .map_err(CommandError::Other)
 }
 
 #[cfg(test)]
