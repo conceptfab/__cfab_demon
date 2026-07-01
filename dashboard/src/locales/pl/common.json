@@ -1346,7 +1346,20 @@
       "deactivate": "Zmień licencję",
       "token_persist_failed": "Licencja aktywowana, ale nie udało się zapisać tokena API: {{error}}. Token może nie przetrwać restartu.",
       "e2e_key_selfheal_failed": "Nie udało się dopisać klucza E2E do demona — online sync może nie ruszyć. Kliknij „Zapisz ustawienia”.",
-      "daemon_persist_failed": "Licencja aktywowana, ale nie udało się przekazać ustawień do demona: {{error}}. Kliknij „Zapisz ustawienia”."
+      "daemon_persist_failed": "Licencja aktywowana, ale nie udało się przekazać ustawień do demona: {{error}}. Kliknij „Zapisz ustawienia”.",
+      "passphrase_title": "Hasło E2E (sekret grupy)",
+      "passphrase_desc": "Opcjonalny silniejszy klucz end-to-end. Pierwsze urządzenie je generuje; przekaż kod eksportu pozostałym urządzeniom w tej samej grupie.",
+      "passphrase_generate": "Generuj",
+      "passphrase_regenerate": "Generuj ponownie",
+      "passphrase_set": "Hasło ustawione (v2)",
+      "passphrase_none": "Brak hasła — używany klucz grupy v1",
+      "passphrase_export_label": "Kod eksportu (wklej na pozostałych urządzeniach)",
+      "passphrase_copy": "Kopiuj",
+      "passphrase_copied": "Skopiowano",
+      "passphrase_import_placeholder": "Wklej kod eksportu (TFGK1-...)",
+      "passphrase_import": "Importuj",
+      "passphrase_import_invalid": "Nieprawidłowy lub uszkodzony kod eksportu",
+      "passphrase_clear": "Usuń"
     },
     "webserver": {
       "title": "Serwer WWW",

@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { settingsApi } from '@/lib/tauri';
 import { loadLicenseInfo, saveOnlineSyncSettings } from '@/lib/online-sync';
-import type { DaemonOnlineSyncSettings } from '@/lib/tauri/online-sync';
 import { logTauriWarn } from '@/lib/utils';
 import {
   type CurrencySettings,
@@ -112,28 +111,17 @@ export function useSettingsFormState({
     );
 
     void import('@/lib/tauri/online-sync')
-      .then(async ({ saveDaemonOnlineSyncSettings, resolveDaemonEncryptionKey }) => {
-        // E2E klucz auto-derivowany z grupy licencji — ten sam dla całej grupy.
-        const encryptionKey = await resolveDaemonEncryptionKey(
-          savedOnlineSync.encryptionKey,
-          loadLicenseInfo()?.groupId,
-        );
-        const groupId = loadLicenseInfo()?.groupId;
-        const daemonSettings: DaemonOnlineSyncSettings = {
+      .then(async ({ saveDaemonOnlineSyncSettings, buildDaemonSettingsPayload }) => {
+        const daemonSettings = await buildDaemonSettingsPayload({
           enabled: savedOnlineSync.enabled,
-          server_url: savedOnlineSync.serverUrl,
-          auth_token: uiApiToken,
-          device_id: savedOnlineSync.deviceId,
-          encryption_key: encryptionKey,
-          sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
-          auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
-        };
-        // Licencja aktywna (grupa) → dane na FTP (sync_mode=async); klucz creds
-        // liczony automatycznie z grupy. Wysyłamy tylko gdy niepuste (tauri scala).
-        if (groupId) {
-          daemonSettings.group_id = groupId;
-          daemonSettings.sync_mode = 'async';
-        }
+          serverUrl: savedOnlineSync.serverUrl,
+          authToken: uiApiToken,
+          deviceId: savedOnlineSync.deviceId,
+          autoSyncIntervalMinutes: savedOnlineSync.autoSyncIntervalMinutes,
+          autoSyncOnStartup: savedOnlineSync.autoSyncOnStartup,
+          groupId: loadLicenseInfo()?.groupId,
+          passphrase: savedOnlineSync.groupPassphrase,
+        });
         await saveDaemonOnlineSyncSettings(daemonSettings);
       })
       .catch((err) => {

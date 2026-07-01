@@ -40,6 +40,10 @@ struct AsyncPushReq<'a> {
     base_marker_hash: Option<&'a str>,
     new_marker_hash: &'a str,
     file_size_bytes: u64,
+    /// Schemat klucza tej paczki. Domyślnie v1; v2 = dane E2E z passphrase.
+    key_scheme: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key_salt: Option<&'a str>,
 }
 
 /// `storageCredentials: { encrypted: EncryptedCredentials }` (lub null).
@@ -68,6 +72,32 @@ struct AsyncPackage {
     id: String,
     #[serde(default)]
     new_marker_hash: String,
+    /// Schemat klucza, którym zaszyfrowano `delta.enc` tej paczki. Domyślnie v1
+    /// (kompatybilność ze starym serwerem, który tego pola nie zwraca).
+    #[serde(default = "default_key_scheme_owned")]
+    key_scheme: String,
+}
+
+fn default_key_scheme_owned() -> String {
+    "v1-groupid".to_string()
+}
+
+/// Wybiera klucz DANYCH (do `delta.enc`) wg schematu paczki:
+/// - "v2-passphrase" → `data_encryption_key` (PBKDF2 z passphrase; serwer go nie zna),
+/// - inaczej (v1) → `encryption_key` (klucz grupy z groupId).
+/// Koperta creds FTP jest ZAWSZE odszyfrowywana `encryption_key` (v1) — serwer
+/// szyfruje ją tym kluczem — niezależnie od schematu danych.
+fn data_key_for_scheme<'a>(s: &'a OnlineSyncSettings, scheme: &str) -> Result<&'a str, String> {
+    if scheme == "v2-passphrase" {
+        if s.data_encryption_key.is_empty() {
+            return Err(
+                "paczka v2-passphrase wymaga data_encryption_key — urządzenie niezmigrowane do E2E v2".into(),
+            );
+        }
+        Ok(&s.data_encryption_key)
+    } else {
+        Ok(&s.encryption_key)
+    }
 }
 
 #[derive(Deserialize)]
@@ -127,6 +157,8 @@ fn async_push(
     base_marker: Option<&str>,
     new_marker: &str,
     size: u64,
+    key_scheme: &str,
+    key_salt: Option<&str>,
     stop: &AtomicBool,
 ) -> Result<AsyncPushResp, String> {
     let body = serde_json::to_string(&AsyncPushReq {
@@ -135,6 +167,8 @@ fn async_push(
         base_marker_hash: base_marker,
         new_marker_hash: new_marker,
         file_size_bytes: size,
+        key_scheme,
+        key_salt,
     })
     .map_err(|e| e.to_string())?;
     let raw = server_post_cancellable(&s.server_url, "/api/sync/async/push", &s.auth_token, &body, stop)?;
@@ -208,23 +242,40 @@ pub fn push(
         return Err("async push: brak group_id w ustawieniach".into());
     }
 
-    // 1. Eksport + szyfrowanie E2E kluczem grupy (serwer treści nie zobaczy).
+    // 1. Eksport + szyfrowanie E2E kluczem DANYCH wg schematu tego urządzenia.
+    //    v1: klucz grupy (encryption_key); v2: data_encryption_key (passphrase).
     sync_state.set_progress(2, "exporting", "upload");
     let export_json = {
         let conn = lan_common::open_dashboard_db()?;
         sync_common::build_full_export(&conn)?
     };
-    let blob = crate::sync_encryption::encrypt_with_passphrase(export_json.as_bytes(), &s.encryption_key)?;
+    let push_scheme = if s.key_scheme.is_empty() { "v1-groupid" } else { s.key_scheme.as_str() };
+    let data_key = data_key_for_scheme(s, push_scheme)?;
+    let blob = crate::sync_encryption::encrypt_with_passphrase(export_json.as_bytes(), data_key)?;
     let blob_len = blob.len() as u64;
 
     // 2. Rejestracja paczki na serwerze (koordynacja, wydaje creds FTP).
+    //    Deklarujemy schemat klucza; keySalt (deterministyczny z groupId) tylko dla v2.
     sync_state.set_progress(5, "registering", "upload");
-    let resp = async_push(s, base_marker, new_marker, blob_len, stop_signal)?;
+    let key_salt_owned: Option<String> = if push_scheme == "v2-passphrase" {
+        Some(format!("timeflow-online-sync-e2e-v2|{}", s.group_id.trim()))
+    } else {
+        None
+    };
+    let resp = async_push(
+        s,
+        base_marker,
+        new_marker,
+        blob_len,
+        push_scheme,
+        key_salt_owned.as_deref(),
+        stop_signal,
+    )?;
     let creds_wrap = resp
         .storage_credentials
         .ok_or("async push: serwer nie zwrócił storageCredentials")?;
-    // Creds odszyfrowujemy kluczem GRUPY (encryption_key, auto-wyprowadzany z grupy
-    // licencji) — serwer szyfruje je tym samym kluczem grupy. Zero ręcznych sekretów.
+    // Creds odszyfrowujemy kluczem GRUPY (encryption_key, v1) — serwer szyfruje je
+    // tym samym kluczem grupy, NIEZALEŻNIE od schematu danych. Zero ręcznych sekretów.
     let creds = crate::sync_encryption::decrypt_credentials(&creds_wrap.encrypted, &resp.package_id, &s.encryption_key)?;
 
     // 3. Upload bloba na FTP (przerywalny — porzucany w locie na Cancel).
@@ -289,9 +340,11 @@ pub fn pull_pending(s: &OnlineSyncSettings, sync_state: &LanSyncState, stop_sign
         let rp = remote_path.clone();
         let blob = run_cancellable(stop_signal, move || online_ftp_transport::download_bytes(&target, &rp))?;
 
-        // Deszyfracja E2E kluczem grupy → string eksportu dla merge.
+        // Deszyfracja E2E kluczem DANYCH wg schematu paczki (v1: klucz grupy,
+        // v2: data_encryption_key) → string eksportu dla merge.
+        let data_key = data_key_for_scheme(s, &pkg.key_scheme)?;
         let export_json = {
-            let pt = crate::sync_encryption::decrypt_with_passphrase(&blob, &s.encryption_key)?;
+            let pt = crate::sync_encryption::decrypt_with_passphrase(&blob, data_key)?;
             String::from_utf8(pt).map_err(|e| format!("async-pull: UTF-8 eksportu: {e}"))?
         };
 
@@ -430,5 +483,64 @@ mod tests {
         let resp: SentCleanupResp = serde_json::from_str(raw).unwrap();
         assert_eq!(resp.packages.len(), 1);
         assert_eq!(resp.packages[0].package_id, "p1");
+    }
+
+    fn settings_with_keys(encryption_key: &str, data_key: &str) -> OnlineSyncSettings {
+        let mut s = OnlineSyncSettings::default();
+        s.encryption_key = encryption_key.into();
+        s.data_encryption_key = data_key.into();
+        s
+    }
+
+    // AsyncPackage bez pola keyScheme (stary serwer) → domyślnie v1.
+    #[test]
+    fn async_package_defaults_key_scheme_v1() {
+        let raw = r#"{"id":"p1","newMarkerHash":"abc"}"#;
+        let pkg: AsyncPackage = serde_json::from_str(raw).unwrap();
+        assert_eq!(pkg.key_scheme, "v1-groupid");
+    }
+
+    // AsyncPackage z jawnym keyScheme v2.
+    #[test]
+    fn async_package_reads_key_scheme_v2() {
+        let raw = r#"{"id":"p1","newMarkerHash":"abc","keyScheme":"v2-passphrase"}"#;
+        let pkg: AsyncPackage = serde_json::from_str(raw).unwrap();
+        assert_eq!(pkg.key_scheme, "v2-passphrase");
+    }
+
+    // v1 → klucz danych = encryption_key (klucz grupy).
+    #[test]
+    fn data_key_v1_uses_group_key() {
+        let s = settings_with_keys("group-key-v1", "data-key-v2");
+        assert_eq!(data_key_for_scheme(&s, "v1-groupid").unwrap(), "group-key-v1");
+    }
+
+    // v2 → klucz danych = data_encryption_key (passphrase).
+    #[test]
+    fn data_key_v2_uses_data_key() {
+        let s = settings_with_keys("group-key-v1", "data-key-v2");
+        assert_eq!(data_key_for_scheme(&s, "v2-passphrase").unwrap(), "data-key-v2");
+    }
+
+    // v2 bez data_encryption_key → Err (urządzenie niezmigrowane), nie ciche v1.
+    #[test]
+    fn data_key_v2_without_data_key_errors() {
+        let s = settings_with_keys("group-key-v1", "");
+        assert!(data_key_for_scheme(&s, "v2-passphrase").is_err());
+    }
+
+    // Round-trip: dane zaszyfrowane kluczem v2 odszyfrowują się kluczem v2, nie v1.
+    #[test]
+    fn v2_data_roundtrips_only_with_v2_key() {
+        let s = settings_with_keys("group-key-v1", "pbkdf2-hex-data-key");
+        let plaintext = b"{\"export\":true}";
+        let v2_key = data_key_for_scheme(&s, "v2-passphrase").unwrap();
+        let blob = crate::sync_encryption::encrypt_with_passphrase(plaintext, v2_key).unwrap();
+        // v2 key decrypts
+        let dec = crate::sync_encryption::decrypt_with_passphrase(&blob, v2_key).unwrap();
+        assert_eq!(dec, plaintext);
+        // v1 key does NOT
+        let v1_key = data_key_for_scheme(&s, "v1-groupid").unwrap();
+        assert!(crate::sync_encryption::decrypt_with_passphrase(&blob, v1_key).is_err());
     }
 }

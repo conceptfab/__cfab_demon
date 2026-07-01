@@ -116,6 +116,10 @@ export function SettingsSyncTab(controller: SettingsSyncTabProps) {
         licenseKeyInput={licenseKeyInput}
         licenseActivating={licenseActivating}
         licenseError={licenseError}
+        groupPassphrase={onlineSyncSettings.groupPassphrase ?? ''}
+        onGroupPassphraseChange={(passphrase) => {
+          updateOnlineSyncSettings((prev) => ({ ...prev, groupPassphrase: passphrase }));
+        }}
         onLicenseKeyChange={setLicenseKeyInput}
         onActivateLicense={handleActivateLicense}
         onDeactivateLicense={handleDeactivateLicense}

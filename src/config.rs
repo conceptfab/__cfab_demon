@@ -362,6 +362,14 @@ pub struct OnlineSyncSettings {
     /// Group ID for license-based features (async delta, etc.)
     #[serde(default)]
     pub group_id: String,
+    /// E2E v2 DATA key (hex) — PBKDF2(passphrase, groupId) policzony w web-warstwie
+    /// (`deriveGroupDataKeyV2`). Szyfruje `delta.enc` w schemacie v2; serwer go nie zna.
+    /// Pusty = urządzenie na v1 (klucz danych = `encryption_key`).
+    #[serde(default)]
+    pub data_encryption_key: String,
+    /// Schemat klucza, którym TO urządzenie PUBLIKUJE paczki: "v1-groupid" | "v2-passphrase".
+    #[serde(default = "default_key_scheme")]
+    pub key_scheme: String,
     /// Optional user ID. Empty by default; the server resolves the real userId
     /// from the device Bearer token, so this is only an explicit override.
     #[serde(default)]
@@ -370,6 +378,10 @@ pub struct OnlineSyncSettings {
 
 fn default_sync_mode() -> String {
     "session".to_string()
+}
+
+fn default_key_scheme() -> String {
+    "v1-groupid".to_string()
 }
 
 impl OnlineSyncSettings {
@@ -398,6 +410,8 @@ impl Default for OnlineSyncSettings {
             auto_sync_on_startup: false,
             sync_mode: "session".to_string(),
             group_id: String::new(),
+            data_encryption_key: String::new(),
+            key_scheme: default_key_scheme(),
             user_id: String::new(),
         }
     }

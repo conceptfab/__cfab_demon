@@ -1346,7 +1346,20 @@
       "deactivate": "Change license",
       "token_persist_failed": "License activated, but failed to save the API token: {{error}}. The token may not survive a restart.",
       "e2e_key_selfheal_failed": "Failed to write the E2E key to the daemon — online sync may not start. Click \"Save settings\".",
-      "daemon_persist_failed": "License activated, but failed to pass settings to the daemon: {{error}}. Click \"Save settings\"."
+      "daemon_persist_failed": "License activated, but failed to pass settings to the daemon: {{error}}. Click \"Save settings\".",
+      "passphrase_title": "E2E passphrase (group secret)",
+      "passphrase_desc": "Optional stronger end-to-end key. The first device generates it; share the export code with your other devices in the same group.",
+      "passphrase_generate": "Generate",
+      "passphrase_regenerate": "Regenerate",
+      "passphrase_set": "Passphrase set (v2)",
+      "passphrase_none": "No passphrase — using v1 group key",
+      "passphrase_export_label": "Export code (paste on your other devices)",
+      "passphrase_copy": "Copy",
+      "passphrase_copied": "Copied",
+      "passphrase_import_placeholder": "Paste export code (TFGK1-...)",
+      "passphrase_import": "Import",
+      "passphrase_import_invalid": "Invalid or corrupted export code",
+      "passphrase_clear": "Remove"
     },
     "webserver": {
       "title": "Web Server",

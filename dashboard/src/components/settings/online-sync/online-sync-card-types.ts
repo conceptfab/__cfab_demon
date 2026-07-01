@@ -18,6 +18,9 @@ export interface OnlineSyncCardProps {
   licenseKeyInput: string;
   licenseActivating: boolean;
   licenseError: string | null;
+  /** E2E v2 group secret (model B); empty = v1. */
+  groupPassphrase: string;
+  onGroupPassphraseChange: (passphrase: string) => void;
   defaultServerUrl: string;
   labelClassName: string;
   lastSyncLabel: string;

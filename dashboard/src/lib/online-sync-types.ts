@@ -20,6 +20,13 @@ export interface OnlineSyncSettings {
    * Jawna wartość (gdyby kiedyś doszło pole ręczne) ma priorytet nad derivacją.
    */
   encryptionKey?: string;
+  /**
+   * E2E v2 (model B): losowy sekret grupy (256-bit), z którego liczony jest klucz
+   * DANYCH (`deriveGroupDataKeyV2`). Ustawiany przez „Generuj" na 1. urządzeniu i
+   * import na kolejnych. Pusty/undefined → v1 (klucz danych = klucz grupy z groupId).
+   * NIGDY nie wysyłany na serwer.
+   */
+  groupPassphrase?: string;
   deviceId: string;
   requestTimeoutMs: number;
   enableLogging: boolean;
