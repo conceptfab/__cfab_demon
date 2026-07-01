@@ -44,6 +44,8 @@ struct AsyncPushReq<'a> {
     key_scheme: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     key_salt: Option<&'a str>,
+    /// Telemetria migracji floty (#12): to urządzenie potrafi v2 (ma passphrase).
+    supports_v2: bool,
 }
 
 /// `storageCredentials: { encrypted: EncryptedCredentials }` (lub null).
@@ -64,6 +66,9 @@ struct AsyncPushResp {
 struct AsyncPendingReq<'a> {
     device_id: &'a str,
     group_id: &'a str,
+    /// Telemetria migracji floty (#12): raportowana też przy pull, by status grupy
+    /// obejmował całą aktywną flotę (nie tylko nadawców).
+    supports_v2: bool,
 }
 
 #[derive(Deserialize)]
@@ -169,6 +174,7 @@ fn async_push(
         file_size_bytes: size,
         key_scheme,
         key_salt,
+        supports_v2: !s.data_encryption_key.is_empty(),
     })
     .map_err(|e| e.to_string())?;
     let raw = server_post_cancellable(&s.server_url, "/api/sync/async/push", &s.auth_token, &body, stop)?;
@@ -179,6 +185,7 @@ fn async_pending(s: &OnlineSyncSettings, stop: &AtomicBool) -> Result<AsyncPendi
     let body = serde_json::to_string(&AsyncPendingReq {
         device_id: &s.device_id,
         group_id: &s.group_id,
+        supports_v2: !s.data_encryption_key.is_empty(),
     })
     .map_err(|e| e.to_string())?;
     let raw = server_post_cancellable(&s.server_url, "/api/sync/async/pending", &s.auth_token, &body, stop)?;
@@ -221,6 +228,7 @@ fn async_sent_cleanup(s: &OnlineSyncSettings, stop: &AtomicBool) -> Result<SentC
     let body = serde_json::to_string(&AsyncPendingReq {
         device_id: &s.device_id,
         group_id: &s.group_id,
+        supports_v2: !s.data_encryption_key.is_empty(),
     })
     .map_err(|e| e.to_string())?;
     let raw = server_post_cancellable(&s.server_url, "/api/sync/async/sent-cleanup", &s.auth_token, &body, stop)?;
@@ -483,6 +491,32 @@ mod tests {
         let resp: SentCleanupResp = serde_json::from_str(raw).unwrap();
         assert_eq!(resp.packages.len(), 1);
         assert_eq!(resp.packages[0].package_id, "p1");
+    }
+
+    // #12: push request reports v2 capability + declares key scheme (camelCase).
+    #[test]
+    fn push_req_serializes_supports_v2_and_scheme() {
+        let req = AsyncPushReq {
+            device_id: "d",
+            group_id: "g",
+            base_marker_hash: None,
+            new_marker_hash: "m",
+            file_size_bytes: 1,
+            key_scheme: "v1-groupid",
+            key_salt: None,
+            supports_v2: true,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"supportsV2\":true"));
+        assert!(json.contains("\"keyScheme\":\"v1-groupid\""));
+        assert!(!json.contains("keySalt"), "keySalt pominięty gdy None");
+    }
+
+    #[test]
+    fn pending_req_serializes_supports_v2() {
+        let req = AsyncPendingReq { device_id: "d", group_id: "g", supports_v2: false };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"supportsV2\":false"));
     }
 
     fn settings_with_keys(encryption_key: &str, data_key: &str) -> OnlineSyncSettings {
