@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod db_migrations;
 mod webui;
+mod mcp;
 pub const VERSION: &str = env!("TIMEFLOW_VERSION");
 
 /// Load `.env` (SMTP credentials, etc.) from SAFE locations only:
@@ -186,6 +187,10 @@ pub fn run() {
             commands::webserver_generate_pairing_code,
             commands::webserver_list_sessions,
             commands::webserver_revoke_session,
+            commands::mcp_status,
+            commands::mcp_set_config,
+            commands::mcp_regenerate_token,
+            commands::mcp_list_sessions,
             commands::send_bug_report,
             commands::import_json_files,
             commands::get_imported_files,

@@ -11,6 +11,7 @@ import { SettingsSessionsTab } from '@/pages/settings/SettingsSessionsTab';
 import { SettingsSyncTab } from '@/pages/settings/SettingsSyncTab';
 import { SettingsTabNav } from '@/pages/settings/SettingsTabNav';
 import { SettingsWebServerTab } from '@/pages/settings/SettingsWebServerTab';
+import { SettingsMcpTab } from '@/pages/settings/SettingsMcpTab';
 
 interface SettingsViewProps {
   controller: SettingsPageController;
@@ -42,6 +43,7 @@ export function SettingsView({ controller }: SettingsViewProps) {
       {activeTab === 'sync' && <SettingsSyncTab {...controller} />}
       {activeTab === 'pm' && <SettingsPmTab />}
       {activeTab === 'webserver' && <SettingsWebServerTab {...controller} />}
+      {activeTab === 'mcp' && <SettingsMcpTab {...controller} />}
       {activeTab === 'advanced' && <SettingsAdvancedTab {...controller} />}
 
       <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2">

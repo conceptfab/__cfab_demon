@@ -67,6 +67,8 @@
       "ai": "AI",
       "lan": "LAN",
       "backup": "Kopia",
+      "mcp": "MCP",
+      "mcp_sessions": "{{count}} sesji",
       "running": "Uruchomiony",
       "stopped": "Zatrzymany",
       "training": "Trening",
@@ -101,6 +103,8 @@
       "lan_delta_sync_disabled": "Synchronizacja delta wymaga sparowanego peera online",
       "last_backup": "Ostatnia kopia: {{date}}",
       "never": "Nigdy",
+      "mcp_read_only": "Agenci MCP: dostęp tylko do odczytu",
+      "mcp_read_write": "Agenci MCP: odczyt i zapis",
       "version_incompatibility": "NIEZGODNOŚĆ WERSJI! Demon: v{{version}}",
       "bughunter": "BugHunter - zgłoś błąd",
       "quick_start": "Szybki start",
@@ -1388,6 +1392,32 @@
       "revoke": "Odłącz",
       "security_warning": "Połączenie jest nieszyfrowane (HTTP). Używaj tej funkcji tylko w zaufanej sieci lokalnej."
     },
+    "mcp": {
+      "title": "Serwer MCP",
+      "description": "Pozwól agentom AI (Claude Code, Codex) pracować na danych TIMEFLOW przez protokół Model Context Protocol.",
+      "loading": "Ładowanie ustawień MCP...",
+      "enable": "Włącz serwer MCP",
+      "enable_hint": "Endpoint http://127.0.0.1:{{port}}/mcp — tylko połączenia lokalne.",
+      "read_write": "Zezwól na zapis",
+      "read_write_hint": "Wył. = agenci mogą tylko odczytywać projekty, klientów i sesje. Wł. = mogą je też tworzyć i modyfikować.",
+      "backup_note": "Przed każdą nową sesją agenta TIMEFLOW automatycznie tworzy kopię bazy w folderze mcp_backups (przechowywanych jest 20 najnowszych kopii). Sesja nie wystartuje, jeśli backup się nie powiedzie.",
+      "token": "Token dostępu",
+      "token_hint": "Wymagany przy każdym żądaniu. Wygenerowanie nowego odłącza istniejących klientów.",
+      "token_missing": "Token zostanie wygenerowany po włączeniu serwera.",
+      "claude_snippet": "Claude Code — dodaj serwer",
+      "codex_snippet": "Codex — wpis w config.toml",
+      "codex_hint": "Dodaj do ~/.codex/config.toml (wsparcie HTTP MCP może się różnić między wersjami Codex).",
+      "endpoint": "Endpoint: {{url}}",
+      "active_sessions": "Aktywne sesje: {{count}}",
+      "saved": "Ustawienia MCP zapisane",
+      "save_failed": "Nie udało się zapisać ustawień MCP",
+      "token_regenerated": "Wygenerowano nowy token",
+      "copied": "Skopiowano do schowka",
+      "copy_failed": "Kopiowanie nie powiodło się",
+      "copy_token": "Kopiuj token",
+      "copy_snippet": "Kopiuj snippet",
+      "regenerate_token": "Wygeneruj nowy token"
+    },
     "lan_sync": {
       "title": "LAN Sync",
       "description": "Synchronizacja peer-to-peer między instancjami TIMEFLOW w tej samej sieci lokalnej.",
@@ -1463,7 +1493,23 @@
     }
   },
   "help": {
-    "language_hint": "Język ustawisz w Ustawienia > Język."
+    "language_hint": "Język ustawisz w Ustawienia > Język.",
+    "mcp": {
+      "title": "Serwer MCP (agenci AI)",
+      "what": "Serwer MCP pozwala agentom AI, takim jak Claude Code i Codex, odczytywać dane TIMEFLOW — projekty, klientów i sesje pracy — a za Twoją zgodą także je tworzyć i zmieniać. Agenci łączą się lokalnie przez protokół Model Context Protocol; TIMEFLOW niczego nie wysyła do chmury.",
+      "when_title": "Kiedy używać",
+      "when": "Użyj, gdy chcesz, by asystent AI przeanalizował Twój czas pracy, przygotował podsumowania, uporządkował przypisania projektów/klientów albo uzupełnił brakujące wpisy.",
+      "setup_title": "Jak podłączyć agenta",
+      "setup_1": "Otwórz Ustawienia → MCP i włącz serwer. Prywatny token dostępu wygeneruje się automatycznie.",
+      "setup_2": "Skopiuj gotowy snippet dla Claude Code lub Codex i uruchom/wklej go na swoim komputerze.",
+      "setup_3": "Rozpocznij rozmowę z agentem — narzędzia TIMEFLOW pojawią się automatycznie. Pasek boczny pokazuje aktywne sesje MCP.",
+      "settings_title": "Ustawienia",
+      "setting_enable": "Włącz serwer MCP — włącza lub wyłącza lokalny endpoint.",
+      "setting_permissions": "Zezwól na zapis — domyślnie wyłączone; agenci mogą tylko czytać. Włącz, by mogli tworzyć projekty/klientów i przypisywać sesje.",
+      "setting_token": "Token dostępu — wymagany przez każdego klienta. Wygenerowanie nowego natychmiast odcina podłączonych agentów.",
+      "limits_title": "Bezpieczeństwo i ograniczenia",
+      "limits": "Przed każdą nową sesją agenta TIMEFLOW automatycznie zapisuje kopię bazy (folder mcp_backups, 20 najnowszych kopii). Jeśli backup się nie powiedzie, sesja zostaje odrzucona. Serwer przyjmuje wyłącznie połączenia lokalne i zawsze wymaga tokenu."
+    }
   },
   "webserver": {
     "login": {
@@ -1669,6 +1715,7 @@
     "tab_sync": "Synchronizacja",
     "tab_pm": "PM",
     "tab_webserver": "Serwer WWW",
+    "tab_mcp": "MCP",
     "tab_advanced": "Zaawansowane",
     "tab_rounding": "Zaokrąglanie",
     "time_algorithm_title": "Algorytm czasu",
@@ -2224,6 +2271,7 @@
     "webserver_setup_how_to_start": "Jak uruchomić: wejdź w Ustawienia > Serwer WWW, włącz serwer, w razie potrzeby włącz „Dostęp z sieci LAN”, ustaw port, zrestartuj aplikację i wygeneruj kod parowania.",
     "webserver_setup_limitations": "Ograniczenia: funkcja jest lokalna, wymaga tej samej sieci LAN i na tym etapie obejmuje obsługę grupy Klienci.",
     "webui_section_title": "Web UI (tryb bez okna)",
+    "mcp": "Serwer MCP",
     "webui_description": "Udostępnia interfejs TIMEFLOW przez przeglądarkę bez otwierania okna aplikacji. Demon działa w tle jako serwer.",
     "webui_what_it_does": "Otwiera przeglądarkowy interfejs TIMEFLOW bez okna pulpitu — demon działa cicho w tle.",
     "webui_when_to_use": "Gdy chcesz korzystać z TIMEFLOW z innego urządzenia w tej samej sieci albo bez okna na maszynie-hoscie.",

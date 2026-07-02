@@ -13,6 +13,7 @@ export type SettingsTab =
   | 'sync'
   | 'pm'
   | 'webserver'
+  | 'mcp'
   | 'advanced';
 
 export const SETTINGS_TAB_IDS: SettingsTab[] = [
@@ -23,5 +24,6 @@ export const SETTINGS_TAB_IDS: SettingsTab[] = [
   'sync',
   'pm',
   'webserver',
+  'mcp',
   'advanced',
 ];
