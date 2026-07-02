@@ -44,3 +44,4 @@ htmlcov/
 ftp_config.py
 
 dashboard/src-tauri/Cargo.toml
+.worktrees/
