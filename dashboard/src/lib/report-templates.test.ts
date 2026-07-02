@@ -35,4 +35,39 @@ describe('report templates with kind', () => {
     expect(all.find((t) => t.id === 'default')?.kind).toBe('project');
     expect(all.some((t) => t.kind === 'estimate')).toBe(true);
   });
+
+  it('adds timeline to stored default template once (before sessions)', async () => {
+    localStorage.setItem(
+      'timeflow_report_templates',
+      JSON.stringify([
+        { id: 'default', name: 'X', sections: ['header', 'sessions', 'footer'], showLogo: true, createdAt: '', updatedAt: '' },
+      ]),
+    );
+    const { loadTemplates } = await import('@/lib/report-templates');
+    const all = loadTemplates();
+    expect(all.find((t) => t.id === 'default')?.sections).toEqual([
+      'header', 'timeline', 'sessions', 'footer',
+    ]);
+  });
+
+  it('does not re-add timeline after user removed it (migration runs once)', async () => {
+    localStorage.setItem('timeflow_report_timeline_added', '1');
+    localStorage.setItem(
+      'timeflow_report_templates',
+      JSON.stringify([
+        { id: 'default', name: 'X', sections: ['header', 'sessions', 'footer'], showLogo: true, createdAt: '', updatedAt: '' },
+      ]),
+    );
+    const { loadTemplates } = await import('@/lib/report-templates');
+    const all = loadTemplates();
+    expect(all.find((t) => t.id === 'default')?.sections).toEqual([
+      'header', 'sessions', 'footer',
+    ]);
+  });
+
+  it('includes timeline in freshly seeded default template', async () => {
+    const { loadTemplates } = await import('@/lib/report-templates');
+    const all = loadTemplates();
+    expect(all.find((t) => t.id === 'default')?.sections).toContain('timeline');
+  });
 });

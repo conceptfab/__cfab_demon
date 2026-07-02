@@ -14,6 +14,7 @@ export interface ReportTemplate {
 
 const STORAGE_KEY = 'timeflow_report_templates';
 const SELECTED_KEY = 'timeflow_report_selected_template';
+const TIMELINE_MIGRATION_KEY = 'timeflow_report_timeline_added';
 
 export const ESTIMATE_SIMPLE_TEMPLATE_ID = 'estimate-simple';
 export const ESTIMATE_PLUS_TEMPLATE_ID = 'estimate-plus';
@@ -21,7 +22,7 @@ export const ESTIMATE_PLUS_TEMPLATE_ID = 'estimate-plus';
 const ESTIMATE_SIMPLE_SECTIONS = ['est_header', 'est_summary', 'est_footer'];
 const ESTIMATE_PLUS_SECTIONS = ['est_header', 'est_summary', 'est_per_day', 'est_footer'];
 
-const DEFAULT_SECTIONS = ['header', 'stats', 'financials', 'apps', 'sessions', 'comments', 'footer'];
+const DEFAULT_SECTIONS = ['header', 'stats', 'financials', 'apps', 'timeline', 'sessions', 'comments', 'footer'];
 
 function generateId(): string {
   return crypto.randomUUID ? crypto.randomUUID() : `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -94,6 +95,24 @@ function ensureEstimateTemplates(list: ReportTemplate[]): ReportTemplate[] {
   return missing.length > 0 ? [...list, ...missing] : list;
 }
 
+/** Jednorazowo dopisuje sekcję 'timeline' do zapisanego szablonu 'default' (przed 'sessions'). */
+function ensureTimelineSection(list: ReportTemplate[]): ReportTemplate[] {
+  if (localStorage.getItem(TIMELINE_MIGRATION_KEY)) return list;
+  localStorage.setItem(TIMELINE_MIGRATION_KEY, '1');
+  let changed = false;
+  const next = list.map((t) => {
+    if (t.id !== 'default' || t.kind !== 'project' || t.sections.includes('timeline')) {
+      return t;
+    }
+    const sections = [...t.sections];
+    const idx = sections.indexOf('sessions');
+    sections.splice(idx >= 0 ? idx : sections.length, 0, 'timeline');
+    changed = true;
+    return { ...t, sections };
+  });
+  return changed ? next : list;
+}
+
 export function loadTemplates(): ReportTemplate[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -110,10 +129,11 @@ export function loadTemplates(): ReportTemplate[] {
     const parsed = (JSON.parse(raw) as ReportTemplate[]).map(normalizeTemplate);
     const base = parsed.length > 0 ? parsed : [createDefaultTemplate()];
     const withEstimates = ensureEstimateTemplates(base);
-    if (withEstimates.length !== base.length) {
-      saveTemplates(withEstimates);
+    const withTimeline = ensureTimelineSection(withEstimates);
+    if (withTimeline !== withEstimates || withEstimates.length !== base.length) {
+      saveTemplates(withTimeline);
     }
-    return withEstimates;
+    return withTimeline;
   } catch {
     return [createDefaultTemplate(), ...createEstimateTemplates()];
   }

@@ -113,6 +113,26 @@ export const REPORT_PAGE_SECTIONS: ReportSectionDef[] = [
     ),
   },
   {
+    id: 'timeline',
+    labelKey: 'reports_page.sections.timeline',
+    preview: (t) => (
+      <div className="space-y-0.5">
+        {[
+          t('reports_page.preview.timeline.line_1'),
+          t('reports_page.preview.timeline.line_2'),
+          t('reports_page.preview.timeline.line_3'),
+        ].map((line) => (
+          <div
+            key={line}
+            className="text-[10px] text-muted-foreground/40 font-mono"
+          >
+            {line}
+          </div>
+        ))}
+      </div>
+    ),
+  },
+  {
     id: 'sessions',
     labelKey: 'reports_page.sections.sessions',
     preview: (t) => (

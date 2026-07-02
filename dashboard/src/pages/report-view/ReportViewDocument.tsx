@@ -8,6 +8,7 @@ import { ReportViewHeaderSection } from '@/pages/report-view/ReportViewHeaderSec
 import { ReportViewManualSessionsSection } from '@/pages/report-view/ReportViewManualSessionsSection';
 import { ReportViewSessionsSection } from '@/pages/report-view/ReportViewSessionsSection';
 import { ReportViewStatsSection } from '@/pages/report-view/ReportViewStatsSection';
+import { ReportViewTimelineSection } from '@/pages/report-view/ReportViewTimelineSection';
 import { ReportViewTopAppsSection } from '@/pages/report-view/ReportViewTopAppsSection';
 
 interface ReportViewDocumentProps {
@@ -23,6 +24,7 @@ export function ReportViewDocument({ controller }: ReportViewDocumentProps) {
         <ReportViewFinancialsSection {...controller} />
         <ReportViewTopAppsSection {...controller} />
         <ReportViewAiSection {...controller} />
+        <ReportViewTimelineSection {...controller} />
         <ReportViewSessionsSection {...controller} />
         <ReportViewCommentsSection {...controller} />
         <ReportViewBoostsSection {...controller} />
