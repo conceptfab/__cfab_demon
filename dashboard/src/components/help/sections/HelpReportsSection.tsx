@@ -22,6 +22,7 @@ export function HelpReportsSection() {
         t18n('help_page.report_work_time_uses_the_same_deduplicated_clock_time_a'),
         t18n('help_page.report_rounding_toggle_feature'),
         t18n('help_page.additional_sections_boosts_sessions_with_time_multiplier'),
+        t18n('help_page.timeline_section_merged_chronological_view'),
         t18n('help_page.section_reordering_up_down_arrows_on_each_section_in_the'),
         t18n('help_page.preview_loading_state_when_switching_templates_or_rebuild'),
         t18n('help_page.empty_templates_state_if_no_report_templates_are_availab'),
