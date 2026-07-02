@@ -12,6 +12,7 @@ export function computeReportDisplayValues(
   report: {
     project: { total_seconds: number; daily_seconds?: readonly number[] };
     estimate: number;
+    extra?: { value_base_seconds?: number };
   },
   rounded: boolean,
   roundingSettings: RoundingSettings,
@@ -26,8 +27,16 @@ export function computeReportDisplayValues(
       ? roundDailyTotals(dailySeconds, roundingSettings)
       : roundSeconds(realTotal, interval)
     : realTotal;
+  // Baza WARTOŚCI = dokładny (ułamkowy) clock z backendu, z którego liczony jest `estimate`.
+  // Skalowanie po nim (a nie po `total_seconds: i64`) usuwa groszowy szum zaokrąglenia —
+  // np. 43h × 100 daje dokładnie 4300,00. Fallback do `total_seconds`, gdy pole niedostępne.
+  const valueBaseSeconds =
+    typeof report.extra?.value_base_seconds === 'number' &&
+    report.extra.value_base_seconds > 0
+      ? report.extra.value_base_seconds
+      : realTotal;
   const displayValue = rounded
-    ? scaleValueToRounded(report.estimate, realTotal, displayTotal)
+    ? scaleValueToRounded(report.estimate, valueBaseSeconds, displayTotal)
     : report.estimate;
 
   // Zaokrąglanie do PEŁNEJ godziny (interwał 60 min, też tryb per_day) → wartości są

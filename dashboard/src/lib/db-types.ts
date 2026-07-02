@@ -333,6 +333,8 @@ export interface ProjectDbStats {
 export interface ProjectExtraInfo {
   current_value: number;
   period_value: number;
+  /** Dokładny (ułamkowy) all-time clock w sekundach — baza skalowania wartości (patrz backend). */
+  value_base_seconds: number;
   db_stats: ProjectDbStats;
   top_apps: { name: string; seconds: number; color: string | null; daily_seconds: number[] }[];
 }

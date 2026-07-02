@@ -1694,10 +1694,13 @@ pub(crate) fn query_project_extra_info(
         compute_project_clock_totals_by_id(conn, date_range, false, true)?
     };
 
+    // Dokładny, ułamkowy all-time clock — baza WARTOŚCI. Front skaluje po nim (nie po
+    // zaokrąglonym `total_seconds: i64`), żeby zaokrąglenie czasu do pełnej godziny dawało
+    // spójną kwotę (np. 43h × 100 = 4300,00, bez groszowej końcówki).
+    let value_base_seconds = all_time_totals.get(&id).copied().unwrap_or(0.0);
     let current_value = if let Some((start, end)) = all_time_bounds {
-        let clock_seconds = all_time_totals.get(&id).copied().unwrap_or(0.0);
         let extra_seconds = get_extra_secs(conn, start, end, id)?;
-        ((clock_seconds + extra_seconds) / 3600.0) * effective_rate
+        ((value_base_seconds + extra_seconds) / 3600.0) * effective_rate
     } else {
         0.0
     };
@@ -1864,6 +1867,7 @@ pub(crate) fn query_project_extra_info(
     Ok(ProjectExtraInfo {
         current_value,
         period_value,
+        value_base_seconds,
         db_stats: ProjectDbStats {
             session_count,
             file_activity_count,

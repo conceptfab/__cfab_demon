@@ -22,6 +22,7 @@ __timeflow_server/
 # Environment / secrets
 .env
 .env.*
+.env_*
 !.env.example
 
 # IDE / editor (local)

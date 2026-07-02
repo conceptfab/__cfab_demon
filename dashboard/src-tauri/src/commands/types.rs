@@ -205,6 +205,10 @@ pub struct ProjectDbStats {
 pub struct ProjectExtraInfo {
     pub current_value: f64,
     pub period_value: f64,
+    /// Dokładny (ułamkowy) all-time clock w sekundach, z którego liczone jest
+    /// `current_value`. Front używa go jako mianownika przy skalowaniu wartości do
+    /// zaokrąglonego czasu, żeby uniknąć groszowego szumu z zaokrąglenia `total_seconds` do i64.
+    pub value_base_seconds: f64,
     pub db_stats: ProjectDbStats,
     pub top_apps: Vec<TopApp>,
 }
