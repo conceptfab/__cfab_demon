@@ -1231,6 +1231,7 @@
       "files": "Files / activity",
       "ai": "AI data (suggestions)",
       "sessions": "Session list",
+      "timeline": "Timeline (sessions + comments)",
       "comments": "Comments",
       "boosts": "Boosted sessions",
       "manual_sessions": "Manual sessions",
@@ -1272,6 +1273,11 @@
         "line_2": "03-05  Chrome    0h 45m  Research",
         "line_3": "03-05  Terminal  0h 30m",
         "more": "+139 more..."
+      },
+      "timeline": {
+        "line_1": "2026-03-06 · Friday · 4h 10m",
+        "line_2": "09:12  auto  VS Code  1h 30m",
+        "line_3": "└ comment: report module refactor"
       },
       "comments": {
         "line_1": "03-06  AI module refactor completed",
@@ -1598,6 +1604,9 @@
     "manual_sessions": "Manual sessions",
     "title": "Title",
     "type": "Type",
+    "timeline": "Timeline",
+    "timeline_auto": "auto",
+    "timeline_manual": "manual",
     "pdf_prefix": "timeflow_report"
   },
   "clients_page": {

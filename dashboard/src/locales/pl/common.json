@@ -1231,6 +1231,7 @@
       "files": "Pliki / aktywność",
       "ai": "Dane AI (sugestie)",
       "sessions": "Lista sesji",
+      "timeline": "Oś czasu (sesje + komentarze)",
       "comments": "Komentarze",
       "boosts": "Sesje z mnożnikiem",
       "manual_sessions": "Sesje ręczne",
@@ -1272,6 +1273,11 @@
         "line_2": "03-05  Chrome    0h 45m  Research",
         "line_3": "03-05  Terminal  0h 30m",
         "more": "+139 więcej..."
+      },
+      "timeline": {
+        "line_1": "2026-03-06 · piątek · 4h 10m",
+        "line_2": "09:12  auto  VS Code  1h 30m",
+        "line_3": "└ komentarz: refaktoryzacja modułu raportów"
       },
       "comments": {
         "line_1": "03-06  Zakończono refaktoring modułu AI",
@@ -1598,6 +1604,9 @@
     "manual_sessions": "Sesje ręczne",
     "title": "Tytuł",
     "type": "Typ",
+    "timeline": "Oś czasu",
+    "timeline_auto": "auto",
+    "timeline_manual": "ręczna",
     "pdf_prefix": "timeflow_raport"
   },
   "clients_page": {
