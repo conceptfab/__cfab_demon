@@ -47,7 +47,7 @@ describe('buildTimelineDays', () => {
       [makeManual({ id: 7, start_time: '2026-03-01T10:00:00' })],
     );
     expect(days).toHaveLength(1);
-    expect(days[0].entries.map((e) => e.key)).toEqual([
+    expect(days[0]?.entries.map((e) => e.key)).toEqual([
       'auto-2',
       'manual-7',
       'auto-1',
@@ -63,8 +63,8 @@ describe('buildTimelineDays', () => {
       [makeManual({ id: 3, start_time: '2026-03-01T11:00:00', duration_seconds: 200 })],
     );
     expect(days.map((d) => d.date)).toEqual(['2026-03-01', '2026-03-02']);
-    expect(days[0].totalSeconds).toBe(300);
-    expect(days[1].totalSeconds).toBe(600);
+    expect(days[0]?.totalSeconds).toBe(300);
+    expect(days[1]?.totalSeconds).toBe(600);
   });
 
   it('attaches trimmed comment to auto entries; blank comment becomes null', () => {
@@ -75,16 +75,16 @@ describe('buildTimelineDays', () => {
       ],
       [],
     );
-    expect(days[0].entries[0].comment).toBe('refactor raportu');
-    expect(days[0].entries[1].comment).toBeNull();
+    expect(days[0]?.entries[0]?.comment).toBe('refactor raportu');
+    expect(days[0]?.entries[1]?.comment).toBeNull();
   });
 
   it('manual entries carry sessionType and never a comment', () => {
     const days = buildTimelineDays([], [makeManual({ id: 5 })]);
-    const entry = days[0].entries[0];
-    expect(entry.kind).toBe('manual');
-    expect(entry.sessionType).toBe('meeting');
-    expect(entry.comment).toBeNull();
-    expect(entry.label).toBe('Spotkanie');
+    const entry = days[0]?.entries[0];
+    expect(entry?.kind).toBe('manual');
+    expect(entry?.sessionType).toBe('meeting');
+    expect(entry?.comment).toBeNull();
+    expect(entry?.label).toBe('Spotkanie');
   });
 });
