@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 /// Konfiguracja serwera MCP. Token jest przechowywany JAWNIE w pliku
 /// mcp_settings.json (katalog danych użytkownika) — świadomie, jak sekret LAN:
 /// użytkownik musi móc go odczytać, by skonfigurować klienta (Claude Code/Codex).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct McpConfig {
     pub enabled: bool,
@@ -13,16 +13,6 @@ pub struct McpConfig {
     pub read_write: bool,
     /// Token Bearer wymagany na KAŻDYM żądaniu /mcp (również loopback).
     pub token: String,
-}
-
-impl Default for McpConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            read_write: false,
-            token: String::new(),
-        }
-    }
 }
 
 impl McpConfig {
