@@ -19,6 +19,11 @@ fn hash_token(token: &str) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Hash do porównań tokenów w stałym czasie (MCP auth).
+pub fn hash_for_compare(token: &str) -> String {
+    hash_token(token)
+}
+
 /// 32 bytes of OS entropy as hex — an unguessable bearer token.
 pub fn random_token() -> String {
     let mut buf = [0u8; 32];
