@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod db_migrations;
 mod webui;
+mod mcp;
 pub const VERSION: &str = env!("TIMEFLOW_VERSION");
 
 /// Load `.env` (SMTP credentials, etc.) from SAFE locations only:
