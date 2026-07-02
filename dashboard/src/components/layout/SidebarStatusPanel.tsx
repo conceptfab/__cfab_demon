@@ -4,6 +4,7 @@ import {
   Bug,
   Cpu,
   HelpCircle,
+  Plug,
   RefreshCw,
   Rocket,
   Settings,
@@ -14,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { SidebarStatusIndicator } from '@/components/layout/SidebarStatusIndicator';
 import { SidebarLanStatusRow } from '@/components/layout/SidebarLanStatusRow';
+import { useMcpStatus } from '@/hooks/useMcpStatus';
 import type { SidebarController } from '@/hooks/useSidebarController';
 
 type SidebarStatusPanelProps = SidebarController & {
@@ -48,6 +50,7 @@ export function SidebarStatusPanel({
   t,
   triggerDaemonOnlineSync,
 }: SidebarStatusPanelProps) {
+  const mcpStatus = useMcpStatus();
   return (
     <div className="space-y-1 p-2 pb-5">
       <div className="space-y-0.5">
@@ -172,6 +175,37 @@ export function SidebarStatusPanel({
               : undefined
           }
         />
+
+        {mcpStatus?.enabled && (
+          <SidebarStatusIndicator
+            collapsed={collapsed}
+            icon={Plug}
+            label={t('layout.status.mcp')}
+            statusText={
+              mcpStatus.active_sessions > 0
+                ? t('layout.status.mcp_sessions', {
+                    count: mcpStatus.active_sessions,
+                  })
+                : mcpStatus.running
+                  ? t('layout.status.running')
+                  : t('layout.status.stopped')
+            }
+            colorClass={
+              mcpStatus.active_sessions > 0
+                ? 'text-sky-400'
+                : mcpStatus.running
+                  ? 'text-emerald-500/80'
+                  : 'text-red-400'
+            }
+            pulse={mcpStatus.active_sessions > 0}
+            onClick={() => goToPage('settings')}
+            title={
+              mcpStatus.read_write
+                ? t('layout.tooltips.mcp_read_write')
+                : t('layout.tooltips.mcp_read_only')
+            }
+          />
+        )}
       </div>
 
       <div
