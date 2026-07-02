@@ -32,9 +32,7 @@ impl IndexedFileActivity {
         let parsed_spans: Vec<(i64, i64)> = activity
             .activity_spans
             .iter()
-            .filter_map(|(s, e)| {
-                Some((parse_datetime_ms_opt(s)?, parse_datetime_ms_opt(e)?))
-            })
+            .filter_map(|(s, e)| Some((parse_datetime_ms_opt(s)?, parse_datetime_ms_opt(e)?)))
             .collect();
 
         Self {

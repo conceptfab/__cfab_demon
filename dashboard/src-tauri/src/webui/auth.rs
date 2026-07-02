@@ -125,7 +125,10 @@ impl AuthState {
             expires_at: now + PAIRING_CODE_TTL_SECS,
         });
         // Fresh code → reset brute-force counter for the new attempt window.
-        self.pair_failures.lock().expect("failures mutex poisoned").clear();
+        self.pair_failures
+            .lock()
+            .expect("failures mutex poisoned")
+            .clear();
     }
 
     /// True if too many failed pairing attempts happened recently.
@@ -169,7 +172,10 @@ impl AuthState {
 
         *pending = None;
         drop(pending);
-        self.pair_failures.lock().expect("failures mutex poisoned").clear();
+        self.pair_failures
+            .lock()
+            .expect("failures mutex poisoned")
+            .clear();
 
         let token = mint_token();
         let session = Session {
@@ -293,7 +299,13 @@ mod tests {
         auth.set_pairing_code("123456".to_string(), 10);
         redeem_ok(&auth, "123456", 20, "token-1");
         assert!(auth
-            .redeem("123456", "x".into(), 21, || "token-2".into(), || "id2".into())
+            .redeem(
+                "123456",
+                "x".into(),
+                21,
+                || "token-2".into(),
+                || "id2".into()
+            )
             .is_err());
     }
 

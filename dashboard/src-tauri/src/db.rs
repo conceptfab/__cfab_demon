@@ -325,7 +325,11 @@ pub fn set_system_setting(app: &AppHandle, key: &str, value: &str) -> Result<(),
     Ok(())
 }
 
-pub fn set_system_setting_conn(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<(), String> {
+pub fn set_system_setting_conn(
+    conn: &rusqlite::Connection,
+    key: &str,
+    value: &str,
+) -> Result<(), String> {
     conn.execute(
         "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
         [key, value],
@@ -667,28 +671,45 @@ mod tests {
         assert_eq!(fixed, 1, "exactly one session should be repaired");
 
         let pid10: Option<i64> = conn
-            .query_row("SELECT project_id FROM sessions WHERE id = 10", [], |r| r.get(0))
+            .query_row("SELECT project_id FROM sessions WHERE id = 10", [], |r| {
+                r.get(0)
+            })
             .expect("query session 10");
         assert_eq!(pid10, Some(1), "session 10 should now have project_id = 1");
 
         let pid11: Option<i64> = conn
-            .query_row("SELECT project_id FROM sessions WHERE id = 11", [], |r| r.get(0))
+            .query_row("SELECT project_id FROM sessions WHERE id = 11", [], |r| {
+                r.get(0)
+            })
             .expect("query session 11");
         assert_eq!(pid11, None, "session 11 (excluded project) must stay NULL");
 
         let pid12: Option<i64> = conn
-            .query_row("SELECT project_id FROM sessions WHERE id = 12", [], |r| r.get(0))
+            .query_row("SELECT project_id FROM sessions WHERE id = 12", [], |r| {
+                r.get(0)
+            })
             .expect("query session 12");
-        assert_eq!(pid12, Some(1), "session 12 (already assigned) must be unchanged");
+        assert_eq!(
+            pid12,
+            Some(1),
+            "session 12 (already assigned) must be unchanged"
+        );
 
         let pid13: Option<i64> = conn
-            .query_row("SELECT project_id FROM sessions WHERE id = 13", [], |r| r.get(0))
+            .query_row("SELECT project_id FROM sessions WHERE id = 13", [], |r| {
+                r.get(0)
+            })
             .expect("query session 13");
         assert_eq!(pid13, None, "session 13 (no project_name) must stay NULL");
 
         let pid14: Option<i64> = conn
-            .query_row("SELECT project_id FROM sessions WHERE id = 14", [], |r| r.get(0))
+            .query_row("SELECT project_id FROM sessions WHERE id = 14", [], |r| {
+                r.get(0)
+            })
             .expect("query session 14");
-        assert_eq!(pid14, None, "session 14 (no matching project) must stay NULL");
+        assert_eq!(
+            pid14, None,
+            "session 14 (no matching project) must stay NULL"
+        );
     }
 }

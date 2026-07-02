@@ -10,9 +10,7 @@ use rusqlite::Connection;
 /// because schema.sql already carries these columns on fresh installs.
 pub fn run(tx: &Connection) -> Result<(), rusqlite::Error> {
     let has_merged_into: bool = tx
-        .prepare(
-            "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name='merged_into'",
-        )?
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name='merged_into'")?
         .query_row([], |row| row.get::<_, i64>(0))
         .map(|c| c > 0)
         .unwrap_or(false);
@@ -22,9 +20,7 @@ pub fn run(tx: &Connection) -> Result<(), rusqlite::Error> {
     }
 
     let has_merged_at: bool = tx
-        .prepare(
-            "SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name='merged_at'",
-        )?
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name='merged_at'")?
         .query_row([], |row| row.get::<_, i64>(0))
         .map(|c| c > 0)
         .unwrap_or(false);

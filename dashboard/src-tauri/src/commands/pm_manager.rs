@@ -1,7 +1,7 @@
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use chrono::Local;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PmProject {
@@ -59,13 +59,12 @@ pub fn read_projects(work_folder: &str) -> Result<Vec<PmProject>, String> {
     if !path.exists() {
         return Ok(vec![]);
     }
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
     if content.trim().is_empty() {
         return Ok(vec![]);
     }
-    serde_json::from_str(&content)
-        .map_err(|e| format!("Invalid JSON in {}: {}", path.display(), e))
+    serde_json::from_str(&content).map_err(|e| format!("Invalid JSON in {}: {}", path.display(), e))
 }
 
 pub fn write_projects(work_folder: &str, projects: &[PmProject]) -> Result<(), String> {
@@ -84,19 +83,20 @@ pub fn write_projects(work_folder: &str, projects: &[PmProject]) -> Result<(), S
 
     let json = serde_json::to_string_pretty(projects)
         .map_err(|e| format!("JSON serialize error: {}", e))?;
-    fs::write(&path, json)
-        .map_err(|e| format!("Cannot write {}: {}", path.display(), e))
+    fs::write(&path, json).map_err(|e| format!("Cannot write {}: {}", path.display(), e))
 }
 
 fn backup_projects_file(path: &Path) -> Result<(), String> {
     let timestamp = Local::now().format("_%H%M%S_%d%m%Y").to_string();
     let backup_name = format!("backup_projects_list{}.json", timestamp);
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("Cannot create backup for path without parent: {}", path.display()))?;
+    let parent = path.parent().ok_or_else(|| {
+        format!(
+            "Cannot create backup for path without parent: {}",
+            path.display()
+        )
+    })?;
     let backup_path = parent.join("backup").join(backup_name);
-    fs::copy(path, &backup_path)
-        .map_err(|e| format!("Backup failed: {}", e))?;
+    fs::copy(path, &backup_path).map_err(|e| format!("Backup failed: {}", e))?;
     Ok(())
 }
 
@@ -121,8 +121,8 @@ fn scan_disk_project_numbers(work_folder: &str, year: &str) -> Vec<u32> {
         let mut parts = name.splitn(3, '_');
         let num_part = parts.next().unwrap_or("");
         let year_part = parts.next().unwrap_or("");
-        let is_num = (2..=3).contains(&num_part.len())
-            && num_part.chars().all(|c| c.is_ascii_digit());
+        let is_num =
+            (2..=3).contains(&num_part.len()) && num_part.chars().all(|c| c.is_ascii_digit());
         if is_num && year_part == year {
             if let Ok(n) = num_part.parse::<u32>() {
                 nums.push(n);
@@ -191,8 +191,8 @@ pub fn read_templates(work_folder: &str) -> Result<Vec<PmFolderTemplate>, String
     if !path.exists() {
         return Ok(vec![default_template()]);
     }
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
     let templates: Vec<PmFolderTemplate> = serde_json::from_str(&content)
         .map_err(|e| format!("Invalid JSON in {}: {}", path.display(), e))?;
     if templates.is_empty() {
@@ -208,16 +208,19 @@ pub fn write_templates(work_folder: &str, templates: &[PmFolderTemplate]) -> Res
     }
     let json = serde_json::to_string_pretty(templates)
         .map_err(|e| format!("JSON serialize error: {}", e))?;
-    fs::write(&path, json)
-        .map_err(|e| format!("Cannot write {}: {}", path.display(), e))
+    fs::write(&path, json).map_err(|e| format!("Cannot write {}: {}", path.display(), e))
 }
 
 fn find_template(templates: &[PmFolderTemplate], id: &str) -> PmFolderTemplate {
-    templates.iter()
+    templates
+        .iter()
         .find(|t| t.id == id)
         .cloned()
         .unwrap_or_else(|| {
-            templates.iter().find(|t| t.is_default).cloned()
+            templates
+                .iter()
+                .find(|t| t.is_default)
+                .cloned()
                 .unwrap_or_else(default_template)
         })
 }
@@ -276,8 +279,7 @@ fn create_dirs_tree(
     template: &PmFolderTemplate,
 ) -> Result<(), String> {
     let project_dir = Path::new(work_folder).join(full_name);
-    fs::create_dir_all(&project_dir)
-        .map_err(|e| format!("Cannot create project dir: {}", e))?;
+    fs::create_dir_all(&project_dir).map_err(|e| format!("Cannot create project dir: {}", e))?;
 
     for (i, folder_suffix) in template.folders.iter().enumerate() {
         let resolved = folder_suffix.replace("{name}", project_name);
@@ -334,39 +336,55 @@ fn clients_file_path(work_folder: &str) -> PathBuf {
 }
 
 /// Read client data. Handles backward compat with old format { "CLIENT": "#hex" }
-pub fn read_client_colors(work_folder: &str) -> Result<std::collections::HashMap<String, ClientInfo>, String> {
+pub fn read_client_colors(
+    work_folder: &str,
+) -> Result<std::collections::HashMap<String, ClientInfo>, String> {
     let path = clients_file_path(work_folder);
     if !path.exists() {
         return Ok(std::collections::HashMap::new());
     }
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("Cannot read {}: {}", path.display(), e))?;
     if content.trim().is_empty() {
         return Ok(std::collections::HashMap::new());
     }
     // Try new format first: { "CLIENT": { color, comment, contact } }
-    if let Ok(data) = serde_json::from_str::<std::collections::HashMap<String, ClientInfo>>(&content) {
+    if let Ok(data) =
+        serde_json::from_str::<std::collections::HashMap<String, ClientInfo>>(&content)
+    {
         return Ok(data);
     }
     // Fallback: old format { "CLIENT": "#hex" }
     if let Ok(old) = serde_json::from_str::<std::collections::HashMap<String, String>>(&content) {
-        let migrated: std::collections::HashMap<String, ClientInfo> = old.into_iter()
-            .map(|(k, v)| (k, ClientInfo { color: v, comment: String::new(), contact: String::new() }))
+        let migrated: std::collections::HashMap<String, ClientInfo> = old
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    ClientInfo {
+                        color: v,
+                        comment: String::new(),
+                        contact: String::new(),
+                    },
+                )
+            })
             .collect();
         return Ok(migrated);
     }
     Err(format!("Invalid JSON in {}", path.display()))
 }
 
-pub fn write_client_colors(work_folder: &str, colors: &std::collections::HashMap<String, ClientInfo>) -> Result<(), String> {
+pub fn write_client_colors(
+    work_folder: &str,
+    colors: &std::collections::HashMap<String, ClientInfo>,
+) -> Result<(), String> {
     let path = clients_file_path(work_folder);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).ok();
     }
-    let json = serde_json::to_string_pretty(colors)
-        .map_err(|e| format!("JSON serialize error: {}", e))?;
-    fs::write(&path, json)
-        .map_err(|e| format!("Cannot write {}: {}", path.display(), e))
+    let json =
+        serde_json::to_string_pretty(colors).map_err(|e| format!("JSON serialize error: {}", e))?;
+    fs::write(&path, json).map_err(|e| format!("Cannot write {}: {}", path.display(), e))
 }
 
 #[cfg(test)]
@@ -392,7 +410,11 @@ mod tests {
     fn scan_disk_picks_matching_year_only() {
         let work = unique_work_folder("scan");
         let year = Local::now().format("%y").to_string();
-        let other_year = if year == "00" { "99".to_string() } else { "00".to_string() };
+        let other_year = if year == "00" {
+            "99".to_string()
+        } else {
+            "00".to_string()
+        };
         mkdir(&work, &format!("01_{}_ACME_Site", year));
         mkdir(&work, &format!("04_{}_ACME_Shop", year));
         mkdir(&work, &format!("07_{}_OLD_Thing", other_year)); // inny rok - pomijany

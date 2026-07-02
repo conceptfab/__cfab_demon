@@ -597,13 +597,19 @@ pub async fn set_training_blacklists(
 
 #[command]
 pub async fn reset_model_weights(app: AppHandle) -> Result<AssignmentModelStatus, String> {
-    run_db_blocking(app.clone(), move |mut conn| reset_model_weights_sync(&mut conn)).await?;
+    run_db_blocking(app.clone(), move |mut conn| {
+        reset_model_weights_sync(&mut conn)
+    })
+    .await?;
     get_assignment_model_status(app).await
 }
 
 #[command]
 pub async fn reset_model_full(app: AppHandle) -> Result<AssignmentModelStatus, String> {
-    run_db_blocking(app.clone(), move |mut conn| reset_model_full_sync(&mut conn)).await?;
+    run_db_blocking(app.clone(), move |mut conn| {
+        reset_model_full_sync(&mut conn)
+    })
+    .await?;
     get_assignment_model_status(app).await
 }
 
@@ -733,10 +739,7 @@ pub async fn scan_project_folders_for_ai(app: AppHandle) -> Result<FolderScanRes
 
 #[command]
 pub async fn get_folder_scan_status(app: AppHandle) -> Result<FolderScanStatus, String> {
-    run_db_blocking(app, |conn| {
-        folder_scan::get_folder_scan_status_sync(conn)
-    })
-    .await
+    run_db_blocking(app, |conn| folder_scan::get_folder_scan_status_sync(conn)).await
 }
 
 #[command]

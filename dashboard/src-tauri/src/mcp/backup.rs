@@ -52,7 +52,10 @@ fn rotate_backups(dir: &Path, keep: usize) -> Result<(), String> {
     while backups.len() > keep {
         let oldest = backups.remove(0);
         if let Err(e) = std::fs::remove_file(&oldest) {
-            log::warn!("[mcp] failed to remove old backup {}: {e}", oldest.display());
+            log::warn!(
+                "[mcp] failed to remove old backup {}: {e}",
+                oldest.display()
+            );
         }
     }
     Ok(())

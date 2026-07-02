@@ -13,10 +13,7 @@ pub fn run(tx: &Connection) -> Result<(), rusqlite::Error> {
             "ALTER TABLE applications ADD COLUMN updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'",
             [],
         )?;
-        tx.execute(
-            "UPDATE applications SET updated_at = datetime('now')",
-            [],
-        )?;
+        tx.execute("UPDATE applications SET updated_at = datetime('now')", [])?;
     }
 
     // 2. Trigger to auto-update applications.updated_at

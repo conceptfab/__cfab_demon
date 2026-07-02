@@ -23,7 +23,10 @@ pub async fn append_sync_log(lines: Vec<String>) -> Result<(), CommandError> {
             // Keep last half instead of full rotate
             if let Ok(content) = fs::read_to_string(&log_path) {
                 let keep = content.len() / 2;
-                let start = content[keep..].find('\n').map(|i| keep + i + 1).unwrap_or(keep);
+                let start = content[keep..]
+                    .find('\n')
+                    .map(|i| keep + i + 1)
+                    .unwrap_or(keep);
                 let _ = fs::write(&log_path, &content[start..]);
             }
         }

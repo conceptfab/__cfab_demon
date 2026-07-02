@@ -45,9 +45,7 @@ pub fn run(tx: &Connection) -> Result<(), rusqlite::Error> {
         .map(|c| c > 0)
         .unwrap_or(false);
     if !has_status {
-        tx.execute_batch(
-            "ALTER TABLE projects ADD COLUMN status TEXT NOT NULL DEFAULT 'active';",
-        )?;
+        tx.execute_batch("ALTER TABLE projects ADD COLUMN status TEXT NOT NULL DEFAULT 'active';")?;
     }
 
     Ok(())

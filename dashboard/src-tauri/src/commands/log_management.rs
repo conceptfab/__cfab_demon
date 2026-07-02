@@ -33,8 +33,12 @@ pub struct LogSettings {
     pub max_log_size_kb: u32,
 }
 
-fn default_level() -> String { "info".to_string() }
-fn default_max_size() -> u32 { 1024 }
+fn default_level() -> String {
+    "info".to_string()
+}
+fn default_max_size() -> u32 {
+    1024
+}
 
 impl Default for LogSettings {
     fn default() -> Self {
@@ -66,7 +70,8 @@ pub async fn get_log_settings() -> Result<LogSettings, CommandError> {
 pub async fn save_log_settings(settings: LogSettings) -> Result<(), CommandError> {
     let base = timeflow_data_dir()?;
     let path = base.join("log_settings.json");
-    let json = serde_json::to_string_pretty(&settings).map_err(|e| CommandError::Other(e.to_string()))?;
+    let json =
+        serde_json::to_string_pretty(&settings).map_err(|e| CommandError::Other(e.to_string()))?;
     tokio::task::spawn_blocking(move || std::fs::write(&path, json))
         .await
         .map_err(|e| CommandError::Other(format!("spawn_blocking join error: {e}")))?

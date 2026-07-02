@@ -22,7 +22,9 @@ pub async fn get_daemon_status(
 }
 
 #[tauri::command]
-pub async fn get_daemon_runtime_status(app: AppHandle) -> Result<super::DaemonStatus, CommandError> {
+pub async fn get_daemon_runtime_status(
+    app: AppHandle,
+) -> Result<super::DaemonStatus, CommandError> {
     run_app_blocking(app, move |app| build_daemon_status(&app, None, false))
         .await
         .map_err(CommandError::Other)
@@ -44,7 +46,9 @@ pub async fn get_autostart_enabled() -> Result<bool, CommandError> {
 }
 
 #[tauri::command]
-pub async fn get_background_diagnostics(app: AppHandle) -> Result<BackgroundDiagnostics, CommandError> {
+pub async fn get_background_diagnostics(
+    app: AppHandle,
+) -> Result<BackgroundDiagnostics, CommandError> {
     use crate::commands::get_assignment_model_status;
     use crate::commands::get_session_count;
     use crate::commands::types::SessionFilters;

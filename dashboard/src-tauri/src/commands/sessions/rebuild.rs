@@ -9,11 +9,7 @@ use super::super::sql_fragments::ACTIVE_SESSION_FILTER;
 /// sesji NIE zmienia tej wartości — jeśli zmienia się po rebuildzie, to
 /// znaczy że gubimy czas (regresja). `intervals` może być w dowolnej kolejności.
 fn union_seconds(intervals: &[(i64, i64)]) -> i64 {
-    let mut iv: Vec<(i64, i64)> = intervals
-        .iter()
-        .copied()
-        .filter(|(s, e)| *e > *s)
-        .collect();
+    let mut iv: Vec<(i64, i64)> = intervals.iter().copied().filter(|(s, e)| *e > *s).collect();
     if iv.is_empty() {
         return 0;
     }
@@ -36,7 +32,10 @@ fn union_seconds(intervals: &[(i64, i64)]) -> i64 {
 }
 
 pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i64, String> {
-    run_db_blocking(app, move |conn| rebuild_sessions_conn(conn, gap_fill_minutes)).await
+    run_db_blocking(app, move |conn| {
+        rebuild_sessions_conn(conn, gap_fill_minutes)
+    })
+    .await
 }
 
 pub(crate) fn rebuild_sessions_conn(
@@ -106,8 +105,12 @@ pub(crate) fn rebuild_sessions_conn(
 
     // --- DIAGNOSTYKA: stan przed scalaniem ---
     let raw_sum_before: i64 = sessions.iter().map(|s| s.duration_seconds).sum();
-    let union_before =
-        union_seconds(&sessions.iter().map(|s| (s.start_ms, s.end_ms)).collect::<Vec<_>>());
+    let union_before = union_seconds(
+        &sessions
+            .iter()
+            .map(|s| (s.start_ms, s.end_ms))
+            .collect::<Vec<_>>(),
+    );
     log::info!(
         "Rebuild PRZED: {} aktywnych sesji, suma duration_seconds={}s ({:.2}h), unia wall-clock={}s ({:.2}h)",
         sessions.len(),
@@ -131,8 +134,7 @@ pub(crate) fn rebuild_sessions_conn(
 
             if curr_app_id == sessions[i].app_id
                 && curr_proj_id == sessions[i].project_id
-                && (sessions[c_idx].rate_multiplier - sessions[i].rate_multiplier).abs()
-                    < 0.000_001
+                && (sessions[c_idx].rate_multiplier - sessions[i].rate_multiplier).abs() < 0.000_001
                 && (sessions[i].start_ms - curr_end) <= gap_ms
             {
                 let gap_duration = ((sessions[i].start_ms - curr_end) / 1000).max(0);
@@ -140,8 +142,7 @@ pub(crate) fn rebuild_sessions_conn(
                 // Only count the portion of the merged session that extends beyond
                 // curr_end — the shared interval must not be double-counted.
                 let non_overlap_secs =
-                    ((sessions[i].end_ms - std::cmp::max(sessions[i].start_ms, curr_end))
-                        / 1000)
+                    ((sessions[i].end_ms - std::cmp::max(sessions[i].start_ms, curr_end)) / 1000)
                         .max(0);
                 // Clamp guards against corrupted rows with negative
                 // duration_seconds shrinking the survivor.
@@ -216,7 +217,10 @@ pub(crate) fn rebuild_sessions_conn(
     if !to_delete.is_empty() {
         let placeholders = to_delete.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         tx.execute(
-            &format!("UPDATE sessions SET is_hidden = 1 WHERE id IN ({})", placeholders),
+            &format!(
+                "UPDATE sessions SET is_hidden = 1 WHERE id IN ({})",
+                placeholders
+            ),
             rusqlite::params_from_iter(to_delete.iter()),
         )
         .map_err(|e| e.to_string())?;

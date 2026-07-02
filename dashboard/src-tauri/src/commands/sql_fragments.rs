@@ -46,13 +46,10 @@ macro_rules! active_session_filter {
 pub const ACTIVE_SESSION_FILTER: &str = active_session_filter!();
 pub const ACTIVE_SESSION_FILTER_S: &str = active_session_filter!("s");
 
-pub const SESSION_PROJECT_CTE: &str = session_project_cte!(concat!(
-    "spc.session_date >= ?1 AND spc.session_date <= ?2"
-));
+pub const SESSION_PROJECT_CTE: &str =
+    session_project_cte!(concat!("spc.session_date >= ?1 AND spc.session_date <= ?2"));
 
-pub const SESSION_PROJECT_CTE_ALL_TIME: &str = session_project_cte!(concat!(
-    "1=1"
-));
+pub const SESSION_PROJECT_CTE_ALL_TIME: &str = session_project_cte!(concat!("1=1"));
 
 fn mark_cache_day_missing_sql(all_time: bool) -> String {
     let where_clause = if all_time {
@@ -183,8 +180,11 @@ FROM resolved_sessions"
         )
     })?;
 
-    conn.execute("DELETE FROM session_project_cache_dirty WHERE date = ?1", [date])
-        .map_err(|e| format!("Failed to clear dirty flag for {}: {}", date, e))?;
+    conn.execute(
+        "DELETE FROM session_project_cache_dirty WHERE date = ?1",
+        [date],
+    )
+    .map_err(|e| format!("Failed to clear dirty flag for {}: {}", date, e))?;
 
     Ok(())
 }
@@ -232,18 +232,14 @@ fn collect_cache_dates(
             .query_map([start, end], |row| row.get::<_, String>(0))
             .map_err(|e| format!("Failed to query missing cache dates: {}", e))?;
         for row in missing_rows {
-            dates.insert(
-                row.map_err(|e| format!("Failed to read missing cache date row: {}", e))?,
-            );
+            dates.insert(row.map_err(|e| format!("Failed to read missing cache date row: {}", e))?);
         }
     } else {
         let missing_rows = missing_stmt
             .query_map([], |row| row.get::<_, String>(0))
             .map_err(|e| format!("Failed to query missing cache dates: {}", e))?;
         for row in missing_rows {
-            dates.insert(
-                row.map_err(|e| format!("Failed to read missing cache date row: {}", e))?,
-            );
+            dates.insert(row.map_err(|e| format!("Failed to read missing cache date row: {}", e))?);
         }
     }
 
@@ -271,17 +267,18 @@ pub(crate) fn ensure_session_project_cache(
     Ok(())
 }
 
-pub(crate) fn ensure_session_project_cache_all(
-    conn: &rusqlite::Connection,
-) -> Result<(), String> {
+pub(crate) fn ensure_session_project_cache_all(conn: &rusqlite::Connection) -> Result<(), String> {
     let dates = collect_cache_dates(conn, None, None)?;
     if dates.is_empty() {
         return Ok(());
     }
 
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|e| format!("Failed to start full session_project_cache transaction: {}", e))?;
+    let tx = conn.unchecked_transaction().map_err(|e| {
+        format!(
+            "Failed to start full session_project_cache transaction: {}",
+            e
+        )
+    })?;
     for date in dates {
         rebuild_session_project_cache_day(&tx, &date)?;
     }

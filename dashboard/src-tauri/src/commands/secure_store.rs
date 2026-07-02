@@ -99,6 +99,9 @@ mod tests {
     fn decodes_plaintext_legacy_token() {
         // On non-Windows this is a plain utf8+trim; on Windows the DPAPI decrypt
         // fails for non-blob input and falls back to the same utf8 path.
-        assert_eq!(decode_legacy_token(b"  legacy-xyz\n").unwrap(), "legacy-xyz");
+        assert_eq!(
+            decode_legacy_token(b"  legacy-xyz\n").unwrap(),
+            "legacy-xyz"
+        );
     }
 }

@@ -8,9 +8,9 @@ use super::analysis::{
     compute_project_activity_unique, compute_project_clock_totals_by_id, daily_seconds_by_series,
     query_activity_date_range,
 };
-use super::time_algorithm::distribute_app_seconds;
 use super::helpers::{name_hash, run_db_blocking, LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
 use super::sql_fragments::{ensure_session_project_cache, SESSION_PROJECT_CTE};
+use super::time_algorithm::distribute_app_seconds;
 use super::types::{
     DateRange, FolderProjectCandidate, FolderSyncResult, Project, ProjectDbStats, ProjectExtraInfo,
     ProjectFolder, ProjectWithStats, TopApp,
@@ -21,7 +21,9 @@ pub(crate) fn load_project_folders_from_db(
     conn: &rusqlite::Connection,
 ) -> Result<Vec<ProjectFolder>, String> {
     let mut stmt = conn
-        .prepare_cached("SELECT path, added_at, color, category, badge FROM project_folders ORDER BY added_at")
+        .prepare_cached(
+            "SELECT path, added_at, color, category, badge FROM project_folders ORDER BY added_at",
+        )
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
@@ -631,15 +633,8 @@ pub(crate) fn query_active_project_with_stats(
     let (total_seconds, daily_seconds) = if let Some(all_time_range) =
         query_activity_date_range(conn)?
     {
-        let (buckets, totals, meta, _, _) = compute_project_activity_unique(
-            conn,
-            &all_time_range,
-            false,
-            true,
-            None,
-            None,
-            true,
-        )?;
+        let (buckets, totals, meta, _, _) =
+            compute_project_activity_unique(conn, &all_time_range, false, true, None, None, true)?;
         // Klucz serii tego projektu (scalone dzieci foldują się do rodzica).
         match meta
             .iter()
@@ -888,10 +883,7 @@ pub async fn unmerge_project(app: AppHandle, id: i64) -> Result<(), CommandError
 /// last `days` days and older than `days` since creation). Does **not**
 /// unfreeze anything — unfreeze is a manual-only operation. Callers must
 /// pass `days >= 1`.
-fn auto_freeze_stale_projects(
-    conn: &rusqlite::Connection,
-    days: i64,
-) -> rusqlite::Result<i64> {
+fn auto_freeze_stale_projects(conn: &rusqlite::Connection, days: i64) -> rusqlite::Result<i64> {
     conn.execute(
         "UPDATE projects
          SET unfreeze_reason = NULL
@@ -947,8 +939,7 @@ pub async fn auto_freeze_projects(
 ) -> Result<AutoFreezeResult, CommandError> {
     run_db_blocking(app, move |conn| {
         let days = threshold_days.unwrap_or(14).max(1);
-        let frozen_count = auto_freeze_stale_projects(conn, days)
-            .map_err(|e| e.to_string())?;
+        let frozen_count = auto_freeze_stale_projects(conn, days).map_err(|e| e.to_string())?;
         Ok(AutoFreezeResult { frozen_count })
     })
     .await
@@ -1609,11 +1600,10 @@ pub async fn auto_create_projects_from_detection(
             // Only accept candidates that resolve to an actual project folder.
             // This prevents window titles like "Copy Settings", "Fill" etc. from
             // being created as projects.
-            let project_name =
-                match infer_project_from_path(candidate, &project_roots) {
-                    Some(name) => name,
-                    None => continue,
-                };
+            let project_name = match infer_project_from_path(candidate, &project_roots) {
+                Some(name) => name,
+                None => continue,
+            };
 
             if create_project_if_missing(conn, &project_name)? {
                 created += 1;
@@ -1947,8 +1937,12 @@ mod tests {
 
         merge_project_in_conn(&mut conn, 2, 1).unwrap();
 
-        let (merged_into, merged_at, excluded_at): (Option<String>, Option<String>, Option<String>) =
-            conn.query_row(
+        let (merged_into, merged_at, excluded_at): (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = conn
+            .query_row(
                 "SELECT merged_into, merged_at, excluded_at FROM projects WHERE id = 2",
                 [],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
@@ -1956,7 +1950,10 @@ mod tests {
             .unwrap();
         assert_eq!(merged_into.as_deref(), Some("Proj_final"));
         assert!(merged_at.is_some());
-        assert!(excluded_at.is_some(), "merged project must be auto-excluded");
+        assert!(
+            excluded_at.is_some(),
+            "merged project must be auto-excluded"
+        );
 
         let app_project: Option<i64> = conn
             .query_row(
@@ -1976,7 +1973,10 @@ mod tests {
              INSERT INTO projects (id, name, created_at, excluded_at) VALUES (2, 'B', datetime('now'), datetime('now'));",
         )
         .unwrap();
-        assert!(merge_project_in_conn(&mut conn, 1, 1).is_err(), "self-merge");
+        assert!(
+            merge_project_in_conn(&mut conn, 1, 1).is_err(),
+            "self-merge"
+        );
         assert!(
             merge_project_in_conn(&mut conn, 1, 2).is_err(),
             "excluded target"
@@ -1995,11 +1995,9 @@ mod tests {
         merge_project_in_conn(&mut conn, 3, 2).unwrap();
         merge_project_in_conn(&mut conn, 2, 1).unwrap();
         let parent_of_stage1: Option<String> = conn
-            .query_row(
-                "SELECT merged_into FROM projects WHERE id = 3",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT merged_into FROM projects WHERE id = 3", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(parent_of_stage1.as_deref(), Some("final"));
     }
@@ -2015,8 +2013,7 @@ mod tests {
         .unwrap();
         merge_project_in_conn(&mut conn, 2, 1).unwrap();
 
-        let excluded =
-            query_projects_with_stats(&conn, ProjectListFilter::Excluded, None).unwrap();
+        let excluded = query_projects_with_stats(&conn, ProjectListFilter::Excluded, None).unwrap();
         assert_eq!(excluded.len(), 1);
         assert_eq!(excluded[0].name, "old");
 
@@ -2050,7 +2047,10 @@ mod tests {
         let active = query_projects_with_stats(&conn, ProjectListFilter::Active, None).unwrap();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].name, "final");
-        assert_eq!(active[0].total_seconds, 5400, "active parent rolls child time");
+        assert_eq!(
+            active[0].total_seconds, 5400,
+            "active parent rolls child time"
+        );
 
         conn.execute(
             "UPDATE projects SET excluded_at = datetime('now') WHERE id = 1",
@@ -2058,8 +2058,7 @@ mod tests {
         )
         .unwrap();
 
-        let excluded =
-            query_projects_with_stats(&conn, ProjectListFilter::Excluded, None).unwrap();
+        let excluded = query_projects_with_stats(&conn, ProjectListFilter::Excluded, None).unwrap();
         assert_eq!(excluded.len(), 1);
         assert_eq!(excluded[0].name, "final");
         assert_eq!(
@@ -2087,11 +2086,9 @@ mod tests {
         conn.execute("UPDATE projects SET name = 'final_v2' WHERE id = 1", [])
             .unwrap();
         let m: Option<String> = conn
-            .query_row(
-                "SELECT merged_into FROM projects WHERE id = 2",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT merged_into FROM projects WHERE id = 2", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(
             m.as_deref(),
@@ -2155,7 +2152,10 @@ mod tests {
                 r.get(0)
             })
             .unwrap();
-        assert_eq!(session_pid, None, "session project_id must be nulled, not left dangling");
+        assert_eq!(
+            session_pid, None,
+            "session project_id must be nulled, not left dangling"
+        );
     }
 
     #[test]
@@ -2312,11 +2312,9 @@ mod tests {
         );
 
         let frozen_at: Option<String> = conn
-            .query_row(
-                "SELECT frozen_at FROM projects WHERE id = 10",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT frozen_at FROM projects WHERE id = 10", [], |row| {
+                row.get(0)
+            })
             .expect("select frozen_at");
 
         assert!(
@@ -2339,14 +2337,15 @@ mod tests {
 
         let frozen_count = auto_freeze_stale_projects(&conn, 14).expect("auto-freeze");
 
-        assert_eq!(frozen_count, 1, "stale project without activity must be frozen");
+        assert_eq!(
+            frozen_count, 1,
+            "stale project without activity must be frozen"
+        );
 
         let frozen_at: Option<String> = conn
-            .query_row(
-                "SELECT frozen_at FROM projects WHERE id = 20",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT frozen_at FROM projects WHERE id = 20", [], |row| {
+                row.get(0)
+            })
             .expect("select frozen_at");
 
         assert!(frozen_at.is_some(), "StaleAlive should now be frozen");
@@ -2372,14 +2371,15 @@ mod tests {
 
         let frozen_count = auto_freeze_stale_projects(&conn, 14).expect("auto-freeze");
 
-        assert_eq!(frozen_count, 0, "project with recent activity must stay active");
+        assert_eq!(
+            frozen_count, 0,
+            "project with recent activity must stay active"
+        );
 
         let frozen_at: Option<String> = conn
-            .query_row(
-                "SELECT frozen_at FROM projects WHERE id = 30",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT frozen_at FROM projects WHERE id = 30", [], |row| {
+                row.get(0)
+            })
             .expect("select frozen_at");
 
         assert!(frozen_at.is_none(), "active project must not be frozen");
@@ -2429,11 +2429,9 @@ mod tests {
         freeze_project_in_conn(&mut conn, 50).expect("freeze");
 
         let frozen_at: Option<String> = conn
-            .query_row(
-                "SELECT frozen_at FROM projects WHERE id = 50",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT frozen_at FROM projects WHERE id = 50", [], |row| {
+                row.get(0)
+            })
             .expect("select frozen_at");
         assert!(frozen_at.is_some(), "project must be frozen");
 
@@ -2490,7 +2488,11 @@ mod tests {
         merge_project_in_conn(&mut conn, 2, 1).unwrap();
 
         let resolved = ensure_app_project_from_file_hint(&conn, "notes.txt - Proj_stage1", &[]);
-        assert_eq!(resolved, Some(1), "hint for merged stage must resolve to parent");
+        assert_eq!(
+            resolved,
+            Some(1),
+            "hint for merged stage must resolve to parent"
+        );
     }
 
     #[test]
@@ -2562,8 +2564,7 @@ mod tests {
             end: "2026-01-05".to_string(),
         };
 
-        let rolled =
-            super::compute_project_clock_totals_by_id(&conn, &range, false, true).unwrap();
+        let rolled = super::compute_project_clock_totals_by_id(&conn, &range, false, true).unwrap();
         assert_eq!(rolled.get(&1).copied().map(f64::round), Some(5400.0));
         assert!(
             !rolled.contains_key(&2),
@@ -2586,6 +2587,9 @@ mod tests {
         merge_project_in_conn(&mut conn, 2, 1).unwrap();
         freeze_project_in_conn(&mut conn, 1).unwrap();
         let resolved = ensure_app_project_from_file_hint(&conn, "notes.txt - Proj_stage1", &[]);
-        assert_eq!(resolved, None, "frozen parent must not receive merged-stage hints");
+        assert_eq!(
+            resolved, None,
+            "frozen parent must not receive merged-stage hints"
+        );
     }
 }

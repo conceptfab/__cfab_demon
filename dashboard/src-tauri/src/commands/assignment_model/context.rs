@@ -22,21 +22,101 @@ pub struct SessionContext {
 /// Tokens considered too common to carry project-discriminating signal.
 const STOP_TOKENS: &[&str] = &[
     // filesystem / code structure
-    "src", "lib", "app", "bin", "pkg", "cmd", "api", "dist", "build", "out",
-    "node_modules", "vendor", "target", "debug", "release",
-    "index", "main", "mod", "init", "setup", "config", "utils", "helpers",
-    "test", "tests", "spec", "specs", "bench",
-    "tmp", "temp", "cache", "log", "logs",
+    "src",
+    "lib",
+    "app",
+    "bin",
+    "pkg",
+    "cmd",
+    "api",
+    "dist",
+    "build",
+    "out",
+    "node_modules",
+    "vendor",
+    "target",
+    "debug",
+    "release",
+    "index",
+    "main",
+    "mod",
+    "init",
+    "setup",
+    "config",
+    "utils",
+    "helpers",
+    "test",
+    "tests",
+    "spec",
+    "specs",
+    "bench",
+    "tmp",
+    "temp",
+    "cache",
+    "log",
+    "logs",
     // common file extensions leaked as tokens
-    "rs", "ts", "js", "tsx", "jsx", "py", "go", "css", "html", "json", "toml", "yaml", "yml",
-    "md", "txt", "xml", "svg", "png", "jpg",
+    "rs",
+    "ts",
+    "js",
+    "tsx",
+    "jsx",
+    "py",
+    "go",
+    "css",
+    "html",
+    "json",
+    "toml",
+    "yaml",
+    "yml",
+    "md",
+    "txt",
+    "xml",
+    "svg",
+    "png",
+    "jpg",
     // English function words
-    "the", "and", "for", "with", "from", "into", "that", "this", "not", "but",
-    "all", "are", "was", "were", "been", "have", "has", "had", "will", "would",
-    "new", "old", "get", "set", "add", "del", "run", "use",
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "into",
+    "that",
+    "this",
+    "not",
+    "but",
+    "all",
+    "are",
+    "was",
+    "were",
+    "been",
+    "have",
+    "has",
+    "had",
+    "will",
+    "would",
+    "new",
+    "old",
+    "get",
+    "set",
+    "add",
+    "del",
+    "run",
+    "use",
     // common IDE / UI labels
-    "file", "edit", "view", "window", "help", "tools", "terminal", "output",
-    "untitled", "welcome", "settings", "preferences",
+    "file",
+    "edit",
+    "view",
+    "window",
+    "help",
+    "tools",
+    "terminal",
+    "output",
+    "untitled",
+    "welcome",
+    "settings",
+    "preferences",
 ];
 
 /// Folds Polish diacritics so "Łódź" and "lodz" produce the same token.
@@ -249,7 +329,8 @@ pub fn build_session_context(
         let project_id: Option<i64> = row.get(3).map_err(|e| e.to_string())?;
         let window_title: Option<String> = row.get(4).map_err(|e| e.to_string())?;
         let title_history: Option<String> = row.get(5).map_err(|e| e.to_string())?;
-        let activity_spans_json: String = row.get::<_, String>(6).unwrap_or_else(|_| "[]".to_string());
+        let activity_spans_json: String =
+            row.get::<_, String>(6).unwrap_or_else(|_| "[]".to_string());
         let activity_spans: Vec<(String, String)> =
             serde_json::from_str(&activity_spans_json).unwrap_or_default();
         let file_first_seen: String = row.get(7).map_err(|e| e.to_string())?;
@@ -259,7 +340,9 @@ pub fn build_session_context(
         if !activity_spans.is_empty() {
             let has_overlap = activity_spans.iter().any(|(s, e)| {
                 if let (Some(span_s), Some(span_e)) = (parse_timestamp(s), parse_timestamp(e)) {
-                    if let (Some(ss), Some(se)) = (parse_timestamp(&start_time), parse_timestamp(&end_time)) {
+                    if let (Some(ss), Some(se)) =
+                        (parse_timestamp(&start_time), parse_timestamp(&end_time))
+                    {
                         span_s < se && span_e > ss
                     } else {
                         true
@@ -301,7 +384,9 @@ pub fn build_session_context(
             }
         }
         for title in parse_title_history(title_history.as_deref()) {
-            for token in tokenize(&timeflow_shared::title_parser::extract_file_from_title(&title)) {
+            for token in tokenize(&timeflow_shared::title_parser::extract_file_from_title(
+                &title,
+            )) {
                 if uniq_tokens.insert(token.clone()) {
                     tokens.push(token);
                 }
@@ -451,9 +536,18 @@ mod tests {
         .unwrap();
 
         let ctx = build_session_context(&conn, 1).expect("ctx").expect("some");
-        assert!(ctx.file_project_weights.contains_key(&10), "Alpha (path) should be the candidate");
-        assert!(!ctx.file_project_weights.contains_key(&20), "stored Beta must be ignored when path disagrees");
-        assert!(ctx.path_inferred.contains(&10), "Alpha should be flagged as path-inferred");
+        assert!(
+            ctx.file_project_weights.contains_key(&10),
+            "Alpha (path) should be the candidate"
+        );
+        assert!(
+            !ctx.file_project_weights.contains_key(&20),
+            "stored Beta must be ignored when path disagrees"
+        );
+        assert!(
+            ctx.path_inferred.contains(&10),
+            "Alpha should be flagged as path-inferred"
+        );
     }
 
     #[test]
@@ -468,8 +562,14 @@ mod tests {
         .unwrap();
 
         let ctx = build_session_context(&conn, 1).expect("ctx").expect("some");
-        assert!(ctx.file_project_weights.contains_key(&20), "fallback to stored project_id");
-        assert!(!ctx.path_inferred.contains(&20), "stored evidence must not be flagged as path-inferred");
+        assert!(
+            ctx.file_project_weights.contains_key(&20),
+            "fallback to stored project_id"
+        );
+        assert!(
+            !ctx.path_inferred.contains(&20),
+            "stored evidence must not be flagged as path-inferred"
+        );
     }
 
     #[test]
@@ -487,7 +587,8 @@ mod tests {
         let ctx = build_session_context(&conn, 1).expect("ctx").expect("some");
         assert!(ctx.tokens.contains(&"raport".to_string()));
         assert!(
-            !ctx.tokens.contains(&"microsoft".to_string()) && !ctx.tokens.contains(&"word".to_string()),
+            !ctx.tokens.contains(&"microsoft".to_string())
+                && !ctx.tokens.contains(&"word".to_string()),
             "app-name suffix must be stripped before tokenization, got {:?}",
             ctx.tokens
         );

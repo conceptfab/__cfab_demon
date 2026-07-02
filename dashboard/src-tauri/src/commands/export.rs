@@ -74,7 +74,10 @@ fn build_export_archive(
 
         // 2. Fetch Projects
         let project_query = if project_id.is_some() {
-            format!("{} WHERE id = ?1", timeflow_shared::sync::columns::PROJECT_SELECT)
+            format!(
+                "{} WHERE id = ?1",
+                timeflow_shared::sync::columns::PROJECT_SELECT
+            )
         } else {
             timeflow_shared::sync::columns::PROJECT_SELECT.to_string()
         };
@@ -488,7 +491,8 @@ pub async fn export_data(
         .await;
 
     if let Some(file_handle) = path {
-        let json = serde_json::to_string_pretty(&archive).map_err(|e| CommandError::Other(e.to_string()))?;
+        let json = serde_json::to_string_pretty(&archive)
+            .map_err(|e| CommandError::Other(e.to_string()))?;
         fs::write(file_handle.path(), json).map_err(|e| CommandError::Other(e.to_string()))?;
         Ok(file_handle.path().to_string_lossy().to_string())
     } else {

@@ -523,8 +523,8 @@ fn split_multi_preserves_total_duration_and_writes_feedback_per_part() {
 }
 
 mod rebuild_tests {
-    use super::setup_conn;
     use super::super::rebuild::rebuild_sessions_conn;
+    use super::setup_conn;
 
     fn insert_session(
         conn: &rusqlite::Connection,
@@ -556,8 +556,22 @@ mod rebuild_tests {
     fn merging_overlapping_sessions_does_not_inflate_duration() {
         let mut conn = setup_conn();
         // A 10:00-11:00 (3600s) and B 10:30-11:30 (3600s) — union span = 5400s.
-        let a = insert_session(&conn, 1, Some(1), "2026-01-05T10:00:00+00:00", "2026-01-05T11:00:00+00:00", 3600);
-        let b = insert_session(&conn, 1, Some(1), "2026-01-05T10:30:00+00:00", "2026-01-05T11:30:00+00:00", 3600);
+        let a = insert_session(
+            &conn,
+            1,
+            Some(1),
+            "2026-01-05T10:00:00+00:00",
+            "2026-01-05T11:00:00+00:00",
+            3600,
+        );
+        let b = insert_session(
+            &conn,
+            1,
+            Some(1),
+            "2026-01-05T10:30:00+00:00",
+            "2026-01-05T11:30:00+00:00",
+            3600,
+        );
 
         rebuild_sessions_conn(&mut conn, 5).expect("rebuild");
 
@@ -565,14 +579,31 @@ mod rebuild_tests {
         let (_end_b, _dur_b, hidden_b) = session_row(&conn, b);
         assert_eq!(hidden_a, 0);
         assert_eq!(hidden_b, 1, "merged session must be hidden");
-        assert_eq!(dur_a, 5400, "merged duration = union, not sum (7200 = old bug)");
+        assert_eq!(
+            dur_a, 5400,
+            "merged duration = union, not sum (7200 = old bug)"
+        );
     }
 
     #[test]
     fn fully_contained_session_adds_zero_duration() {
         let mut conn = setup_conn();
-        let a = insert_session(&conn, 1, Some(1), "2026-01-05T10:00:00+00:00", "2026-01-05T12:00:00+00:00", 7200);
-        let b = insert_session(&conn, 1, Some(1), "2026-01-05T10:30:00+00:00", "2026-01-05T11:00:00+00:00", 1800);
+        let a = insert_session(
+            &conn,
+            1,
+            Some(1),
+            "2026-01-05T10:00:00+00:00",
+            "2026-01-05T12:00:00+00:00",
+            7200,
+        );
+        let b = insert_session(
+            &conn,
+            1,
+            Some(1),
+            "2026-01-05T10:30:00+00:00",
+            "2026-01-05T11:00:00+00:00",
+            1800,
+        );
 
         rebuild_sessions_conn(&mut conn, 5).expect("rebuild");
 
@@ -587,8 +618,22 @@ mod rebuild_tests {
         let mut conn = setup_conn();
         // Lexicographically "02:30+01:00" < "03:00+02:00", but chronologically
         // 03:00+02:00 (=01:00Z) is EARLIER than 02:30+01:00 (=01:30Z).
-        let later = insert_session(&conn, 1, Some(1), "2026-01-05T02:30:00+01:00", "2026-01-05T03:00:00+01:00", 1800);
-        let earlier = insert_session(&conn, 1, Some(1), "2026-01-05T03:00:00+02:00", "2026-01-05T03:30:00+02:00", 1800);
+        let later = insert_session(
+            &conn,
+            1,
+            Some(1),
+            "2026-01-05T02:30:00+01:00",
+            "2026-01-05T03:00:00+01:00",
+            1800,
+        );
+        let earlier = insert_session(
+            &conn,
+            1,
+            Some(1),
+            "2026-01-05T03:00:00+02:00",
+            "2026-01-05T03:30:00+02:00",
+            1800,
+        );
 
         rebuild_sessions_conn(&mut conn, 5).expect("rebuild");
 
@@ -603,12 +648,23 @@ mod rebuild_tests {
     #[test]
     fn short_sessions_are_not_deleted() {
         let mut conn = setup_conn();
-        let short = insert_session(&conn, 1, Some(1), "2026-01-05T10:00:00+00:00", "2026-01-05T10:00:10+00:00", 10);
+        let short = insert_session(
+            &conn,
+            1,
+            Some(1),
+            "2026-01-05T10:00:00+00:00",
+            "2026-01-05T10:00:10+00:00",
+            10,
+        );
 
         rebuild_sessions_conn(&mut conn, 5).expect("rebuild");
 
         let exists: i64 = conn
-            .query_row("SELECT COUNT(*) FROM sessions WHERE id = ?1", [short], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM sessions WHERE id = ?1",
+                [short],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(exists, 1, "rebuild must not physically delete short sessions — min-duration filter works at read time");
     }
@@ -651,8 +707,8 @@ fn apply_manual_overrides_skips_frozen_project() {
     )
     .expect("insert override");
 
-    let reapplied = super::manual_overrides::apply_manual_session_overrides(&conn)
-        .expect("apply overrides ok");
+    let reapplied =
+        super::manual_overrides::apply_manual_session_overrides(&conn).expect("apply overrides ok");
 
     assert_eq!(
         reapplied, 0,
@@ -705,8 +761,8 @@ fn apply_manual_overrides_still_works_for_active_project() {
     )
     .expect("insert override");
 
-    let reapplied = super::manual_overrides::apply_manual_session_overrides(&conn)
-        .expect("apply overrides ok");
+    let reapplied =
+        super::manual_overrides::apply_manual_session_overrides(&conn).expect("apply overrides ok");
 
     assert_eq!(reapplied, 1, "active project should be reapplied");
 
@@ -717,5 +773,9 @@ fn apply_manual_overrides_still_works_for_active_project() {
             |row| row.get(0),
         )
         .expect("read session");
-    assert_eq!(project_id, Some(10), "session should be assigned to Alpha (id=10)");
+    assert_eq!(
+        project_id,
+        Some(10),
+        "session should be assigned to Alpha (id=10)"
+    );
 }

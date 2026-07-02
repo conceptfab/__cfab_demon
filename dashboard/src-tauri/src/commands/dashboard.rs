@@ -13,8 +13,8 @@ use super::sql_fragments::{
     SESSION_PROJECT_CTE,
 };
 use super::types::{
-    AppWithStats, DashboardData, DashboardStats, DateRange, ProjectTimeRow,
-    StackedSeriesMeta, TimelinePoint, TopApp, TopProject,
+    AppWithStats, DashboardData, DashboardStats, DateRange, ProjectTimeRow, StackedSeriesMeta,
+    TimelinePoint, TopApp, TopProject,
 };
 
 fn build_dashboard_stats(
@@ -79,7 +79,9 @@ fn build_dashboard_stats(
          WHERE s.date >= ?1 AND s.date <= ?2 AND {ACTIVE_SESSION_FILTER_S}
          GROUP BY s.app_id, s.date",
     );
-    let mut daily_app_stmt = conn.prepare_cached(&daily_app_sql).map_err(|e| e.to_string())?;
+    let mut daily_app_stmt = conn
+        .prepare_cached(&daily_app_sql)
+        .map_err(|e| e.to_string())?;
     let daily_app_rows = daily_app_stmt
         .query_map(
             rusqlite::params![&date_range.start, &date_range.end],
@@ -444,16 +446,15 @@ pub async fn get_timeline(
     date_range: DateRange,
 ) -> Result<Vec<TimelinePoint>, CommandError> {
     run_db_blocking(app, move |conn| {
-        let (bucket_map, _, _, _, _) =
-            compute_project_activity_unique(
-                conn,
-                &date_range,
-                false,
-                true,
-                None,
-                Some(super::daemon::load_persisted_session_min_duration()),
-                true,
-            )?;
+        let (bucket_map, _, _, _, _) = compute_project_activity_unique(
+            conn,
+            &date_range,
+            false,
+            true,
+            None,
+            Some(super::daemon::load_persisted_session_min_duration()),
+            true,
+        )?;
         let mut out = Vec::with_capacity(bucket_map.len());
         for (date, project_seconds) in bucket_map {
             let seconds = project_seconds.values().copied().sum::<f64>().round() as i64;
@@ -480,7 +481,9 @@ pub async fn get_applications(
     date_range: Option<DateRange>,
 ) -> Result<Vec<AppWithStats>, CommandError> {
     run_db_blocking(app, move |conn| {
-        let daily_bounds = date_range.as_ref().map(|d| (d.start.clone(), d.end.clone()));
+        let daily_bounds = date_range
+            .as_ref()
+            .map(|d| (d.start.clone(), d.end.clone()));
         let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
             if let Some(dr) = date_range {
                 (
@@ -575,7 +578,9 @@ pub async fn get_applications(
                  GROUP BY s.app_id, s.date"
             ),
         };
-        let mut daily_stmt = conn.prepare_cached(&daily_app_sql).map_err(|e| e.to_string())?;
+        let mut daily_stmt = conn
+            .prepare_cached(&daily_app_sql)
+            .map_err(|e| e.to_string())?;
         let map_daily = |row: &rusqlite::Row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?));
         let daily_rows = match &daily_bounds {
             Some((start, end)) => daily_stmt.query_map(rusqlite::params![start, end], map_daily),
@@ -795,8 +800,9 @@ mod tests {
         let counts = query_project_counts(&conn, &date_range.start, &date_range.end, true)
             .expect("query project counts");
         let daily_by_series = daily_seconds_by_series(&buckets);
-        let rows = build_top_project_rows(&totals, &series_meta_by_key, &counts, &daily_by_series, 10)
-            .expect("top rows");
+        let rows =
+            build_top_project_rows(&totals, &series_meta_by_key, &counts, &daily_by_series, 10)
+                .expect("top rows");
 
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].project_id, Some(1));

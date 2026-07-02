@@ -428,9 +428,7 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
                 // Compute decay weight from date
                 let days_ago = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
                     .ok()
-                    .map(|d| {
-                        (chrono::Local::now().date_naive() - d).num_days().max(0) as f64
-                    })
+                    .map(|d| (chrono::Local::now().date_naive() - d).num_days().max(0) as f64)
                     .unwrap_or(0.0);
                 let weight = (-decay_rate * days_ago).exp();
 
@@ -654,13 +652,19 @@ pub fn retrain_model_incremental_sync(conn: &mut rusqlite::Connection) -> Result
                             .chain(tokenize(&file_path))
                             .chain(detected_path.as_deref().into_iter().flat_map(tokenize))
                             .chain(window_title.as_deref().into_iter().flat_map(|wt| {
-                                tokenize(&timeflow_shared::title_parser::extract_file_from_title(wt))
+                                tokenize(&timeflow_shared::title_parser::extract_file_from_title(
+                                    wt,
+                                ))
                             }))
                             .chain(
                                 parse_title_history(title_history.as_deref())
                                     .into_iter()
                                     .flat_map(|title| {
-                                        tokenize(&timeflow_shared::title_parser::extract_file_from_title(&title))
+                                        tokenize(
+                                            &timeflow_shared::title_parser::extract_file_from_title(
+                                                &title,
+                                            ),
+                                        )
                                     }),
                             )
                         {
@@ -1064,7 +1068,17 @@ mod tests {
         let mut conn = setup_training_conn();
         let (start, end, date) = session_window(1, 11);
         // Session 1: assigned, but the latest feedback says it was the model itself.
-        insert_training_session(&conn, 1, 1, 10, &start, &end, &date, "secretalpha.rs", "/tmp/secretalpha.rs");
+        insert_training_session(
+            &conn,
+            1,
+            1,
+            10,
+            &start,
+            &end,
+            &date,
+            "secretalpha.rs",
+            "/tmp/secretalpha.rs",
+        );
         conn.execute(
             "INSERT INTO assignment_feedback (id, session_id, app_id, from_project_id, to_project_id, source, weight, created_at)
              VALUES (1, 1, 1, NULL, 10, 'auto_accept', 1.0, datetime('now'))",
@@ -1073,7 +1087,17 @@ mod tests {
         .unwrap();
         // Session 2: a genuinely user-assigned session.
         let (start2, end2, date2) = session_window(2, 9);
-        insert_training_session(&conn, 2, 1, 20, &start2, &end2, &date2, "manualbeta.rs", "/tmp/manualbeta.rs");
+        insert_training_session(
+            &conn,
+            2,
+            1,
+            20,
+            &start2,
+            &end2,
+            &date2,
+            "manualbeta.rs",
+            "/tmp/manualbeta.rs",
+        );
 
         retrain_model_sync(&mut conn).expect("retrain");
 
@@ -1091,7 +1115,10 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(auto_tokens, 0, "auto-accepted session must not train tokens");
+        assert_eq!(
+            auto_tokens, 0,
+            "auto-accepted session must not train tokens"
+        );
         assert_eq!(manual_tokens, 1, "user-assigned session must train tokens");
     }
 
@@ -1099,7 +1126,17 @@ mod tests {
     fn retrain_skips_deterministic_rule_sessions_in_app_layer() {
         let mut conn = setup_training_conn();
         let (start, end, date) = session_window(1, 11);
-        insert_training_session(&conn, 1, 1, 10, &start, &end, &date, "alpha.rs", "/tmp/alpha.rs");
+        insert_training_session(
+            &conn,
+            1,
+            1,
+            10,
+            &start,
+            &end,
+            &date,
+            "alpha.rs",
+            "/tmp/alpha.rs",
+        );
         conn.execute(
             "INSERT INTO assignment_feedback (id, session_id, app_id, from_project_id, to_project_id, source, weight, created_at)
              VALUES (1, 1, 1, NULL, 10, 'deterministic_rule', 1.0, datetime('now'))",
@@ -1116,6 +1153,9 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(app_rows, 0, "deterministic_rule session must not train the app layer");
+        assert_eq!(
+            app_rows, 0,
+            "deterministic_rule session must not train the app layer"
+        );
     }
 }

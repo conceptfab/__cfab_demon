@@ -4,7 +4,9 @@ use tauri::AppHandle;
 
 use crate::commands::{
     clients_archive, clients_create, clients_delete, clients_list, clients_update,
-    get_clients_summary, DateRange,
+    get_clients_summary, mcp_get_manual_session, mcp_list_manual_sessions,
+    mcp_set_manual_session_time, mcp_set_manual_session_title, mcp_set_manual_session_type,
+    DateRange,
 };
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -66,6 +68,41 @@ struct ClientsSummaryArgs {
     date_range: DateRange,
 }
 
+#[derive(Deserialize)]
+struct ManualSessionIdArgs {
+    id: i64,
+}
+
+#[derive(Default, Deserialize)]
+struct ManualSessionsListArgs {
+    #[serde(default)]
+    filters: Option<crate::commands::ManualSessionFilters>,
+    #[serde(flatten)]
+    direct: crate::commands::ManualSessionFilters,
+}
+
+#[derive(Deserialize)]
+struct ManualSessionTitleArgs {
+    id: i64,
+    title: String,
+}
+
+#[derive(Deserialize)]
+struct ManualSessionTypeArgs {
+    id: i64,
+    #[serde(rename = "sessionType", alias = "session_type")]
+    session_type: String,
+}
+
+#[derive(Deserialize)]
+struct ManualSessionTimeArgs {
+    id: i64,
+    #[serde(rename = "startTime", alias = "start_time")]
+    start_time: String,
+    #[serde(rename = "endTime", alias = "end_time")]
+    end_time: String,
+}
+
 pub fn dispatch(app: &AppHandle, req: RpcRequest) -> Result<Value, String> {
     // Auto-generated bridge covers every registered command (see scripts/gen_webrpc.cjs).
     if let Some(result) =
@@ -125,6 +162,47 @@ pub fn dispatch(app: &AppHandle, req: RpcRequest) -> Result<Value, String> {
             let args: ClientsSummaryArgs = args_into(req.args)?;
             let result =
                 tauri::async_runtime::block_on(get_clients_summary(app.clone(), args.date_range))?;
+            ok(result)
+        }
+        "mcp_list_manual_sessions" => {
+            let args: ManualSessionsListArgs = args_into(req.args)?;
+            let filters = args.filters.unwrap_or(args.direct);
+            let result =
+                tauri::async_runtime::block_on(mcp_list_manual_sessions(app.clone(), filters))?;
+            ok(result)
+        }
+        "mcp_get_manual_session" => {
+            let args: ManualSessionIdArgs = args_into(req.args)?;
+            let result =
+                tauri::async_runtime::block_on(mcp_get_manual_session(app.clone(), args.id))?;
+            ok(result)
+        }
+        "mcp_set_manual_session_title" => {
+            let args: ManualSessionTitleArgs = args_into(req.args)?;
+            let result = tauri::async_runtime::block_on(mcp_set_manual_session_title(
+                app.clone(),
+                args.id,
+                args.title,
+            ))?;
+            ok(result)
+        }
+        "mcp_set_manual_session_type" => {
+            let args: ManualSessionTypeArgs = args_into(req.args)?;
+            let result = tauri::async_runtime::block_on(mcp_set_manual_session_type(
+                app.clone(),
+                args.id,
+                args.session_type,
+            ))?;
+            ok(result)
+        }
+        "mcp_set_manual_session_time" => {
+            let args: ManualSessionTimeArgs = args_into(req.args)?;
+            let result = tauri::async_runtime::block_on(mcp_set_manual_session_time(
+                app.clone(),
+                args.id,
+                args.start_time,
+                args.end_time,
+            ))?;
             ok(result)
         }
         other => Err(format!("unknown_command: {other}")),

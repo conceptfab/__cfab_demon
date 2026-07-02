@@ -1,8 +1,8 @@
 mod commands;
 mod db;
 mod db_migrations;
-mod webui;
 mod mcp;
+mod webui;
 pub const VERSION: &str = env!("TIMEFLOW_VERSION");
 
 /// Load `.env` (SMTP credentials, etc.) from SAFE locations only:
@@ -92,7 +92,10 @@ pub fn run() {
                         .build(),
                 )?;
 
-                log::info!("TIMEFLOW Dashboard starting (log level: {})", dashboard_level);
+                log::info!(
+                    "TIMEFLOW Dashboard starting (log level: {})",
+                    dashboard_level
+                );
 
                 // Każdy panic trafia do pliku logu dashboardu, nie tylko do stderr
                 // (analogicznie do daemona, main.rs:254-270).

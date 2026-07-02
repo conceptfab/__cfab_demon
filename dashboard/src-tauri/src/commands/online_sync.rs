@@ -57,8 +57,10 @@ impl Default for OnlineSyncSettings {
 pub fn get_online_sync_settings() -> Result<OnlineSyncSettings, CommandError> {
     let path = timeflow_data_dir()?.join("online_sync_settings.json");
     if path.exists() {
-        let content = std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
-        serde_json::from_str::<OnlineSyncSettings>(&content).map_err(|e| CommandError::Other(e.to_string()))
+        let content =
+            std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
+        serde_json::from_str::<OnlineSyncSettings>(&content)
+            .map_err(|e| CommandError::Other(e.to_string()))
     } else {
         Ok(OnlineSyncSettings::default())
     }
@@ -73,8 +75,10 @@ pub fn save_online_sync_settings(settings: serde_json::Value) -> Result<(), Comm
     let path = timeflow_data_dir()?.join("online_sync_settings.json");
 
     let mut root = if path.exists() {
-        let content = std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
-        serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
+        let content =
+            std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
+        serde_json::from_str::<serde_json::Value>(&content)
+            .unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
@@ -90,7 +94,8 @@ pub fn save_online_sync_settings(settings: serde_json::Value) -> Result<(), Comm
         root = settings;
     }
 
-    let json = serde_json::to_string_pretty(&root).map_err(|e| CommandError::Other(e.to_string()))?;
+    let json =
+        serde_json::to_string_pretty(&root).map_err(|e| CommandError::Other(e.to_string()))?;
     std::fs::write(&path, json).map_err(|e| CommandError::Other(e.to_string()))
 }
 
@@ -104,7 +109,10 @@ pub fn save_online_sync_settings(settings: serde_json::Value) -> Result<(), Comm
 /// po nieudanych próbach. Auto-wyzwalacze wysyłają `force=false` i podlegają cooldownowi,
 /// dzięki czemu padający serwer nie wywołuje retry stormu.
 #[tauri::command]
-pub async fn run_online_sync(background: Option<bool>, force: Option<bool>) -> Result<String, CommandError> {
+pub async fn run_online_sync(
+    background: Option<bool>,
+    force: Option<bool>,
+) -> Result<String, CommandError> {
     let background = background.unwrap_or(false);
     let force = force.unwrap_or(false);
     let result = tokio::task::spawn_blocking(move || {
@@ -144,7 +152,10 @@ pub async fn get_online_sync_progress() -> Result<super::lan_sync::SyncProgress,
         .await
         .map_err(|e| CommandError::Other(format!("Daemon not reachable: {}", e)))?;
 
-    let progress: super::lan_sync::SyncProgress = resp.json().await.map_err(|e| CommandError::Other(e.to_string()))?;
+    let progress: super::lan_sync::SyncProgress = resp
+        .json()
+        .await
+        .map_err(|e| CommandError::Other(e.to_string()))?;
     Ok(progress)
 }
 
@@ -173,7 +184,9 @@ pub async fn get_online_sync_result() -> Result<OnlineSyncResult, CommandError> 
         .await
         .map_err(|e| CommandError::Other(format!("Daemon not reachable: {}", e)))?;
 
-    resp.json::<OnlineSyncResult>().await.map_err(|e| CommandError::Other(e.to_string()))
+    resp.json::<OnlineSyncResult>()
+        .await
+        .map_err(|e| CommandError::Other(e.to_string()))
 }
 
 /// Cancel online sync via daemon HTTP endpoint.

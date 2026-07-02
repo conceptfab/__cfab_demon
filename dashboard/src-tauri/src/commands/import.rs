@@ -461,8 +461,11 @@ fn purge_unregistered_apps(
     // sync. DDL is transactional in SQLite: a rollback restores the triggers.
     tx.execute(tombstone_triggers::DROP_SESSIONS_TOMBSTONE_TRIGGER_SQL, [])
         .map_err(|e| e.to_string())?;
-    tx.execute(tombstone_triggers::DROP_APPLICATIONS_TOMBSTONE_TRIGGER_SQL, [])
-        .map_err(|e| e.to_string())?;
+    tx.execute(
+        tombstone_triggers::DROP_APPLICATIONS_TOMBSTONE_TRIGGER_SQL,
+        [],
+    )
+    .map_err(|e| e.to_string())?;
 
     let delete_files_sql = format!(
         "DELETE FROM file_activities
@@ -939,17 +942,26 @@ mod purge_tests {
         purge_unregistered_apps(&mut conn, &monitored).expect("purge");
 
         assert_eq!(
-            count(&conn, "SELECT COUNT(*) FROM applications WHERE executable_name = 'peer-only.exe'"),
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM applications WHERE executable_name = 'peer-only.exe'"
+            ),
             1,
             "app from sync (is_imported=1) must survive purge"
         );
         assert_eq!(
-            count(&conn, &format!("SELECT COUNT(*) FROM sessions WHERE app_id = {imported}")),
+            count(
+                &conn,
+                &format!("SELECT COUNT(*) FROM sessions WHERE app_id = {imported}")
+            ),
             1,
             "sessions of synced app must survive purge"
         );
         assert_eq!(
-            count(&conn, &format!("SELECT COUNT(*) FROM sessions WHERE app_id = {local}")),
+            count(
+                &conn,
+                &format!("SELECT COUNT(*) FROM sessions WHERE app_id = {local}")
+            ),
             0,
             "local unmonitored app is still cleaned up as before"
         );
@@ -975,13 +987,20 @@ mod purge_tests {
             "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger'
              AND name IN ('trg_sessions_tombstone','trg_applications_tombstone')",
         );
-        assert_eq!(trigger_count, 2, "tombstone triggers must be restored after purge");
+        assert_eq!(
+            trigger_count, 2,
+            "tombstone triggers must be restored after purge"
+        );
         // ...and keep working:
         let app2 = insert_app(&conn, "user-deleted.exe", None, 0);
         insert_session(&conn, app2);
-        conn.execute("DELETE FROM sessions WHERE app_id = ?1", [app2]).unwrap();
+        conn.execute("DELETE FROM sessions WHERE app_id = ?1", [app2])
+            .unwrap();
         assert_eq!(
-            count(&conn, "SELECT COUNT(*) FROM tombstones WHERE table_name='sessions'"),
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM tombstones WHERE table_name='sessions'"
+            ),
             1,
             "a regular DELETE outside purge still emits a tombstone"
         );

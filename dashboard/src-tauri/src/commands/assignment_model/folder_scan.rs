@@ -50,11 +50,7 @@ fn resolve_project_id_by_name(conn: &Connection, name: &str) -> Option<i64> {
 }
 
 /// Recursively walk a directory up to `max_depth` levels, collecting file/dir tokens.
-fn walk_and_tokenize(
-    path: &std::path::Path,
-    depth: usize,
-    tokens: &mut HashMap<String, i64>,
-) {
+fn walk_and_tokenize(path: &std::path::Path, depth: usize, tokens: &mut HashMap<String, i64>) {
     if depth > MAX_DEPTH {
         return;
     }
@@ -66,7 +62,10 @@ fn walk_and_tokenize(
 
     for entry in entries.filter_map(|e| e.ok()) {
         let entry_path = entry.path();
-        let name = match entry_path.file_name().map(|n| n.to_string_lossy().to_string()) {
+        let name = match entry_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+        {
             Some(v) if !v.trim().is_empty() => v,
             _ => continue,
         };

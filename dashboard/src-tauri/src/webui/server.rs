@@ -48,10 +48,7 @@ pub fn parse_request(raw: &str) -> Option<ParsedRequest> {
             origin = Some(rest.trim().to_string());
         } else if let Some(rest) = line.strip_prefix("Host:") {
             host = Some(rest.trim().to_string());
-        } else if line
-            .to_ascii_lowercase()
-            .starts_with("x-timeflow-rpc:")
-        {
+        } else if line.to_ascii_lowercase().starts_with("x-timeflow-rpc:") {
             rpc_header = true;
         } else if line.to_ascii_lowercase().starts_with("mcp-session-id:") {
             mcp_session = line
@@ -195,8 +192,8 @@ pub fn spawn(app: AppHandle, auth: Arc<AuthState>, port: u16, lan: bool) -> Resu
     } else {
         std::net::Ipv4Addr::LOCALHOST.into() // 127.0.0.1 — loopback only (default)
     };
-    let listener = TcpListener::bind((host, port))
-        .map_err(|e| format!("bind {host}:{port} failed: {e}"))?;
+    let listener =
+        TcpListener::bind((host, port)).map_err(|e| format!("bind {host}:{port} failed: {e}"))?;
     log::info!("[webui] listening on {host}:{port} (lan_exposure={lan})");
 
     std::thread::spawn(move || {
@@ -244,7 +241,10 @@ fn handle(app: &AppHandle, auth: &Arc<AuthState>, raw: &str, is_loopback: bool) 
     if !crate::webui::config::load().enabled
         && !matches!(request.path.as_str(), "/mcp" | "/healthz")
     {
-        return json_response("403 Forbidden", r#"{"ok":false,"error":"webserver_disabled"}"#);
+        return json_response(
+            "403 Forbidden",
+            r#"{"ok":false,"error":"webserver_disabled"}"#,
+        );
     }
 
     match (request.method.as_str(), request.path.as_str()) {
@@ -364,10 +364,16 @@ fn handle_rpc(
     is_loopback: bool,
 ) -> Vec<u8> {
     if origin_is_forbidden(request) {
-        return json_response("403 Forbidden", r#"{"ok":false,"error":"forbidden_origin"}"#);
+        return json_response(
+            "403 Forbidden",
+            r#"{"ok":false,"error":"forbidden_origin"}"#,
+        );
     }
     if !request_has_rpc_header(request) {
-        return json_response("400 Bad Request", r#"{"ok":false,"error":"missing_rpc_header"}"#);
+        return json_response(
+            "400 Bad Request",
+            r#"{"ok":false,"error":"missing_rpc_header"}"#,
+        );
     }
     if !rpc_is_authorized(request, auth, now_secs(), is_loopback) {
         return json_response("401 Unauthorized", r#"{"ok":false,"error":"unauthorized"}"#);
@@ -423,6 +429,17 @@ fn mcp_json(status: &str, body: &serde_json::Value, session_id: Option<&str>) ->
     out
 }
 
+fn require_active_mcp_session(request: &ParsedRequest, now: u64) -> Result<(), &'static str> {
+    let Some(session_id) = request.mcp_session.as_deref() else {
+        return Err("mcp_session_required");
+    };
+    if crate::mcp::sessions().touch(session_id, now) {
+        Ok(())
+    } else {
+        Err("mcp_session_required")
+    }
+}
+
 fn handle_mcp(app: &AppHandle, request: &ParsedRequest) -> Vec<u8> {
     use crate::mcp::{self, protocol, tools};
 
@@ -431,7 +448,10 @@ fn handle_mcp(app: &AppHandle, request: &ParsedRequest) -> Vec<u8> {
         return json_response("403 Forbidden", r#"{"ok":false,"error":"mcp_disabled"}"#);
     }
     if origin_is_forbidden(request) {
-        return json_response("403 Forbidden", r#"{"ok":false,"error":"forbidden_origin"}"#);
+        return json_response(
+            "403 Forbidden",
+            r#"{"ok":false,"error":"forbidden_origin"}"#,
+        );
     }
     if !mcp_token_ok(request.bearer.as_deref(), &cfg.token) {
         return json_response("401 Unauthorized", r#"{"ok":false,"error":"unauthorized"}"#);
@@ -454,19 +474,20 @@ fn handle_mcp(app: &AppHandle, request: &ParsedRequest) -> Vec<u8> {
     match msg.method.as_str() {
         "initialize" => {
             // Backup przed każdą sesją — FAIL-CLOSED: bez backupu nie ma sesji.
-            let backup_path =
-                match tauri::async_runtime::block_on(mcp::backup::perform_mcp_backup(app.clone())) {
-                    Ok(path) => path,
-                    Err(e) => {
-                        log::error!("[mcp] pre-session backup failed: {e}");
-                        let body = protocol::error_response(
-                            &msg.id,
-                            protocol::INTERNAL_ERROR,
-                            &format!("backup_failed: {e}"),
-                        );
-                        return mcp_json("200 OK", &body, None);
-                    }
-                };
+            let backup_path = match tauri::async_runtime::block_on(mcp::backup::perform_mcp_backup(
+                app.clone(),
+            )) {
+                Ok(path) => path,
+                Err(e) => {
+                    log::error!("[mcp] pre-session backup failed: {e}");
+                    let body = protocol::error_response(
+                        &msg.id,
+                        protocol::INTERNAL_ERROR,
+                        &format!("backup_failed: {e}"),
+                    );
+                    return mcp_json("200 OK", &body, None);
+                }
+            };
             let client_protocol = msg.params["protocolVersion"].as_str();
             let client_name = msg.params["clientInfo"]["name"]
                 .as_str()
@@ -494,8 +515,9 @@ fn handle_mcp(app: &AppHandle, request: &ParsedRequest) -> Vec<u8> {
             None,
         ),
         "tools/list" => {
-            if let Some(sid) = request.mcp_session.as_deref() {
-                mcp::sessions().touch(sid, now);
+            if let Err(e) = require_active_mcp_session(request, now) {
+                let body = protocol::error_response(&msg.id, protocol::INVALID_PARAMS, e);
+                return mcp_json("200 OK", &body, None);
             }
             let body = protocol::result_response(
                 &msg.id,
@@ -504,8 +526,9 @@ fn handle_mcp(app: &AppHandle, request: &ParsedRequest) -> Vec<u8> {
             mcp_json("200 OK", &body, None)
         }
         "tools/call" => {
-            if let Some(sid) = request.mcp_session.as_deref() {
-                mcp::sessions().touch(sid, now);
+            if let Err(e) = require_active_mcp_session(request, now) {
+                let body = protocol::error_response(&msg.id, protocol::INVALID_PARAMS, e);
+                return mcp_json("200 OK", &body, None);
             }
             let name = msg.params["name"].as_str().unwrap_or_default().to_string();
             let args = msg
@@ -626,7 +649,8 @@ mod tests {
     }
 
     #[test]
-    fn parses_rpc_header_case_insensitively() {        let req = parse_request(concat!(
+    fn parses_rpc_header_case_insensitively() {
+        let req = parse_request(concat!(
             "POST /rpc HTTP/1.1\r\nHost: x\r\nX-Timeflow-Rpc: 1\r\n\r\n{}"
         ))
         .unwrap();
@@ -680,6 +704,39 @@ mod tests {
         assert_eq!(req.mcp_session.as_deref(), Some("sess-42"));
         let plain = parse_request("POST /mcp HTTP/1.1\r\nHost: x\r\n\r\n{}").unwrap();
         assert!(plain.mcp_session.is_none());
+    }
+
+    #[test]
+    fn mcp_requires_known_session_for_post_initialize_methods() {
+        let missing = parse_request("POST /mcp HTTP/1.1\r\nHost: x\r\n\r\n{}").unwrap();
+        assert_eq!(
+            require_active_mcp_session(&missing, 100),
+            Err("mcp_session_required")
+        );
+
+        let stale = parse_request(concat!(
+            "POST /mcp HTTP/1.1\r\nHost: x\r\nMcp-Session-Id: stale-session\r\n\r\n{}"
+        ))
+        .unwrap();
+        assert_eq!(
+            require_active_mcp_session(&stale, 100),
+            Err("mcp_session_required")
+        );
+
+        let id = format!("test-session-{}", std::process::id());
+        crate::mcp::sessions().insert(crate::mcp::McpSessionInfo {
+            id: id.clone(),
+            client_name: "test".into(),
+            created_at: 100,
+            last_seen: 100,
+            backup_path: String::new(),
+        });
+        let known = parse_request(&format!(
+            "POST /mcp HTTP/1.1\r\nHost: x\r\nMcp-Session-Id: {id}\r\n\r\n{{}}"
+        ))
+        .unwrap();
+        assert!(require_active_mcp_session(&known, 101).is_ok());
+        crate::mcp::sessions().remove(&id);
     }
 
     #[test]

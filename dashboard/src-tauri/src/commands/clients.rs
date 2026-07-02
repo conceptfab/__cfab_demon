@@ -15,9 +15,9 @@ const VALID_STATUSES: [&str; 4] = ["active", "frozen", "excluded", "archived"];
 /// PM's default client palette (mirrors PmClientsList DEFAULT_PALETTE) so colors
 /// match the PM module exactly for clients that have no explicit stored color.
 const DEFAULT_PALETTE: [&str; 20] = [
-    "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4",
-    "#f97316", "#14b8a6", "#a855f7", "#6366f1", "#84cc16", "#e11d48", "#0ea5e9",
-    "#d946ef", "#10b981", "#f43f5e", "#7c3aed", "#eab308", "#64748b",
+    "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316",
+    "#14b8a6", "#a855f7", "#6366f1", "#84cc16", "#e11d48", "#0ea5e9", "#d946ef", "#10b981",
+    "#f43f5e", "#7c3aed", "#eab308", "#64748b",
 ];
 
 /// Groups a raw UPPERCASE client name to its base, mirroring PM's groupClients:
@@ -153,7 +153,9 @@ fn map_client_row(row: &rusqlite::Row) -> rusqlite::Result<Client> {
         tax_id: row.get(4)?,
         currency: row.get(5)?,
         default_hourly_rate: row.get(6)?,
-        color: row.get::<_, String>(7).unwrap_or_else(|_| "#38bdf8".to_string()),
+        color: row
+            .get::<_, String>(7)
+            .unwrap_or_else(|_| "#38bdf8".to_string()),
         archived_at: row.get(8)?,
         created_at: row.get::<_, String>(9).unwrap_or_default(),
         updated_at: row.get::<_, String>(10).unwrap_or_default(),
@@ -205,7 +207,11 @@ pub async fn clients_list(app: AppHandle) -> Result<Vec<Client>, CommandError> {
                     id: l.map(|c| c.id).unwrap_or(0),
                     name,
                     contact: l.and_then(|c| c.contact.clone()).or_else(|| {
-                        if contact.trim().is_empty() { None } else { Some(contact) }
+                        if contact.trim().is_empty() {
+                            None
+                        } else {
+                            Some(contact)
+                        }
                     }),
                     address: l.and_then(|c| c.address.clone()),
                     tax_id: l.and_then(|c| c.tax_id.clone()),
@@ -325,7 +331,11 @@ pub async fn clients_update(
 }
 
 #[tauri::command]
-pub async fn clients_archive(app: AppHandle, id: i64, archived: bool) -> Result<Client, CommandError> {
+pub async fn clients_archive(
+    app: AppHandle,
+    id: i64,
+    archived: bool,
+) -> Result<Client, CommandError> {
     run_db_blocking(app, move |conn| {
         let archived_at = if archived {
             Some(chrono::Local::now().to_rfc3339())
@@ -366,11 +376,8 @@ pub async fn clients_delete(app: AppHandle, id: i64, name: String) -> Result<(),
             [&target],
         )
         .map_err(|e| e.to_string())?;
-        conn.execute(
-            "DELETE FROM clients WHERE lower(name)=lower(?1)",
-            [&target],
-        )
-        .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM clients WHERE lower(name)=lower(?1)", [&target])
+            .map_err(|e| e.to_string())?;
         Ok(())
     })
     .await
@@ -619,7 +626,9 @@ pub async fn projects_with_client(app: AppHandle) -> Result<Vec<ProjectClientRow
                 Ok(ProjectClientRow {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    color: row.get::<_, String>(2).unwrap_or_else(|_| "#64748b".to_string()),
+                    color: row
+                        .get::<_, String>(2)
+                        .unwrap_or_else(|_| "#64748b".to_string()),
                     client_name: row.get(3)?,
                     status: row.get(4)?,
                 })
@@ -697,7 +706,8 @@ pub async fn get_clients_summary(
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, String>(2).unwrap_or_else(|_| "#64748b".to_string()),
+                    row.get::<_, String>(2)
+                        .unwrap_or_else(|_| "#64748b".to_string()),
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
                 ))
@@ -778,7 +788,12 @@ pub async fn get_clients_summary(
         // Project name/color resolved from the estimate rows when available.
         let meta_by_id: HashMap<i64, (String, String)> = estimate_rows
             .iter()
-            .map(|r| (r.project_id, (r.project_name.clone(), r.project_color.clone())))
+            .map(|r| {
+                (
+                    r.project_id,
+                    (r.project_name.clone(), r.project_color.clone()),
+                )
+            })
             .collect();
 
         for (project_id, project_name_raw, project_color_raw, client_name, status) in project_rows {
@@ -804,7 +819,10 @@ pub async fn get_clients_summary(
                 status: status.clone(),
                 seconds,
                 value,
-                daily_seconds: daily_by_project.get(&project_id).cloned().unwrap_or_default(),
+                daily_seconds: daily_by_project
+                    .get(&project_id)
+                    .cloned()
+                    .unwrap_or_default(),
             });
             bucket.project_count += 1;
             bucket.total_seconds += seconds;
@@ -831,9 +849,11 @@ pub async fn get_clients_summary(
 
         let mut out: Vec<ClientSummary> = buckets.into_values().collect();
         out.sort_by(|a, b| {
-            b.total_value
-                .total_cmp(&a.total_value)
-                .then_with(|| a.client_name.to_lowercase().cmp(&b.client_name.to_lowercase()))
+            b.total_value.total_cmp(&a.total_value).then_with(|| {
+                a.client_name
+                    .to_lowercase()
+                    .cmp(&b.client_name.to_lowercase())
+            })
         });
         Ok(out)
     })

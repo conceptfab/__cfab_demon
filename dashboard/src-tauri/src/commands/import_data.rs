@@ -1,10 +1,10 @@
 use super::daily_store_bridge;
 use super::helpers::{run_app_blocking, timeflow_data_dir, validate_import_path};
-use crate::commands::error::CommandError;
 use super::types::{
     ExportArchive, FileActivityExportRow, ImportSummary, ImportValidation, SessionConflict,
     SessionRow,
 };
+use crate::commands::error::CommandError;
 use crate::db;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -198,7 +198,10 @@ pub async fn validate_import(
 }
 
 #[tauri::command]
-pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportSummary, CommandError> {
+pub async fn import_data(
+    app: AppHandle,
+    archive_path: String,
+) -> Result<ImportSummary, CommandError> {
     run_app_blocking(app, move |app| {
         validate_import_path(&archive_path)?;
         let content = fs::read_to_string(&archive_path).map_err(|e| e.to_string())?;
@@ -312,7 +315,10 @@ pub(crate) enum DailyFilesMode {
 /// MUST be toggled before `conn.transaction()`. We restore FK=ON explicitly
 /// (not relying solely on the pool re-arming on release) to leave the pooled
 /// connection clean regardless of pool timing.
-fn import_archive_with_fk_off<F>(conn: &mut rusqlite::Connection, body: F) -> Result<ImportSummary, String>
+fn import_archive_with_fk_off<F>(
+    conn: &mut rusqlite::Connection,
+    body: F,
+) -> Result<ImportSummary, String>
 where
     F: FnOnce(&rusqlite::Transaction<'_>) -> Result<ImportSummary, String>,
 {
@@ -473,7 +479,9 @@ fn import_archive_into_tx(
             .prepare("SELECT name, id FROM projects")
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
             .map_err(|e| e.to_string())?;
         let mut out = HashMap::new();
         for row in rows {
@@ -546,8 +554,12 @@ fn import_archive_into_tx(
             Some(sid)
         });
         let local_app_id = fb.app_id;
-        let local_from_project = fb.from_project_id.and_then(|pid| project_mapping.get(&pid).copied());
-        let local_to_project = fb.to_project_id.and_then(|pid| project_mapping.get(&pid).copied());
+        let local_from_project = fb
+            .from_project_id
+            .and_then(|pid| project_mapping.get(&pid).copied());
+        let local_to_project = fb
+            .to_project_id
+            .and_then(|pid| project_mapping.get(&pid).copied());
 
         // Dedup: check if we already have a feedback entry with same source + created_at
         let exists: bool = tx
@@ -556,7 +568,8 @@ fn import_archive_into_tx(
                 rusqlite::params![fb.source, fb.created_at],
                 |row| row.get::<_, i64>(0),
             )
-            .unwrap_or(0) > 0;
+            .unwrap_or(0)
+            > 0;
 
         if !exists {
             tx.execute(
@@ -583,7 +596,8 @@ fn import_archive_into_tx(
                 rusqlite::params![run.started_at],
                 |row| row.get::<_, i64>(0),
             )
-            .unwrap_or(0) > 0;
+            .unwrap_or(0)
+            > 0;
 
         if !exists {
             tx.execute(
@@ -603,24 +617,24 @@ fn import_archive_into_tx(
 
     // 5. Daily Files
     if daily_files != DailyFilesMode::Skip {
-    let demo_mode = daily_files == DailyFilesMode::Demo;
-    for (date, daily) in &archive.data.daily_files {
-        if demo_mode {
-            save_demo_daily_file(date, daily)?;
-        } else {
-            let final_daily = if let Some(mut existing_daily) = daily_store_bridge::load_day(date)?
-            {
-                for (exe, app_data) in &daily.apps {
-                    existing_daily.apps.insert(exe.clone(), app_data.clone());
-                }
-                existing_daily
+        let demo_mode = daily_files == DailyFilesMode::Demo;
+        for (date, daily) in &archive.data.daily_files {
+            if demo_mode {
+                save_demo_daily_file(date, daily)?;
             } else {
-                daily.clone()
-            };
-            daily_store_bridge::save_day(&final_daily)?;
+                let final_daily =
+                    if let Some(mut existing_daily) = daily_store_bridge::load_day(date)? {
+                        for (exe, app_data) in &daily.apps {
+                            existing_daily.apps.insert(exe.clone(), app_data.clone());
+                        }
+                        existing_daily
+                    } else {
+                        daily.clone()
+                    };
+                daily_store_bridge::save_day(&final_daily)?;
+            }
+            summary.daily_files_imported += 1;
         }
-        summary.daily_files_imported += 1;
-    }
     }
 
     // --- Safety: pre-commit validation (online sync only) ---
@@ -747,9 +761,9 @@ pub async fn import_data_archive(
     archive: ExportArchive,
 ) -> Result<ImportSummary, CommandError> {
     // Persistent backup to user-configured Backup Destination (before any sync changes)
-    run_app_blocking(app.clone(), |app| {
-        create_pre_sync_backup(&app, "online")
-    }).await.ok(); // non-fatal — don't block sync if backup dir is not configured
+    run_app_blocking(app.clone(), |app| create_pre_sync_backup(&app, "online"))
+        .await
+        .ok(); // non-fatal — don't block sync if backup dir is not configured
 
     // Temporary restore-backup as extra safety net (kept even if tx approach works)
     let backup_path =
@@ -762,7 +776,11 @@ pub async fn import_data_archive(
 
         // Merge server data with local instead of clearing — preserves
         // locally-recorded sessions that haven't been pushed yet.
-        let daily_mode = if db::is_demo_mode_enabled(&app)? { DailyFilesMode::Demo } else { DailyFilesMode::Live };
+        let daily_mode = if db::is_demo_mode_enabled(&app)? {
+            DailyFilesMode::Demo
+        } else {
+            DailyFilesMode::Live
+        };
         // FK=OFF for the merge import (shared::sync::merge contract) — see
         // import_archive_with_fk_off. Commits internally; FK restored to ON after.
         let summary = import_archive_with_fk_off(&mut conn, |tx| {
@@ -1109,8 +1127,7 @@ fn create_pre_sync_backup(app: &AppHandle, sync_type: &str) -> Result<String, St
     let conn = db::get_connection(app)?;
 
     // Read user-configured backup_path from system_settings
-    let backup_dir = db::get_system_setting(app, "backup_path")?
-        .filter(|p| !p.is_empty());
+    let backup_dir = db::get_system_setting(app, "backup_path")?.filter(|p| !p.is_empty());
 
     let backup_dir = match backup_dir {
         Some(dir) => PathBuf::from(dir),
@@ -1118,7 +1135,8 @@ fn create_pre_sync_backup(app: &AppHandle, sync_type: &str) -> Result<String, St
             // Fallback: sync_backups/ next to the active database
             let status = db::get_demo_mode_status(app)?;
             let db_path = PathBuf::from(status.active_db_path);
-            db_path.parent()
+            db_path
+                .parent()
                 .ok_or_else(|| "Cannot resolve database directory".to_string())?
                 .join("sync_backups")
         }
@@ -1152,8 +1170,12 @@ fn create_pre_sync_backup(app: &AppHandle, sync_type: &str) -> Result<String, St
         .map_err(|e| e.to_string())?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.file_name().and_then(|n| n.to_str())
-            .map(|n| n.starts_with(&prefix)).unwrap_or(false))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with(&prefix))
+                .unwrap_or(false)
+        })
         .collect();
     backups.sort();
     while backups.len() > 10 {
@@ -1167,7 +1189,6 @@ fn create_pre_sync_backup(app: &AppHandle, sync_type: &str) -> Result<String, St
     Ok(dest_path.to_string_lossy().to_string())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1176,12 +1197,19 @@ mod tests {
     fn parse_export_archive_reports_daily_file_clearly() {
         // Dzienny plik demona podany zamiast archiwum eksportu
         let daily = r#"{"date":"2026-06-11","generated_at":"x","apps":{}}"#;
-        let err = parse_export_archive(daily).err().expect("daily file must not parse");
+        let err = parse_export_archive(daily)
+            .err()
+            .expect("daily file must not parse");
         assert!(err.contains("daily activity file"), "got: {err}");
 
         // Zwykły niepoprawny JSON → standardowy błąd parsowania
-        let err = parse_export_archive("{\"foo\": 1}").err().expect("invalid JSON must not parse");
-        assert!(err.contains("Not a valid TIMEFLOW export archive"), "got: {err}");
+        let err = parse_export_archive("{\"foo\": 1}")
+            .err()
+            .expect("invalid JSON must not parse");
+        assert!(
+            err.contains("Not a valid TIMEFLOW export archive"),
+            "got: {err}"
+        );
     }
 
     #[test]
@@ -1308,7 +1336,12 @@ mod tests {
         .expect("insert hidden session");
 
         let tx = conn.transaction().expect("transaction");
-        let incoming = incoming_session("2026-01-01T11:00:00+00:00", "2026-01-01T12:00:00+00:00", 3600, false);
+        let incoming = incoming_session(
+            "2026-01-01T11:00:00+00:00",
+            "2026-01-01T12:00:00+00:00",
+            3600,
+            false,
+        );
         merge_or_insert_session(&tx, 1, &incoming).expect("merge");
         tx.commit().expect("commit");
 
@@ -1320,7 +1353,11 @@ mod tests {
             )
             .unwrap();
         let hidden_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM sessions WHERE is_hidden = 1", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM sessions WHERE is_hidden = 1",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(visible_secs, 3600, "visible time must stay visible");
         assert_eq!(hidden_count, 1, "hidden session stays intact");
@@ -1339,7 +1376,12 @@ mod tests {
         .expect("insert visible session");
 
         let tx = conn.transaction().expect("transaction");
-        let incoming = incoming_session("2026-01-01T10:30:00+00:00", "2026-01-01T12:00:00+00:00", 5400, true);
+        let incoming = incoming_session(
+            "2026-01-01T10:30:00+00:00",
+            "2026-01-01T12:00:00+00:00",
+            5400,
+            true,
+        );
         merge_or_insert_session(&tx, 1, &incoming).expect("merge");
         tx.commit().expect("commit");
 
@@ -1353,7 +1395,11 @@ mod tests {
         assert_eq!(visible_secs, 3600, "visible session untouched");
         assert_eq!(visible_end, "2026-01-01T11:00:00+00:00");
         let hidden_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM sessions WHERE is_hidden = 1", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM sessions WHERE is_hidden = 1",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(hidden_count, 1, "hidden session inserted separately");
     }
@@ -1375,7 +1421,12 @@ mod tests {
         .expect("seed");
 
         let tx = conn.transaction().expect("transaction");
-        let incoming = incoming_session("2026-01-01T10:00:00+00:00", "2026-01-01T12:00:00+00:00", 7200, false);
+        let incoming = incoming_session(
+            "2026-01-01T10:00:00+00:00",
+            "2026-01-01T12:00:00+00:00",
+            7200,
+            false,
+        );
         merge_or_insert_session(&tx, 1, &incoming).expect("merge must not hit UNIQUE constraint");
         tx.commit().expect("commit");
 
@@ -1406,7 +1457,12 @@ mod tests {
         .expect("insert hidden session");
 
         let tx = conn.transaction().expect("transaction");
-        let incoming = incoming_session("2026-01-01T10:00:00+00:00", "2026-01-01T10:30:00+00:00", 1800, false);
+        let incoming = incoming_session(
+            "2026-01-01T10:00:00+00:00",
+            "2026-01-01T10:30:00+00:00",
+            1800,
+            false,
+        );
         merge_or_insert_session(&tx, 1, &incoming).expect("merge");
         tx.commit().expect("commit");
 
@@ -1436,7 +1492,10 @@ mod tests {
             exported_at: "2026-06-01 00:00:00".into(),
             machine_id: "test".into(),
             export_type: "all_data".into(),
-            date_range: DateRange { start: String::new(), end: String::new() },
+            date_range: DateRange {
+                start: String::new(),
+                end: String::new(),
+            },
             metadata: ExportMetadata {
                 project_id: None,
                 project_name: None,
@@ -1527,12 +1586,19 @@ mod tests {
         )
         .expect("seed");
         let mut a = base_archive();
-        a.data
-            .projects
-            .push(proj_row("P", "2026-02-01 00:00:00", Some("Acme"), "archived"));
+        a.data.projects.push(proj_row(
+            "P",
+            "2026-02-01 00:00:00",
+            Some("Acme"),
+            "archived",
+        ));
         run_sync_import(&mut conn, &a);
         let (cn, st) = read_project_client(&conn, "P");
-        assert_eq!(cn.as_deref(), Some("Acme"), "client assignment must propagate");
+        assert_eq!(
+            cn.as_deref(),
+            Some("Acme"),
+            "client assignment must propagate"
+        );
         assert_eq!(st, "archived", "status must propagate");
     }
 
@@ -1574,11 +1640,18 @@ mod tests {
             }]}
         });
         let tx = conn.transaction().expect("tx");
-        let hooks = timeflow_shared::sync::merge::MergeHooks { log: &|_| {}, diag: false };
+        let hooks = timeflow_shared::sync::merge::MergeHooks {
+            log: &|_| {},
+            diag: false,
+        };
         timeflow_shared::sync::merge::merge_projects(&tx, &archive_value, &hooks).expect("merge");
         tx.commit().expect("commit");
         let (cn, st) = read_project_client(&conn, "P");
-        assert_eq!(cn.as_deref(), Some("Acme"), "absent client_name key preserves local");
+        assert_eq!(
+            cn.as_deref(),
+            Some("Acme"),
+            "absent client_name key preserves local"
+        );
         assert_eq!(st, "archived", "absent status key preserves local");
     }
 
@@ -1604,7 +1677,10 @@ mod tests {
             .push(proj_row("P", "2026-03-01 00:00:00", None, "active"));
         run_sync_import(&mut conn, &a);
         let (cn, st) = read_project_client(&conn, "P");
-        assert_eq!(cn, None, "explicit-null client_name clears local (newer remote wins)");
+        assert_eq!(
+            cn, None,
+            "explicit-null client_name clears local (newer remote wins)"
+        );
         assert_eq!(st, "active", "explicit status from newer remote wins");
     }
 
@@ -1612,10 +1688,15 @@ mod tests {
     fn online_sync_merges_clients_last_writer_wins() {
         let mut conn = full_schema_conn();
         let mut insert = base_archive();
-        insert.data.clients.push(client_row("Acme", "2026-02-01 00:00:00"));
+        insert
+            .data
+            .clients
+            .push(client_row("Acme", "2026-02-01 00:00:00"));
         run_sync_import(&mut conn, &insert);
         let n: i64 = conn
-            .query_row("SELECT COUNT(*) FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .query_row("SELECT COUNT(*) FROM clients WHERE name='Acme'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(n, 1, "client inserted");
 
@@ -1626,7 +1707,9 @@ mod tests {
         older.data.clients.push(c_old);
         run_sync_import(&mut conn, &older);
         let contact: Option<String> = conn
-            .query_row("SELECT contact FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .query_row("SELECT contact FROM clients WHERE name='Acme'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(contact, None, "older archive must not overwrite (LWW)");
 
@@ -1637,7 +1720,9 @@ mod tests {
         newer.data.clients.push(c_new);
         run_sync_import(&mut conn, &newer);
         let contact: Option<String> = conn
-            .query_row("SELECT contact FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .query_row("SELECT contact FROM clients WHERE name='Acme'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(contact.as_deref(), Some("NEW"), "newer archive wins");
     }
@@ -1663,11 +1748,15 @@ mod tests {
         });
         run_sync_import(&mut conn, &a);
         let n: i64 = conn
-            .query_row("SELECT COUNT(*) FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .query_row("SELECT COUNT(*) FROM clients WHERE name='Acme'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(n, 0, "client deleted by tombstone");
         let cn: Option<String> = conn
-            .query_row("SELECT client_name FROM projects WHERE name='P'", [], |r| r.get(0))
+            .query_row("SELECT client_name FROM projects WHERE name='P'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(cn, None, "project detached from the deleted client");
     }
@@ -1710,7 +1799,9 @@ mod tests {
         // A client + an UNASSIGNED manual session (project_id=0 sentinel), to prove
         // those entities flow through the shared core via the Value shape — and
         // that the sentinel INSERT is valid under the FK=OFF import lifecycle.
-        a.data.clients.push(client_row("Acme", "2026-02-01 00:00:00"));
+        a.data
+            .clients
+            .push(client_row("Acme", "2026-02-01 00:00:00"));
         a.data.manual_sessions.push(ManualSession {
             id: 0,
             title: "Modeling".into(),
@@ -1729,7 +1820,11 @@ mod tests {
 
         // 1. Tombstone guard: 'Ghost' must NOT be resurrected (local tombstone is newer).
         let ghost: i64 = conn
-            .query_row("SELECT COUNT(*) FROM projects WHERE name = 'Ghost'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM projects WHERE name = 'Ghost'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(ghost, 0, "newer local tombstone must block resurrection");
 
@@ -1741,15 +1836,26 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(dn, "Blender 4.5", "remote-newer application updates display_name (full LWW)");
+        assert_eq!(
+            dn, "Blender 4.5",
+            "remote-newer application updates display_name (full LWW)"
+        );
 
         // Sanity: client + manual session flowed through the Value shape.
         let clients: i64 = conn
-            .query_row("SELECT COUNT(*) FROM clients WHERE name = 'Acme'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM clients WHERE name = 'Acme'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(clients, 1, "client merged via shared core");
         let manual: i64 = conn
-            .query_row("SELECT COUNT(*) FROM manual_sessions WHERE title = 'Modeling'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM manual_sessions WHERE title = 'Modeling'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(manual, 1, "manual session merged via shared core");
     }
@@ -1765,7 +1871,9 @@ mod tests {
         let mut conn = full_schema_conn();
         // Sanity: the harness connection has FK enforcement ON by default
         // (same as the production pool) — the guard must turn it OFF.
-        let fk: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        let fk: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(fk, 1, "harness mirrors the FK=ON production pool");
 
         let mut a = base_archive();
@@ -1787,13 +1895,22 @@ mod tests {
         run_sync_import(&mut conn, &a);
 
         let pid: i64 = conn
-            .query_row("SELECT project_id FROM manual_sessions WHERE title = 'Solo'", [], |r| r.get(0))
+            .query_row(
+                "SELECT project_id FROM manual_sessions WHERE title = 'Solo'",
+                [],
+                |r| r.get(0),
+            )
             .expect("unassigned manual session present");
         assert_eq!(pid, 0, "sentinel project_id=0 preserved (unassigned)");
 
         // FK enforcement restored on the connection afterwards.
-        let fk_after: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
-        assert_eq!(fk_after, 1, "import_archive_with_fk_off restores foreign_keys=ON");
+        let fk_after: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            fk_after, 1,
+            "import_archive_with_fk_off restores foreign_keys=ON"
+        );
     }
 
     /// FK contract (finding #5): a `projects` tombstone for a project that has a
@@ -1825,7 +1942,11 @@ mod tests {
         run_sync_import(&mut conn, &a);
 
         let proj: i64 = conn
-            .query_row("SELECT COUNT(*) FROM projects WHERE name = 'Doomed'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM projects WHERE name = 'Doomed'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(proj, 0, "tombstone deletes the project");
 
@@ -1837,7 +1958,10 @@ mod tests {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .unwrap();
-        assert_eq!(cnt, 1, "manual session must NOT cascade-delete with its project");
+        assert_eq!(
+            cnt, 1,
+            "manual session must NOT cascade-delete with its project"
+        );
         assert_eq!(pid, 0, "manual session detached to sentinel project_id=0");
     }
 
@@ -1872,9 +1996,16 @@ mod tests {
         )
         .expect("user delete");
         let tombstones: i64 = conn
-            .query_row("SELECT COUNT(*) FROM tombstones WHERE table_name='manual_sessions'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM tombstones WHERE table_name='manual_sessions'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
-        assert_eq!(tombstones, 1, "tombstone triggers must be re-created after clear");
+        assert_eq!(
+            tombstones, 1,
+            "tombstone triggers must be re-created after clear"
+        );
     }
 
     #[test]
@@ -1895,7 +2026,7 @@ mod tests {
             false,
         );
         incoming.project_name = Some("Notch".to_string()); // case-insensitive
-        // symulacja pętli importu: id niemapowalne, fallback po nazwie
+                                                           // symulacja pętli importu: id niemapowalne, fallback po nazwie
         let by_name: std::collections::HashMap<String, i64> =
             [("notch".to_string(), 7i64)].into_iter().collect();
         incoming.project_id = incoming.project_id.or_else(|| {
@@ -1927,7 +2058,11 @@ mod tests {
             )
             .unwrap();
         assert_eq!(pid, Some(7), "session must resolve project by name");
-        assert_eq!(pname.as_deref(), Some("Notch"), "explicit label is preserved verbatim");
+        assert_eq!(
+            pname.as_deref(),
+            Some("Notch"),
+            "explicit label is preserved verbatim"
+        );
 
         let (gpid, gpname): (Option<i64>, Option<String>) = conn
             .query_row(
@@ -1957,7 +2092,8 @@ mod tests {
         let _ = std::fs::remove_file(&work);
         std::fs::copy(&base, &work).expect("copy base db");
         let mut conn = rusqlite::Connection::open(&work).expect("open work db");
-        crate::db_migrations::run_migrations(&conn).expect("migrations (jak przy starcie aplikacji)");
+        crate::db_migrations::run_migrations(&conn)
+            .expect("migrations (jak przy starcie aplikacji)");
         for path in archives.split(':').filter(|p| !p.is_empty()) {
             let content = std::fs::read_to_string(path).expect("read archive");
             let archive = parse_export_archive(&content).expect("parse archive");
@@ -1985,7 +2121,10 @@ mod tests {
         println!("unassigned visible: {}", q("SELECT CAST(COUNT(*) AS TEXT) FROM sessions WHERE project_id IS NULL AND COALESCE(is_hidden,0)=0"));
         println!("hidden: {}", q("SELECT COUNT(*) || ' / ' || ROUND(SUM(duration_seconds)/3600.0,1) || 'h' FROM sessions WHERE is_hidden=1"));
         println!("manual: {}", q("SELECT COUNT(*) || ' / ' || ROUND(SUM(duration_seconds)/3600.0,1) || 'h' FROM manual_sessions"));
-        println!("file_activities: {}", q("SELECT CAST(COUNT(*) AS TEXT) FROM file_activities"));
+        println!(
+            "file_activities: {}",
+            q("SELECT CAST(COUNT(*) AS TEXT) FROM file_activities")
+        );
         println!("workdb: {}", work.display());
     }
 
@@ -2003,7 +2142,11 @@ mod tests {
         FileActivityExportRow {
             app_id,
             date: date.to_string(),
-            file_name: file_path.rsplit('/').next().unwrap_or(file_path).to_string(),
+            file_name: file_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(file_path)
+                .to_string(),
             file_path: file_path.to_string(),
             total_seconds: 100,
             first_seen: "2026-01-01T10:00:00+00:00".to_string(),

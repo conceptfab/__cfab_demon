@@ -88,6 +88,157 @@ pub static TOOLS: &[ToolDef] = &[
         }),
     },
     ToolDef {
+        name: "list_manual_sessions",
+        command: "mcp_list_manual_sessions",
+        write: false,
+        description: "List manual work sessions. Supports optional dateRange, projectId, limit, and offset filters.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "filters": {
+                    "type": "object",
+                    "properties": {
+                        "dateRange": date_range_schema(),
+                        "projectId": { "type": "integer" },
+                        "limit": { "type": "integer" },
+                        "offset": { "type": "integer" }
+                    }
+                }
+            },
+            "required": []
+        }),
+    },
+    ToolDef {
+        name: "get_manual_session",
+        command: "mcp_get_manual_session",
+        write: false,
+        description: "Get a single manual work session by id.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "id": { "type": "integer" } },
+            "required": ["id"]
+        }),
+    },
+    ToolDef {
+        name: "create_manual_session",
+        command: "create_manual_session",
+        write: true,
+        description: "Create a manual work session. Requires title, session_type, project_id, start_time, and end_time. Times use YYYY-MM-DDTHH:MM[:SS].",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string" },
+                        "session_type": { "type": "string", "description": "e.g. meeting, call, other" },
+                        "project_id": { "type": "integer" },
+                        "app_id": { "type": ["integer", "null"] },
+                        "start_time": { "type": "string", "description": "YYYY-MM-DDTHH:MM[:SS]" },
+                        "end_time": { "type": "string", "description": "YYYY-MM-DDTHH:MM[:SS]" }
+                    },
+                    "required": ["title", "session_type", "project_id", "start_time", "end_time"]
+                }
+            },
+            "required": ["input"]
+        }),
+    },
+    ToolDef {
+        name: "update_manual_session",
+        command: "update_manual_session",
+        write: true,
+        description: "Update a manual work session by id. Changes title/comment, session_type, project_id, app_id, start_time, and end_time.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "input": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string", "description": "Manual session comment/title" },
+                        "session_type": { "type": "string", "description": "e.g. meeting, call, other" },
+                        "project_id": { "type": "integer" },
+                        "app_id": { "type": ["integer", "null"] },
+                        "start_time": { "type": "string", "description": "YYYY-MM-DDTHH:MM[:SS]" },
+                        "end_time": { "type": "string", "description": "YYYY-MM-DDTHH:MM[:SS]" }
+                    },
+                    "required": ["title", "session_type", "project_id", "start_time", "end_time"]
+                }
+            },
+            "required": ["id", "input"]
+        }),
+    },
+    ToolDef {
+        name: "set_manual_session_title",
+        command: "mcp_set_manual_session_title",
+        write: true,
+        description: "Update only the title/comment of a manual work session by id.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "title": { "type": "string" }
+            },
+            "required": ["id", "title"]
+        }),
+    },
+    ToolDef {
+        name: "set_manual_session_type",
+        command: "mcp_set_manual_session_type",
+        write: true,
+        description: "Update only the type of a manual work session by id.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "session_type": { "type": "string", "description": "e.g. meeting, call, other" }
+            },
+            "required": ["id", "session_type"]
+        }),
+    },
+    ToolDef {
+        name: "set_manual_session_time",
+        command: "mcp_set_manual_session_time",
+        write: true,
+        description: "Update only the start/end time of a manual work session by id. Duration and date are recalculated.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "start_time": { "type": "string", "description": "YYYY-MM-DDTHH:MM[:SS]" },
+                "end_time": { "type": "string", "description": "YYYY-MM-DDTHH:MM[:SS]" }
+            },
+            "required": ["id", "start_time", "end_time"]
+        }),
+    },
+    ToolDef {
+        name: "delete_manual_session",
+        command: "delete_manual_session",
+        write: true,
+        description: "Delete a manual work session by id.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "id": { "type": "integer" } },
+            "required": ["id"]
+        }),
+    },
+    ToolDef {
+        name: "delete_manual_sessions",
+        command: "delete_manual_sessions",
+        write: true,
+        description: "Delete multiple manual work sessions by id.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                }
+            },
+            "required": ["ids"]
+        }),
+    },
+    ToolDef {
         name: "create_project",
         command: "create_project",
         write: true,
@@ -184,6 +335,257 @@ pub static TOOLS: &[ToolDef] = &[
             "required": ["project_id"]
         }),
     },
+    ToolDef {
+        name: "update_project_color",
+        command: "update_project",
+        write: true,
+        description: "Update a project's hex color by numeric id (e.g. #38bdf8). This backend command edits color only.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "color": { "type": "string", "description": "Hex color, e.g. #38bdf8" }
+            },
+            "required": ["id", "color"]
+        }),
+    },
+    ToolDef {
+        name: "set_project_status",
+        command: "project_set_status",
+        write: true,
+        description: "Set a project's lifecycle status. Status is derived from frozen/excluded state: 'frozen' freezes, 'excluded'/'archived' exclude, 'active' restores.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "project_id": { "type": "integer" },
+                "status": { "type": "string", "enum": ["active", "frozen", "excluded", "archived"] }
+            },
+            "required": ["project_id", "status"]
+        }),
+    },
+    ToolDef {
+        name: "update_project_hourly_rate",
+        command: "update_project_hourly_rate",
+        write: true,
+        description: "Set or clear (rate=null) a project's hourly billing rate by project id.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "project_id": { "type": "integer" },
+                "rate": { "type": ["number", "null"] }
+            },
+            "required": ["project_id"]
+        }),
+    },
+    ToolDef {
+        name: "freeze_project",
+        command: "freeze_project",
+        write: true,
+        description: "Freeze a project by id and detach its application mappings so new sessions cannot inherit it.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "id": { "type": "integer" } },
+            "required": ["id"]
+        }),
+    },
+    ToolDef {
+        name: "unfreeze_project",
+        command: "unfreeze_project",
+        write: true,
+        description: "Unfreeze a previously frozen project by id.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "id": { "type": "integer" } },
+            "required": ["id"]
+        }),
+    },
+    ToolDef {
+        name: "exclude_project",
+        command: "exclude_project",
+        write: true,
+        description: "Exclude (archive) a project by id so it is hidden from active lists.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "id": { "type": "integer" } },
+            "required": ["id"]
+        }),
+    },
+    ToolDef {
+        name: "restore_project",
+        command: "restore_project",
+        write: true,
+        description: "Restore a previously excluded project by id back to active.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "id": { "type": "integer" } },
+            "required": ["id"]
+        }),
+    },
+    ToolDef {
+        name: "merge_project",
+        command: "merge_project",
+        write: true,
+        description: "Merge a source project into a target project by numeric ids. Sessions move to the target and the source becomes a merged alias.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "source_id": { "type": "integer" },
+                "target_id": { "type": "integer" }
+            },
+            "required": ["source_id", "target_id"]
+        }),
+    },
+    ToolDef {
+        name: "unmerge_project",
+        command: "unmerge_project",
+        write: true,
+        description: "Undo a merge and restore a previously merged project by its id.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "id": { "type": "integer" } },
+            "required": ["id"]
+        }),
+    },
+    ToolDef {
+        name: "delete_project",
+        command: "delete_project",
+        write: true,
+        description: "Permanently delete a project by id. Destructive: sessions lose their project assignment.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "id": { "type": "integer" } },
+            "required": ["id"]
+        }),
+    },
+    ToolDef {
+        name: "assign_app_to_project",
+        command: "assign_app_to_project",
+        write: true,
+        description: "Map an application to a project (project_id=null clears the mapping). Future sessions of the app inherit the project.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "app_id": { "type": "integer" },
+                "project_id": { "type": ["integer", "null"] }
+            },
+            "required": ["app_id"]
+        }),
+    },
+    ToolDef {
+        name: "list_project_folders",
+        command: "get_project_folders",
+        write: false,
+        description: "List configured project source folders with their metadata.",
+        schema: || json!({ "type": "object", "properties": {} }),
+    },
+    ToolDef {
+        name: "add_project_folder",
+        command: "add_project_folder",
+        write: true,
+        description: "Register a filesystem folder as a project source by absolute path.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "path": { "type": "string" } },
+            "required": ["path"]
+        }),
+    },
+    ToolDef {
+        name: "remove_project_folder",
+        command: "remove_project_folder",
+        write: true,
+        description: "Remove a registered project source folder by its path.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "path": { "type": "string" } },
+            "required": ["path"]
+        }),
+    },
+    ToolDef {
+        name: "update_project_folder_meta",
+        command: "update_project_folder_meta",
+        write: true,
+        description: "Update metadata (color, category, badge) of a registered project folder by its path.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "color": { "type": ["string", "null"] },
+                "category": { "type": ["string", "null"] },
+                "badge": { "type": ["string", "null"] }
+            },
+            "required": ["path"]
+        }),
+    },
+    ToolDef {
+        name: "list_folder_project_candidates",
+        command: "get_folder_project_candidates",
+        write: false,
+        description: "List folder-based project candidates that can be turned into projects.",
+        schema: || json!({ "type": "object", "properties": {} }),
+    },
+    ToolDef {
+        name: "create_project_from_folder",
+        command: "create_project_from_folder",
+        write: true,
+        description: "Create a new project from a registered folder candidate by its folder path.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "folder_path": { "type": "string" } },
+            "required": ["folder_path"]
+        }),
+    },
+    ToolDef {
+        name: "list_excluded_projects",
+        command: "get_excluded_projects",
+        write: false,
+        description: "List excluded (archived) projects with time statistics. Optionally limit stats to a date range.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "date_range": date_range_schema() }
+        }),
+    },
+    ToolDef {
+        name: "list_merged_projects",
+        command: "get_merged_projects",
+        write: false,
+        description: "List merged projects with time statistics. Optionally limit stats to a date range.",
+        schema: || json!({
+            "type": "object",
+            "properties": { "date_range": date_range_schema() }
+        }),
+    },
+    ToolDef {
+        name: "list_projects_with_client",
+        command: "projects_with_client",
+        write: false,
+        description: "List all projects with their linked client (for client/project audits).",
+        schema: || json!({ "type": "object", "properties": {} }),
+    },
+    ToolDef {
+        name: "get_project_extra_info",
+        command: "get_project_extra_info",
+        write: false,
+        description: "Get extended metadata and stats for a project by id over a date range.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "date_range": date_range_schema()
+            },
+            "required": ["id", "date_range"]
+        }),
+    },
+    ToolDef {
+        name: "get_project_estimates",
+        command: "get_project_estimates",
+        write: false,
+        description: "Get per-project estimate/value rows for a date range (uses the hourly-rate cascade).",
+        schema: || json!({
+            "type": "object",
+            "properties": { "date_range": date_range_schema() },
+            "required": ["date_range"]
+        }),
+    },
 ];
 
 pub fn find_tool(name: &str) -> Option<&'static ToolDef> {
@@ -262,7 +664,54 @@ mod tests {
             find_tool("list_projects").expect("known").command,
             "get_projects"
         );
+        assert_eq!(
+            find_tool("create_manual_session").expect("known").command,
+            "create_manual_session"
+        );
+        assert_eq!(
+            find_tool("list_manual_sessions").expect("known").command,
+            "mcp_list_manual_sessions"
+        );
+        assert_eq!(
+            find_tool("update_manual_session").expect("known").command,
+            "update_manual_session"
+        );
+        assert_eq!(
+            find_tool("delete_manual_session").expect("known").command,
+            "delete_manual_session"
+        );
+        assert_eq!(
+            find_tool("delete_manual_sessions").expect("known").command,
+            "delete_manual_sessions"
+        );
+        assert_eq!(
+            find_tool("get_manual_session").expect("known").command,
+            "mcp_get_manual_session"
+        );
+        assert_eq!(
+            find_tool("set_manual_session_title")
+                .expect("known")
+                .command,
+            "mcp_set_manual_session_title"
+        );
+        assert_eq!(
+            find_tool("set_manual_session_type").expect("known").command,
+            "mcp_set_manual_session_type"
+        );
+        assert_eq!(
+            find_tool("set_manual_session_time").expect("known").command,
+            "mcp_set_manual_session_time"
+        );
         assert!(find_tool("drop_database").is_none());
+    }
+
+    #[test]
+    fn manual_session_list_schema_supports_empty_filters_and_pagination() {
+        let schema = (find_tool("list_manual_sessions").expect("known").schema)();
+        assert_eq!(schema["required"], serde_json::json!([]));
+        let filters = &schema["properties"]["filters"]["properties"];
+        assert_eq!(filters["limit"]["type"], "integer");
+        assert_eq!(filters["offset"]["type"], "integer");
     }
 
     #[test]

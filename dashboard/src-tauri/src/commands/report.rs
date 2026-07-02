@@ -166,6 +166,8 @@ pub async fn get_project_report_data(
                 ManualSessionFilters {
                     date_range: Some(date_range),
                     project_id: Some(project_id),
+                    limit: None,
+                    offset: None,
                 },
             )
             .await;
@@ -216,5 +218,7 @@ pub async fn get_project_report_data(
 /// tę komendę; WRY wykonuje natywny print per platforma (WKWebView / WebView2 / WebKitGTK).
 #[tauri::command]
 pub fn print_report(window: tauri::WebviewWindow) -> Result<(), CommandError> {
-    window.print().map_err(|e| CommandError::Other(e.to_string()))
+    window
+        .print()
+        .map_err(|e| CommandError::Other(e.to_string()))
 }

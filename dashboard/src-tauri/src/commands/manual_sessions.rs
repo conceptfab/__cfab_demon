@@ -1,11 +1,11 @@
 use tauri::AppHandle;
 
-use crate::commands::error::CommandError;
 use super::helpers::run_db_blocking;
 use super::projects::project_id_is_active;
 use super::types::{
     CreateManualSessionInput, ManualSession, ManualSessionFilters, ManualSessionWithProject,
 };
+use crate::commands::error::CommandError;
 
 fn sanitize_ids(ids: Vec<i64>) -> Vec<i64> {
     let mut seen = std::collections::HashSet::new();
@@ -30,6 +30,36 @@ fn parse_session_datetimes(start: &str, end: &str) -> Result<(i64, String), Stri
         (end_dt - start_dt).num_seconds(),
         start_dt.format("%Y-%m-%d").to_string(),
     ))
+}
+
+fn read_manual_session_with_project(
+    conn: &rusqlite::Connection,
+    id: i64,
+) -> Result<ManualSessionWithProject, String> {
+    conn.query_row(
+        "SELECT ms.id, ms.title, ms.session_type, ms.project_id, ms.app_id, p.name, p.color,
+                ms.start_time, ms.end_time, ms.duration_seconds, ms.date
+         FROM manual_sessions ms
+         JOIN projects p ON p.id = ms.project_id
+         WHERE ms.id = ?1",
+        [id],
+        |row| {
+            Ok(ManualSessionWithProject {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                session_type: row.get(2)?,
+                project_id: row.get(3)?,
+                app_id: row.get(4)?,
+                project_name: row.get(5)?,
+                project_color: row.get(6)?,
+                start_time: row.get(7)?,
+                end_time: row.get(8)?,
+                duration_seconds: row.get(9)?,
+                date: row.get(10)?,
+            })
+        },
+    )
+    .map_err(|e| format!("Manual session with id {id} not found: {e}"))
 }
 
 #[tauri::command]
@@ -119,6 +149,18 @@ pub async fn get_manual_sessions(
 
         sql.push_str(" ORDER BY ms.start_time ASC");
 
+        if let Some(limit) = filters.limit {
+            sql.push_str(" LIMIT ?");
+            params.push(Box::new(limit.clamp(1, 1000)));
+            if let Some(offset) = filters.offset {
+                sql.push_str(" OFFSET ?");
+                params.push(Box::new(offset.max(0)));
+            }
+        } else if let Some(offset) = filters.offset {
+            sql.push_str(" LIMIT -1 OFFSET ?");
+            params.push(Box::new(offset.max(0)));
+        }
+
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
             params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -145,6 +187,94 @@ pub async fn get_manual_sessions(
             results.push(row.map_err(|e| e.to_string())?);
         }
         Ok(results)
+    })
+    .await
+    .map_err(CommandError::Other)
+}
+
+pub async fn mcp_list_manual_sessions(
+    app: AppHandle,
+    filters: ManualSessionFilters,
+) -> Result<Vec<ManualSessionWithProject>, CommandError> {
+    get_manual_sessions(app, filters).await
+}
+
+pub async fn mcp_get_manual_session(
+    app: AppHandle,
+    id: i64,
+) -> Result<ManualSessionWithProject, CommandError> {
+    run_db_blocking(app, move |conn| read_manual_session_with_project(conn, id))
+        .await
+        .map_err(CommandError::Other)
+}
+
+pub async fn mcp_set_manual_session_title(
+    app: AppHandle,
+    id: i64,
+    title: String,
+) -> Result<ManualSessionWithProject, CommandError> {
+    run_db_blocking(app, move |conn| {
+        let rows = conn
+            .execute(
+                "UPDATE manual_sessions SET title = ?1 WHERE id = ?2",
+                rusqlite::params![title, id],
+            )
+            .map_err(|e| format!("Failed to update manual session title: {e}"))?;
+        if rows == 0 {
+            return Err(format!("Manual session with id {id} not found"));
+        }
+        read_manual_session_with_project(conn, id)
+    })
+    .await
+    .map_err(CommandError::Other)
+}
+
+pub async fn mcp_set_manual_session_type(
+    app: AppHandle,
+    id: i64,
+    session_type: String,
+) -> Result<ManualSessionWithProject, CommandError> {
+    if session_type.trim().is_empty() {
+        return Err(CommandError::Validation(
+            "session_type cannot be empty".to_string(),
+        ));
+    }
+
+    run_db_blocking(app, move |conn| {
+        let rows = conn
+            .execute(
+                "UPDATE manual_sessions SET session_type = ?1 WHERE id = ?2",
+                rusqlite::params![session_type, id],
+            )
+            .map_err(|e| format!("Failed to update manual session type: {e}"))?;
+        if rows == 0 {
+            return Err(format!("Manual session with id {id} not found"));
+        }
+        read_manual_session_with_project(conn, id)
+    })
+    .await
+    .map_err(CommandError::Other)
+}
+
+pub async fn mcp_set_manual_session_time(
+    app: AppHandle,
+    id: i64,
+    start_time: String,
+    end_time: String,
+) -> Result<ManualSessionWithProject, CommandError> {
+    let (duration_seconds, date) = parse_session_datetimes(&start_time, &end_time)?;
+
+    run_db_blocking(app, move |conn| {
+        let rows = conn
+            .execute(
+                "UPDATE manual_sessions SET start_time = ?1, end_time = ?2, duration_seconds = ?3, date = ?4 WHERE id = ?5",
+                rusqlite::params![start_time, end_time, duration_seconds, date, id],
+            )
+            .map_err(|e| format!("Failed to update manual session time: {e}"))?;
+        if rows == 0 {
+            return Err(format!("Manual session with id {id} not found"));
+        }
+        read_manual_session_with_project(conn, id)
     })
     .await
     .map_err(CommandError::Other)

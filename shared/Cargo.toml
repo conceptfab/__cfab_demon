@@ -1,6 +1,6 @@
 [package]
 name = "timeflow-shared"
-version = "0.1.5749"
+version = "0.1.5750"
 edition = "2021"
 
 [lib]

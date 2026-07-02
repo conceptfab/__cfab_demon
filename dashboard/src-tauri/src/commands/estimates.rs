@@ -88,12 +88,8 @@ fn query_project_meta(conn: &rusqlite::Connection) -> Result<ProjectMetaById, St
     if !pm_map.is_empty() {
         let canonical = super::clients::pm_canonical_map(&pm_map);
         for meta in out.values_mut() {
-            meta.4 = super::clients::resolve_overlay_client(
-                &pm_map,
-                &canonical,
-                &meta.1,
-                meta.4.take(),
-            );
+            meta.4 =
+                super::clients::resolve_overlay_client(&pm_map, &canonical, &meta.1, meta.4.take());
         }
     }
     Ok(out)
@@ -746,8 +742,11 @@ mod tests {
 
         let row = rows.first().expect("row");
         assert_eq!(row.client_name.as_deref(), Some("Acme"));
-        let days: Vec<(String, i64)> =
-            row.days.iter().map(|d| (d.date.clone(), d.seconds)).collect();
+        let days: Vec<(String, i64)> = row
+            .days
+            .iter()
+            .map(|d| (d.date.clone(), d.seconds))
+            .collect();
         assert_eq!(
             days,
             vec![

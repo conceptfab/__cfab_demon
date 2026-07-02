@@ -1,5 +1,8 @@
 use super::helpers::build_table_hashes;
-use super::types::{ApplicationRow, AssignmentAutoRunRow, AssignmentFeedbackRow, ClientRow, ManualSession, Project, SessionRow, Tombstone};
+use super::types::{
+    ApplicationRow, AssignmentAutoRunRow, AssignmentFeedbackRow, ClientRow, ManualSession, Project,
+    SessionRow, Tombstone,
+};
 use crate::commands::error::CommandError;
 use crate::db;
 use serde::{Deserialize, Serialize};
@@ -136,8 +139,10 @@ pub fn build_delta_archive(
 
     // Applications (all — needed as lookup table for app_id resolution)
     let mut stmt = conn
-        .prepare("SELECT id, executable_name, display_name, project_id, is_imported, updated_at
-                  FROM applications")
+        .prepare(
+            "SELECT id, executable_name, display_name, project_id, is_imported, updated_at
+                  FROM applications",
+        )
         .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let applications: Vec<ApplicationRow> = stmt
@@ -157,9 +162,11 @@ pub fn build_delta_archive(
 
     // Sessions
     let mut stmt = conn
-        .prepare("SELECT id, app_id, project_id, start_time, end_time, duration_seconds, date
+        .prepare(
+            "SELECT id, app_id, project_id, start_time, end_time, duration_seconds, date
                   , COALESCE(rate_multiplier, 1.0), comment, is_hidden, updated_at, project_name
-                  FROM sessions WHERE updated_at > ?1")
+                  FROM sessions WHERE updated_at > ?1",
+        )
         .map_err(|e| CommandError::Other(e.to_string()))?;
 
     let sessions: Vec<SessionRow> = stmt
@@ -185,11 +192,13 @@ pub fn build_delta_archive(
 
     // Manual Sessions
     let mut stmt = conn
-        .prepare("SELECT id, title, session_type, project_id, app_id, start_time, end_time,
+        .prepare(
+            "SELECT id, title, session_type, project_id, app_id, start_time, end_time,
                          duration_seconds, date, created_at, updated_at
-                  FROM manual_sessions WHERE updated_at > ?1")
+                  FROM manual_sessions WHERE updated_at > ?1",
+        )
         .map_err(|e| CommandError::Other(e.to_string()))?;
-    
+
     let manual_sessions: Vec<ManualSession> = stmt
         .query_map([since.as_str()], |row| {
             Ok(ManualSession {
@@ -212,10 +221,12 @@ pub fn build_delta_archive(
 
     // Tombstones
     let mut stmt = conn
-        .prepare("SELECT table_name, record_id, record_uuid, deleted_at, sync_key
-                  FROM tombstones WHERE deleted_at > ?1")
+        .prepare(
+            "SELECT table_name, record_id, record_uuid, deleted_at, sync_key
+                  FROM tombstones WHERE deleted_at > ?1",
+        )
         .map_err(|e| CommandError::Other(e.to_string()))?;
-    
+
     let tombstones: Vec<Tombstone> = stmt
         .query_map([since.as_str()], |row| {
             Ok(Tombstone {
@@ -400,7 +411,11 @@ mod tests {
             .expect("collect");
 
         // Only the post-cutoff session (id=2) should appear
-        assert_eq!(ids, vec![2i64], "only post-cutoff session should be in delta");
+        assert_eq!(
+            ids,
+            vec![2i64],
+            "only post-cutoff session should be in delta"
+        );
     }
 
     // Test 4: normalize_datetime_for_sqlite — offset ±HH:MM is converted to UTC.

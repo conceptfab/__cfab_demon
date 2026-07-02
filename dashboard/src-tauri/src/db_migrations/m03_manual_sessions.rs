@@ -2,10 +2,7 @@
 /// pula wolnych stron SQLite przekroczyła próg — VACUUM sam NIE może działać
 /// w obrębie transakcji (SQLite wymaga auto-commit), więc przenosimy go
 /// do `run_migrations` po `tx.commit()`.
-pub fn run(
-    db: &rusqlite::Connection,
-    needs_vacuum: &mut bool,
-) -> Result<(), rusqlite::Error> {
+pub fn run(db: &rusqlite::Connection, needs_vacuum: &mut bool) -> Result<(), rusqlite::Error> {
     // Add manual_sessions table if it doesn't exist
     let has_manual_sessions: bool = db
         .prepare(

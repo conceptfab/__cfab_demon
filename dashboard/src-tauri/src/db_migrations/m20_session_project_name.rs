@@ -21,7 +21,9 @@ pub fn run(db: &rusqlite::Transaction) -> Result<(), rusqlite::Error> {
 
     // 2. Add column to manual_sessions
     let has_manual_col: i64 = db
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('manual_sessions') WHERE name='project_name'")?
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('manual_sessions') WHERE name='project_name'",
+        )?
         .query_row([], |r| r.get(0))
         .unwrap_or(0);
     if has_manual_col == 0 {

@@ -5,9 +5,9 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 use timeflow_shared::{session_settings, version_compat};
 
-use super::helpers::{no_console, timeflow_data_dir, DAEMON_EXE_NAME};
 #[cfg(not(windows))]
 use super::helpers::DAEMON_AUTOSTART_LNK;
+use super::helpers::{no_console, timeflow_data_dir, DAEMON_EXE_NAME};
 use super::types::DaemonStatus;
 use crate::commands::sql_fragments::ACTIVE_SESSION_FILTER_S;
 use crate::db;

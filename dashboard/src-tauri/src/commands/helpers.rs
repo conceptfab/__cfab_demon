@@ -81,7 +81,6 @@ pub(crate) fn disambiguate_name(
     }
 }
 
-
 pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     // Kanoniczne tabele synchronizowane: SQL żyje w shared (finding #3).
     let sql: String = if let Some(s) = timeflow_shared::sync::checksum::table_hash_sql(table) {
@@ -105,12 +104,15 @@ pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> St
     // Diagnostyka: rzędy istnieją, ale hash pusty → możliwy bug (np. brak kolumny).
     // `table` jest tu jedną z 7 znanych, bezpiecznych nazw (gałąź `_` już zwróciła).
     let row_count = conn
-        .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get::<_, i64>(0))
+        .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+            row.get::<_, i64>(0)
+        })
         .unwrap_or(0);
     if row_count > 0 && concat.is_empty() {
         log::warn!(
             "compute_table_hash: table '{}' has {} row(s) but produced an empty hash input",
-            table, row_count
+            table,
+            row_count
         );
     }
     timeflow_shared::sync::checksum::content_hash(&concat)
@@ -210,7 +212,12 @@ pub(crate) fn validate_restore_source(path: &str) -> Result<std::path::PathBuf, 
     let ext_ok = p
         .extension()
         .and_then(|e| e.to_str())
-        .map(|e| matches!(e.to_ascii_lowercase().as_str(), "db" | "sqlite" | "sqlite3" | "bak"))
+        .map(|e| {
+            matches!(
+                e.to_ascii_lowercase().as_str(),
+                "db" | "sqlite" | "sqlite3" | "bak"
+            )
+        })
         .unwrap_or(false);
     if !ext_ok {
         return Err("Restore file must be a .db/.sqlite/.bak database".into());
@@ -239,7 +246,11 @@ mod tests {
              INSERT INTO projects (name,color,updated_at,status) VALUES ('Acme','#fff','2026-01-01 00:00:00','active');",
         ).unwrap();
         let h = compute_table_hash(&conn, "projects");
-        assert_eq!(h.len(), 32, "checksum musi być 32-znakowym hexem (shared content_hash)");
+        assert_eq!(
+            h.len(),
+            32,
+            "checksum musi być 32-znakowym hexem (shared content_hash)"
+        );
     }
 
     #[test]
@@ -255,8 +266,11 @@ mod tests {
                 [contact]).unwrap();
             compute_table_hash(&conn, "clients")
         };
-        assert_ne!(mk("a@x.pl"), mk("b@x.pl"),
-            "rozjazd pola contact przy równym updated_at MUSI zmienić hash (finding #3)");
+        assert_ne!(
+            mk("a@x.pl"),
+            mk("b@x.pl"),
+            "rozjazd pola contact przy równym updated_at MUSI zmienić hash (finding #3)"
+        );
     }
 
     #[test]
@@ -272,8 +286,11 @@ mod tests {
                 [display]).unwrap();
             compute_table_hash(&conn, "applications")
         };
-        assert_ne!(mk("Foo"), mk("Foobar"),
-            "rozjazd display_name przy równym updated_at MUSI zmienić hash");
+        assert_ne!(
+            mk("Foo"),
+            mk("Foobar"),
+            "rozjazd display_name przy równym updated_at MUSI zmienić hash"
+        );
     }
 
     #[test]
@@ -293,8 +310,11 @@ mod tests {
                 [comment]).unwrap();
             compute_table_hash(&conn, "sessions")
         };
-        assert_ne!(mk("first"), mk("second"),
-            "rozjazd comment przy równym updated_at MUSI zmienić hash");
+        assert_ne!(
+            mk("first"),
+            mk("second"),
+            "rozjazd comment przy równym updated_at MUSI zmienić hash"
+        );
     }
 
     #[test]
@@ -313,8 +333,11 @@ mod tests {
                 [dur]).unwrap();
             compute_table_hash(&conn, "manual_sessions")
         };
-        assert_ne!(mk(3600), mk(7200),
-            "rozjazd duration_seconds przy równym updated_at MUSI zmienić hash");
+        assert_ne!(
+            mk(3600),
+            mk(7200),
+            "rozjazd duration_seconds przy równym updated_at MUSI zmienić hash"
+        );
     }
 
     #[test]
@@ -338,8 +361,11 @@ mod tests {
                 [base+9, base+5, base+1]).unwrap();
             compute_table_hash(&conn, "sessions")
         };
-        assert_eq!(build(100), build(200),
-            "hash MUSI być niezależny od lokalnych autoincrement id (FK rozwiązywane przez nazwę)");
+        assert_eq!(
+            build(100),
+            build(200),
+            "hash MUSI być niezależny od lokalnych autoincrement id (FK rozwiązywane przez nazwę)"
+        );
     }
 
     #[test]

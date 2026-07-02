@@ -474,10 +474,7 @@ mod tests {
 
     #[test]
     fn inspect_app_bundle_reads_plist_metadata() {
-        let dir = std::env::temp_dir().join(format!(
-            "tf_drop_test_{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("tf_drop_test_{}", std::process::id()));
         let app_dir = dir.join("Antigravity IDE.app");
         let contents = app_dir.join("Contents");
         std::fs::create_dir_all(&contents).unwrap();
@@ -496,7 +493,10 @@ mod tests {
         let info = inspect_dropped_app_path(&app_dir).unwrap();
         assert_eq!(info.exe_name, "antigravity ide");
         assert_eq!(info.display_name, "Antigravity IDE");
-        assert_eq!(info.bundle_id.as_deref(), Some("com.google.antigravity-ide"));
+        assert_eq!(
+            info.bundle_id.as_deref(),
+            Some("com.google.antigravity-ide")
+        );
         assert_eq!(
             info.app_path.as_deref(),
             Some(app_dir.to_string_lossy().to_lowercase().as_str())
@@ -507,9 +507,10 @@ mod tests {
 
     #[test]
     fn inspect_windows_exe_uses_basename() {
-        let info =
-            inspect_dropped_app_path(std::path::Path::new(r"C:\Tools\Antigravity\Antigravity.exe"))
-                .unwrap();
+        let info = inspect_dropped_app_path(std::path::Path::new(
+            r"C:\Tools\Antigravity\Antigravity.exe",
+        ))
+        .unwrap();
         assert_eq!(info.exe_name, "antigravity.exe");
         assert_eq!(info.display_name, "Antigravity");
         assert_eq!(info.bundle_id, None);

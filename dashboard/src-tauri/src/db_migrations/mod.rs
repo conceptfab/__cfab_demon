@@ -1,4 +1,3 @@
-pub(crate) mod tombstone_triggers;
 mod m01_vital_tables;
 mod m02_file_activities;
 mod m03_manual_sessions;
@@ -24,6 +23,7 @@ mod m22_updated_at_indexes;
 mod m23_project_merge;
 mod m24_clients;
 mod m25_clients_tombstone;
+pub(crate) mod tombstone_triggers;
 
 pub(crate) const LATEST_SCHEMA_VERSION: i64 = 25;
 

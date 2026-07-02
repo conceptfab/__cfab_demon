@@ -633,7 +633,6 @@ fn load_ai_project_candidates(
     Ok((candidates, confidence))
 }
 
-
 pub(crate) fn analyze_session_projects_sync(
     conn: &rusqlite::Connection,
     session_id: i64,

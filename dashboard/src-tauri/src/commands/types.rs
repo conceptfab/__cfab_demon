@@ -478,12 +478,14 @@ pub struct CreateManualSessionInput {
     pub end_time: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct ManualSessionFilters {
     #[serde(rename = "dateRange")]
     pub date_range: Option<DateRange>,
     #[serde(rename = "projectId")]
     pub project_id: Option<i64>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 // ==================== Export/Import Archive Types ====================

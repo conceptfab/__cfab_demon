@@ -1,13 +1,13 @@
 use std::process::Command;
 
 use crate::commands::error::CommandError;
-use crate::commands::helpers::{no_console, timeflow_data_dir, DAEMON_EXE_NAME};
 #[cfg(not(windows))]
 use crate::commands::helpers::DAEMON_AUTOSTART_LNK;
+use crate::commands::helpers::{no_console, timeflow_data_dir, DAEMON_EXE_NAME};
 
-use super::{find_daemon_exe, session_settings, startup_dir};
 #[cfg(windows)]
 use super::autostart_win;
+use super::{find_daemon_exe, session_settings, startup_dir};
 
 /// Windows autostart przez klucz rejestru `HKCU\...\Run`. Wcześniejsza wersja
 /// tworzyła plik `.lnk` w Start Menu\Programs\Startup przez PowerShell, ale
@@ -110,7 +110,8 @@ pub async fn start_daemon() -> Result<(), CommandError> {
     let mut cmd = Command::new(&exe);
     no_console(&mut cmd);
     cmd.spawn()
-        .map_err(|e| CommandError::Other(format!("Failed to start daemon: {}", e)))?;    Ok(())
+        .map_err(|e| CommandError::Other(format!("Failed to start daemon: {}", e)))?;
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -125,9 +126,13 @@ pub async fn stop_daemon() -> Result<(), CommandError> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !stderr.contains("not found") {
-            return Err(CommandError::Other(format!("Failed to stop daemon: {}", stderr)));
+            return Err(CommandError::Other(format!(
+                "Failed to stop daemon: {}",
+                stderr
+            )));
         }
-    }    Ok(())
+    }
+    Ok(())
 }
 
 /// macOS/Linux: zatrzymuje daemona przez `pkill -f <exe_name>`. pkill zwraca 1
@@ -147,7 +152,8 @@ pub async fn stop_daemon() -> Result<(), CommandError> {
             "pkill zakończył się kodem {code}: {}",
             String::from_utf8_lossy(&output.stderr)
         )));
-    }    Ok(())
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -155,13 +161,15 @@ pub async fn stop_daemon() -> Result<(), CommandError> {
 pub async fn restart_daemon() -> Result<(), CommandError> {
     let mut kill_cmd = Command::new("taskkill");
     no_console(&mut kill_cmd);
-    let _ = kill_cmd.args(["/F", "/T", "/IM", DAEMON_EXE_NAME]).output();    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    let _ = kill_cmd.args(["/F", "/T", "/IM", DAEMON_EXE_NAME]).output();
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
     let exe = find_daemon_exe()?;
     let mut start_cmd = Command::new(&exe);
     no_console(&mut start_cmd);
     start_cmd
         .spawn()
-        .map_err(|e| CommandError::Other(format!("Failed to start daemon: {}", e)))?;    Ok(())
+        .map_err(|e| CommandError::Other(format!("Failed to start daemon: {}", e)))?;
+    Ok(())
 }
 
 #[cfg(not(windows))]
@@ -169,13 +177,15 @@ pub async fn restart_daemon() -> Result<(), CommandError> {
 pub async fn restart_daemon() -> Result<(), CommandError> {
     let _ = Command::new("pkill")
         .args(["-TERM", "-f", DAEMON_EXE_NAME])
-        .output();    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        .output();
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
     let exe = find_daemon_exe()?;
     let mut start_cmd = Command::new(&exe);
     no_console(&mut start_cmd);
     start_cmd
         .spawn()
-        .map_err(|e| CommandError::Other(format!("Failed to start daemon: {}", e)))?;    Ok(())
+        .map_err(|e| CommandError::Other(format!("Failed to start daemon: {}", e)))?;
+    Ok(())
 }
 
 #[tauri::command]

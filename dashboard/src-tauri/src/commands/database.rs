@@ -170,9 +170,21 @@ pub async fn update_database_settings(
         db::set_system_setting_conn(&tx, "vacuum_on_startup", &vacuum_on_startup.to_string())?;
         db::set_system_setting_conn(&tx, "backup_enabled", &backup_enabled.to_string())?;
         db::set_system_setting_conn(&tx, "backup_path", &backup_path)?;
-        db::set_system_setting_conn(&tx, "backup_interval_days", &backup_interval_days.to_string())?;
-        db::set_system_setting_conn(&tx, "auto_optimize_enabled", &auto_optimize_enabled.to_string())?;
-        db::set_system_setting_conn(&tx, "auto_optimize_interval_hours", &normalized_auto_optimize_interval_hours.to_string())?;
+        db::set_system_setting_conn(
+            &tx,
+            "backup_interval_days",
+            &backup_interval_days.to_string(),
+        )?;
+        db::set_system_setting_conn(
+            &tx,
+            "auto_optimize_enabled",
+            &auto_optimize_enabled.to_string(),
+        )?;
+        db::set_system_setting_conn(
+            &tx,
+            "auto_optimize_interval_hours",
+            &normalized_auto_optimize_interval_hours.to_string(),
+        )?;
 
         tx.commit().map_err(|e| e.to_string())?;
         Ok(())
@@ -356,7 +368,10 @@ pub(crate) fn restore_database_into_conn(
                 let quoted = table_name.replace('"', "\"\"");
                 tx.execute_batch(&format!("DELETE FROM \"{}\";", quoted))
                     .map_err(|e| {
-                        format!("Failed to clear destination-only table '{}': {}", table_name, e)
+                        format!(
+                            "Failed to clear destination-only table '{}': {}",
+                            table_name, e
+                        )
                     })?;
             }
         }
@@ -704,11 +719,20 @@ mod tests {
 
         // Tabele z backupu: dokładnie zawartość backupu.
         let pnames: Vec<String> = conn
-            .prepare("SELECT name FROM projects ORDER BY name").unwrap()
-            .query_map([], |r| r.get(0)).unwrap()
-            .collect::<Result<_, _>>().unwrap();
-        assert_eq!(pnames, vec!["z_backupu".to_string()], "projects = tylko backup");
-        let scount: i64 = conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0)).unwrap();
+            .prepare("SELECT name FROM projects ORDER BY name")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            pnames,
+            vec!["z_backupu".to_string()],
+            "projects = tylko backup"
+        );
+        let scount: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(scount, 1, "sessions = tylko backup");
 
         // Tabele NIEOBECNE w backupie: muszą być PUSTE (nie scalone z lokalnymi).
@@ -716,7 +740,10 @@ mod tests {
             let n: i64 = conn
                 .query_row(&format!("SELECT COUNT(*) FROM {t}"), [], |r| r.get(0))
                 .unwrap();
-            assert_eq!(n, 0, "{t} musi byc wyczyszczona — restore to replace, nie merge");
+            assert_eq!(
+                n, 0,
+                "{t} musi byc wyczyszczona — restore to replace, nie merge"
+            );
         }
         let _ = std::fs::remove_file(&src_path);
     }
@@ -749,7 +776,10 @@ mod tests {
                 Ok((r.get(0)?, r.get(1)?))
             })
             .unwrap();
-        assert_eq!(m_into, None, "kolumna spoza backupu = NULL, nie literal 'merged_into'");
+        assert_eq!(
+            m_into, None,
+            "kolumna spoza backupu = NULL, nie literal 'merged_into'"
+        );
         assert_eq!(m_at, None);
         let pname: Option<String> = conn
             .query_row("SELECT project_name FROM sessions", [], |r| r.get(0))

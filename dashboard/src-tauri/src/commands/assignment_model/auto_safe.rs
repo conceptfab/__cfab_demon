@@ -56,7 +56,14 @@ pub(crate) fn revert_file_activities_for_window(
            AND last_seen > ?4
            AND first_seen < ?5
            AND project_id = ?6",
-        rusqlite::params![from_project_id, app_id, date, start_time, end_time, to_project_id],
+        rusqlite::params![
+            from_project_id,
+            app_id,
+            date,
+            start_time,
+            end_time,
+            to_project_id
+        ],
     )
     .map_err(|e| e.to_string())
 }
@@ -155,132 +162,132 @@ pub fn run_auto_safe_sync(
             let tx = conn.transaction().map_err(|e| e.to_string())?;
 
             for &session_id in batch {
-            result.scanned += 1;
+                result.scanned += 1;
 
-            let session = tx
-                .query_row(
-                    "SELECT app_id, date, start_time, end_time, project_id
+                let session = tx
+                    .query_row(
+                        "SELECT app_id, date, start_time, end_time, project_id
                      FROM sessions
                      WHERE id = ?1",
-                    rusqlite::params![session_id],
-                    |row| {
-                        Ok((
-                            row.get::<_, i64>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, String>(2)?,
-                            row.get::<_, String>(3)?,
-                            row.get::<_, Option<i64>>(4)?,
-                        ))
-                    },
-                )
-                .optional()
-                .map_err(|e| e.to_string())?;
+                        rusqlite::params![session_id],
+                        |row| {
+                            Ok((
+                                row.get::<_, i64>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                                row.get::<_, String>(3)?,
+                                row.get::<_, Option<i64>>(4)?,
+                            ))
+                        },
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?;
 
-            let Some((app_id, date, start_time, end_time, current_project_id)) = session else {
-                continue;
-            };
+                let Some((app_id, date, start_time, end_time, current_project_id)) = session else {
+                    continue;
+                };
 
-            if current_project_id.is_some() {
-                result.skipped_already_assigned += 1;
-                continue;
-            }
-
-            if check_manual_override(&tx, session_id).is_some() {
-                result.skipped_already_assigned += 1;
-                continue;
-            }
-
-            let Some(context) = build_session_context(&tx, session_id)? else {
-                result.skipped_low_confidence += 1;
-                continue;
-            };
-            let Some(suggestion) = compute_raw_suggestion(&tx, &context)? else {
-                result.skipped_low_confidence += 1;
-                continue;
-            };
-
-            if !meets_auto_safe_threshold(status, &suggestion) {
-                let has_confidence_and_evidence = suggestion.confidence
-                    >= status.min_confidence_auto
-                    && suggestion.evidence_count >= status.min_evidence_auto;
-                if has_confidence_and_evidence && suggestion.margin < AUTO_SAFE_MIN_MARGIN {
-                    result.skipped_ambiguous += 1;
-                } else {
-                    result.skipped_low_confidence += 1;
+                if current_project_id.is_some() {
+                    result.skipped_already_assigned += 1;
+                    continue;
                 }
-                continue;
-            }
 
-            result.suggested += 1;
+                if check_manual_override(&tx, session_id).is_some() {
+                    result.skipped_already_assigned += 1;
+                    continue;
+                }
 
-            tx.execute(
-                "INSERT INTO assignment_suggestions (
+                let Some(context) = build_session_context(&tx, session_id)? else {
+                    result.skipped_low_confidence += 1;
+                    continue;
+                };
+                let Some(suggestion) = compute_raw_suggestion(&tx, &context)? else {
+                    result.skipped_low_confidence += 1;
+                    continue;
+                };
+
+                if !meets_auto_safe_threshold(status, &suggestion) {
+                    let has_confidence_and_evidence = suggestion.confidence
+                        >= status.min_confidence_auto
+                        && suggestion.evidence_count >= status.min_evidence_auto;
+                    if has_confidence_and_evidence && suggestion.margin < AUTO_SAFE_MIN_MARGIN {
+                        result.skipped_ambiguous += 1;
+                    } else {
+                        result.skipped_low_confidence += 1;
+                    }
+                    continue;
+                }
+
+                result.suggested += 1;
+
+                tx.execute(
+                    "INSERT INTO assignment_suggestions (
                     session_id, app_id, suggested_project_id, suggested_confidence,
                     suggested_evidence_count, model_version, created_at, status
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), 'pending')",
-                rusqlite::params![
-                    session_id,
-                    app_id,
-                    suggestion.project_id,
-                    suggestion.confidence,
-                    suggestion.evidence_count,
-                    "auto_safe_v1"
-                ],
-            )
-            .map_err(|e| e.to_string())?;
-            let suggestion_id = tx.last_insert_rowid();
-
-            let updated_session = tx
-                .execute(
-                    "UPDATE sessions
-                     SET project_id = ?1
-                     WHERE id = ?2 AND project_id IS NULL",
-                    rusqlite::params![suggestion.project_id, session_id],
+                    rusqlite::params![
+                        session_id,
+                        app_id,
+                        suggestion.project_id,
+                        suggestion.confidence,
+                        suggestion.evidence_count,
+                        "auto_safe_v1"
+                    ],
                 )
                 .map_err(|e| e.to_string())?;
+                let suggestion_id = tx.last_insert_rowid();
 
-            if updated_session == 0 {
-                result.skipped_already_assigned += 1;
-                let _ = tx.execute(
-                    "UPDATE assignment_suggestions SET status = 'expired' WHERE id = ?1",
-                    rusqlite::params![suggestion_id],
-                );
-                continue;
-            }
+                let updated_session = tx
+                    .execute(
+                        "UPDATE sessions
+                     SET project_id = ?1
+                     WHERE id = ?2 AND project_id IS NULL",
+                        rusqlite::params![suggestion.project_id, session_id],
+                    )
+                    .map_err(|e| e.to_string())?;
 
-            assign_file_activities_for_window(
-                &tx,
-                suggestion.project_id,
-                app_id,
-                &date,
-                &start_time,
-                &end_time,
-            )?;
+                if updated_session == 0 {
+                    result.skipped_already_assigned += 1;
+                    let _ = tx.execute(
+                        "UPDATE assignment_suggestions SET status = 'expired' WHERE id = ?1",
+                        rusqlite::params![suggestion_id],
+                    );
+                    continue;
+                }
 
-            tx.execute(
-                "INSERT INTO assignment_auto_run_items (
+                assign_file_activities_for_window(
+                    &tx,
+                    suggestion.project_id,
+                    app_id,
+                    &date,
+                    &start_time,
+                    &end_time,
+                )?;
+
+                tx.execute(
+                    "INSERT INTO assignment_auto_run_items (
                     run_id, session_id, app_id, from_project_id, to_project_id,
                     suggestion_id, confidence, evidence_count, applied_at
                  ) VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, datetime('now'))",
-                rusqlite::params![
-                    run_id,
-                    session_id,
-                    app_id,
-                    suggestion.project_id,
-                    suggestion_id,
-                    suggestion.confidence,
-                    suggestion.evidence_count
-                ],
-            )
-            .map_err(|e| e.to_string())?;
+                    rusqlite::params![
+                        run_id,
+                        session_id,
+                        app_id,
+                        suggestion.project_id,
+                        suggestion_id,
+                        suggestion.confidence,
+                        suggestion.evidence_count
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
 
-            tx.execute(
-                "UPDATE assignment_suggestions SET status = 'accepted' WHERE id = ?1",
-                rusqlite::params![suggestion_id],
-            )
-            .map_err(|e| e.to_string())?;
+                tx.execute(
+                    "UPDATE assignment_suggestions SET status = 'accepted' WHERE id = ?1",
+                    rusqlite::params![suggestion_id],
+                )
+                .map_err(|e| e.to_string())?;
 
-            tx.execute(
+                tx.execute(
                 "INSERT INTO assignment_feedback (
                     suggestion_id, session_id, app_id, from_project_id, to_project_id, source, created_at
                  ) VALUES (?1, ?2, ?3, NULL, ?4, 'auto_accept', datetime('now'))",
@@ -288,7 +295,7 @@ pub fn run_auto_safe_sync(
             )
             .map_err(|e| e.to_string())?;
 
-            result.assigned += 1;
+                result.assigned += 1;
             }
             tx.commit().map_err(|e| e.to_string())?;
 
@@ -298,12 +305,7 @@ pub fn run_auto_safe_sync(
                      sessions_suggested = ?3,
                      sessions_assigned = ?4
                  WHERE id = ?1",
-                rusqlite::params![
-                    run_id,
-                    result.scanned,
-                    result.suggested,
-                    result.assigned
-                ],
+                rusqlite::params![run_id, result.scanned, result.suggested, result.assigned],
             )
             .map_err(|e| e.to_string())?;
 
@@ -530,7 +532,10 @@ pub fn deterministic_sync(
         .into_iter()
         .filter(|(_, _, exe_name)| {
             let activity = classify_activity_type(exe_name, None);
-            !matches!(activity, Some(ActivityType::Design) | Some(ActivityType::Browsing))
+            !matches!(
+                activity,
+                Some(ActivityType::Design) | Some(ActivityType::Browsing)
+            )
         })
         .map(|(app_id, project_id, _)| (app_id, project_id))
         .collect();
@@ -705,21 +710,36 @@ mod tests {
         .expect("assign");
 
         let pid1: Option<i64> = conn
-            .query_row("SELECT project_id FROM file_activities WHERE id = 1", [], |r| r.get(0))
+            .query_row(
+                "SELECT project_id FROM file_activities WHERE id = 1",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         let pid2: Option<i64> = conn
-            .query_row("SELECT project_id FROM file_activities WHERE id = 2", [], |r| r.get(0))
+            .query_row(
+                "SELECT project_id FROM file_activities WHERE id = 2",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(pid1, Some(99), "NULL row should be assigned");
-        assert_eq!(pid2, Some(77), "pre-existing assignment must NOT be overwritten");
+        assert_eq!(
+            pid2,
+            Some(77),
+            "pre-existing assignment must NOT be overwritten"
+        );
     }
 
     #[test]
     fn revert_file_activities_only_touches_rows_assigned_by_run() {
         let conn = setup_fa_conn();
         // Row 1 was assigned by the run (to 99), row 2 belongs to someone else (77).
-        conn.execute("UPDATE file_activities SET project_id = 99 WHERE id = 1", [])
-            .unwrap();
+        conn.execute(
+            "UPDATE file_activities SET project_id = 99 WHERE id = 1",
+            [],
+        )
+        .unwrap();
 
         super::revert_file_activities_for_window(
             &conn,
@@ -733,10 +753,18 @@ mod tests {
         .expect("revert");
 
         let pid1: Option<i64> = conn
-            .query_row("SELECT project_id FROM file_activities WHERE id = 1", [], |r| r.get(0))
+            .query_row(
+                "SELECT project_id FROM file_activities WHERE id = 1",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         let pid2: Option<i64> = conn
-            .query_row("SELECT project_id FROM file_activities WHERE id = 2", [], |r| r.get(0))
+            .query_row(
+                "SELECT project_id FROM file_activities WHERE id = 2",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(pid1, None, "run-assigned row should be reverted");
         assert_eq!(pid2, Some(77), "foreign assignment must survive rollback");

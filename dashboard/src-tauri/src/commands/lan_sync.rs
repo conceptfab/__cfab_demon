@@ -102,7 +102,8 @@ pub async fn get_lan_peers() -> Result<Vec<LanPeer>, CommandError> {
         .await
         .map_err(|e| CommandError::Other(format!("spawn_blocking join error: {e}")))?
         .map_err(|e| CommandError::Other(e.to_string()))?;
-    let file: LanPeersFile = serde_json::from_str(&content).map_err(|e| CommandError::Other(e.to_string()))?;
+    let file: LanPeersFile =
+        serde_json::from_str(&content).map_err(|e| CommandError::Other(e.to_string()))?;
     Ok(file.peers)
 }
 
@@ -111,7 +112,8 @@ pub async fn get_lan_peers() -> Result<Vec<LanPeer>, CommandError> {
 pub fn upsert_lan_peer(peer: LanPeer) -> Result<(), CommandError> {
     let path = timeflow_data_dir()?.join("lan_peers.json");
     let mut file = if path.exists() {
-        let content = std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
+        let content =
+            std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
         serde_json::from_str::<LanPeersFile>(&content).unwrap_or(LanPeersFile {
             updated_at: String::new(),
             peers: Vec::new(),
@@ -132,7 +134,8 @@ pub fn upsert_lan_peer(peer: LanPeer) -> Result<(), CommandError> {
     } else {
         file.peers.push(peer);
     }
-    let json = serde_json::to_string_pretty(&file).map_err(|e| CommandError::Other(e.to_string()))?;
+    let json =
+        serde_json::to_string_pretty(&file).map_err(|e| CommandError::Other(e.to_string()))?;
     std::fs::write(&path, json).map_err(|e| CommandError::Other(e.to_string()))?;
     Ok(())
 }
@@ -186,7 +189,10 @@ pub async fn ping_lan_peer(ip: String, port: u16) -> Result<PingLanPeerResult, C
         .map_err(|e| CommandError::Other(format!("Cannot reach {}:{} — {}", ip, port, e)))?;
 
     if !resp.status().is_success() {
-        return Err(CommandError::Other(format!("Peer responded with status {}", resp.status())));
+        return Err(CommandError::Other(format!(
+            "Peer responded with status {}",
+            resp.status()
+        )));
     }
 
     #[derive(Deserialize)]
@@ -256,11 +262,23 @@ async fn ping_lan_scan_host(client: reqwest::Client, ip: String) -> Option<PingL
 pub async fn scan_lan_subnet() -> Result<Vec<PingLanPeerResult>, CommandError> {
     // 1. Determine our own IP (default route)
     let my_ip_addr = {
-        let socket = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|e| CommandError::Other(e.to_string()))?;
-        socket.connect("8.8.8.8:80").map_err(|e| CommandError::Other(e.to_string()))?;
-        match socket.local_addr().map_err(|e| CommandError::Other(e.to_string()))?.ip() {
+        let socket = std::net::UdpSocket::bind("0.0.0.0:0")
+            .map_err(|e| CommandError::Other(e.to_string()))?;
+        socket
+            .connect("8.8.8.8:80")
+            .map_err(|e| CommandError::Other(e.to_string()))?;
+        match socket
+            .local_addr()
+            .map_err(|e| CommandError::Other(e.to_string()))?
+            .ip()
+        {
             std::net::IpAddr::V4(ip) => ip,
-            other => return Err(CommandError::Other(format!("Cannot scan LAN from non-IPv4 address: {}", other))),
+            other => {
+                return Err(CommandError::Other(format!(
+                    "Cannot scan LAN from non-IPv4 address: {}",
+                    other
+                )))
+            }
         }
     };
 
@@ -337,7 +355,10 @@ pub async fn get_lan_sync_progress() -> Result<SyncProgress, CommandError> {
         .await
         .map_err(|e| CommandError::Other(format!("Daemon not reachable: {}", e)))?;
 
-    let progress: SyncProgress = resp.json().await.map_err(|e| CommandError::Other(e.to_string()))?;
+    let progress: SyncProgress = resp
+        .json()
+        .await
+        .map_err(|e| CommandError::Other(e.to_string()))?;
     Ok(progress)
 }
 

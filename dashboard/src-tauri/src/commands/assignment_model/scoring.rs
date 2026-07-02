@@ -193,7 +193,11 @@ pub fn compute_score_breakdowns(
         // dominance while still rewarding higher absolute counts.
         // Projects that already dominate this app get slightly dampened,
         // giving minority projects a fairer chance.
-        let proportion = if app_total > 0.0 { cnt / app_total } else { 0.0 };
+        let proportion = if app_total > 0.0 {
+            cnt / app_total
+        } else {
+            0.0
+        };
         let log_score = (1.0 + cnt).ln();
         let score = (0.30 * log_score * (0.6 + 0.4 * (1.0 - proportion).sqrt())).min(0.55);
         *layer1.entry(pid).or_insert(0.0) += score;
@@ -578,8 +582,17 @@ mod confidence_tests {
         let new_b = log_b * (0.6 + 0.4 * (1.0 - prop_b).sqrt());
         let new_ratio = new_a / new_b;
 
-        assert!(old_ratio > 2.5, "old ratio should be >2.5, was {}", old_ratio);
-        assert!(new_ratio < old_ratio, "new ratio {} should be less than old {}", new_ratio, old_ratio);
+        assert!(
+            old_ratio > 2.5,
+            "old ratio should be >2.5, was {}",
+            old_ratio
+        );
+        assert!(
+            new_ratio < old_ratio,
+            "new ratio {} should be less than old {}",
+            new_ratio,
+            old_ratio
+        );
         // The new ratio should still favor A but less aggressively
         assert!(new_ratio > 1.0, "new ratio should still favor A");
     }
@@ -627,16 +640,20 @@ mod scoring_db_tests {
         )
         .unwrap();
 
-        let ctx = path_context(
-            HashMap::from([(10_i64, 0.10_f64)]),
-            HashSet::from([10_i64]),
-        );
+        let ctx = path_context(HashMap::from([(10_i64, 0.10_f64)]), HashSet::from([10_i64]));
         let (candidates, suggestion) = compute_score_breakdowns(&conn, &ctx).unwrap();
 
-        assert_eq!(candidates[0].project_id, 10, "path evidence must outrank app memory");
+        assert_eq!(
+            candidates[0].project_id, 10,
+            "path evidence must outrank app memory"
+        );
         let s = suggestion.expect("suggestion");
         assert_eq!(s.project_id, 10);
-        assert!(s.evidence_count >= 4, "path evidence should count as strong evidence, got {}", s.evidence_count);
+        assert!(
+            s.evidence_count >= 4,
+            "path evidence should count as strong evidence, got {}",
+            s.evidence_count
+        );
     }
 
     #[test]
@@ -656,17 +673,22 @@ mod scoring_db_tests {
         let ctx = path_context(HashMap::new(), HashSet::new());
         let (candidates, _) = compute_score_breakdowns(&conn, &ctx).unwrap();
         let beta = candidates.iter().find(|c| c.project_id == 20).unwrap();
-        assert!(beta.layer1_app_score <= 0.55 + 1e-9, "L1 capped, got {}", beta.layer1_app_score);
-        assert!(beta.layer2_time_score <= 0.20 + 1e-9, "L2 capped, got {}", beta.layer2_time_score);
+        assert!(
+            beta.layer1_app_score <= 0.55 + 1e-9,
+            "L1 capped, got {}",
+            beta.layer1_app_score
+        );
+        assert!(
+            beta.layer2_time_score <= 0.20 + 1e-9,
+            "L2 capped, got {}",
+            beta.layer2_time_score
+        );
     }
 
     #[test]
     fn lone_path_evidence_passes_auto_safe_threshold() {
         let conn = setup_scoring_conn();
-        let ctx = path_context(
-            HashMap::from([(10_i64, 1.0_f64)]),
-            HashSet::from([10_i64]),
-        );
+        let ctx = path_context(HashMap::from([(10_i64, 1.0_f64)]), HashSet::from([10_i64]));
         let (_, suggestion) = compute_score_breakdowns(&conn, &ctx).unwrap();
         let s = suggestion.expect("suggestion");
         assert!(
@@ -680,8 +702,11 @@ mod scoring_db_tests {
     #[test]
     fn ubiquitous_tokens_are_dampened_by_idf() {
         let conn = setup_scoring_conn();
-        conn.execute("INSERT INTO projects (id, name) VALUES (30, 'Gamma'), (40, 'Delta')", [])
-            .unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name) VALUES (30, 'Gamma'), (40, 'Delta')",
+            [],
+        )
+        .unwrap();
         // 'alpha' is unique to project 10; 'micz' appears in 4 projects with the
         // same count — it carries no discriminating signal.
         conn.execute_batch(

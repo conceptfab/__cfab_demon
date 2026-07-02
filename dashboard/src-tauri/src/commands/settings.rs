@@ -448,7 +448,10 @@ pub async fn get_demo_mode_status(app: AppHandle) -> Result<db::DemoModeStatus, 
 }
 
 #[tauri::command]
-pub async fn set_demo_mode(app: AppHandle, enabled: bool) -> Result<db::DemoModeStatus, CommandError> {
+pub async fn set_demo_mode(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<db::DemoModeStatus, CommandError> {
     run_app_blocking(app, move |app| db::set_demo_mode(&app, enabled))
         .await
         .map_err(Into::into)
