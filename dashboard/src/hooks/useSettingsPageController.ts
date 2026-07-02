@@ -86,6 +86,10 @@ export function useSettingsPageController() {
       label: t('settings_page.tab_webserver'),
       active: 'border-rose-400 text-rose-400',
     },
+    mcp: {
+      label: t('settings_page.tab_mcp'),
+      active: 'border-fuchsia-400 text-fuchsia-400',
+    },
     advanced: {
       label: t('settings_page.tab_advanced'),
       active: 'border-amber-400 text-amber-400',

@@ -15,3 +15,4 @@ export * from './tauri/log-management';
 export * from './tauri/pm';
 export * from './tauri/clients';
 export * from './tauri/webserver';
+export * from './tauri/mcp';
