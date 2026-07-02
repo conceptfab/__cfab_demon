@@ -15,6 +15,7 @@ export const HELP_TAB_IDS = [
   "lan-sync",
   "webserver",
   "webui",
+  "mcp",
   "pm",
   "bughunter",
   "settings",
@@ -44,6 +45,7 @@ const HELP_TAB_TO_PAGE: Record<HelpTabId, string> = {
   "lan-sync": "settings",
   webserver: "settings",
   webui: "settings",
+  mcp: "settings",
   bughunter: "settings",
   settings: "settings",
 };

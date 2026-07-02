@@ -13,6 +13,7 @@ import {
   Activity,
   Wifi,
   Globe2,
+  Plug,
   Settings,
   Info,
   Bug,
@@ -45,6 +46,7 @@ import { HelpOnlineSyncSection } from '@/components/help/sections/HelpOnlineSync
 import { HelpLanSyncSection } from '@/components/help/sections/HelpLanSyncSection';
 import { HelpWebServerSection } from '@/components/help/sections/HelpWebServerSection';
 import { HelpWebUiSection } from '@/components/help/sections/HelpWebUiSection';
+import { HelpMcpSection } from '@/components/help/sections/HelpMcpSection';
 import { HelpBughunterSection } from '@/components/help/sections/HelpBughunterSection';
 import { HelpSettingsSection } from '@/components/help/sections/HelpSettingsSection';
 import {
@@ -246,6 +248,7 @@ export function Help() {
             <HelpTabTrigger value="lan-sync" icon={<Wifi className="size-3.5" />} label={t18n('help_page.lan_sync_title')} />
             <HelpTabTrigger value="webserver" icon={<Globe2 className="size-3.5" />} label={t18n('help_page.webserver_section_title')} />
             <HelpTabTrigger value="webui" icon={<Globe2 className="size-3.5" />} label={t18n('help_page.webui_section_title')} />
+            <HelpTabTrigger value="mcp" icon={<Plug className="size-3.5" />} label={t18n('help_page.mcp')} />
             <HelpTabTrigger value="bughunter" icon={<Bug className="size-3.5" />} label={t18n('help_page.bughunter')} />
             <HelpTabTrigger value="settings" icon={<Settings className="size-3.5" />} label={t18n('help_page.settings')} />
           </TabsList>
@@ -301,6 +304,9 @@ export function Help() {
             </TabsContent>
             <TabsContent value="webui" className="m-0 focus-visible:outline-none">
               <HelpWebUiSection />
+            </TabsContent>
+            <TabsContent value="mcp" className="m-0 focus-visible:outline-none">
+              <HelpMcpSection />
             </TabsContent>
             <TabsContent value="bughunter" className="m-0 focus-visible:outline-none">
               <HelpBughunterSection />

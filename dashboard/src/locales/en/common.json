@@ -1493,7 +1493,23 @@
     }
   },
   "help": {
-    "language_hint": "Language is managed in Settings > Language."
+    "language_hint": "Language is managed in Settings > Language.",
+    "mcp": {
+      "title": "MCP Server (AI agents)",
+      "what": "The MCP server lets AI coding agents such as Claude Code and Codex read your TIMEFLOW data — projects, clients and work sessions — and, if you allow it, create and update them. Agents connect locally over the Model Context Protocol; nothing is sent to the cloud by TIMEFLOW.",
+      "when_title": "When to use it",
+      "when": "Use it when you want an AI assistant to analyse your tracked time, prepare summaries, tidy up project/client assignments or add missing entries for you.",
+      "setup_title": "How to connect an agent",
+      "setup_1": "Open Settings → MCP and enable the server. A private access token is generated for you.",
+      "setup_2": "Copy the ready-made snippet for Claude Code or Codex and run/paste it on your machine.",
+      "setup_3": "Start a conversation with the agent — TIMEFLOW tools appear automatically. The sidebar shows active MCP sessions.",
+      "settings_title": "Settings",
+      "setting_enable": "Enable MCP server — turns the local endpoint on or off.",
+      "setting_permissions": "Allow write access — off by default; agents can only read. Turn on to let them create projects/clients and assign sessions.",
+      "setting_token": "Access token — required by every client. Regenerate it to instantly cut off all connected agents.",
+      "limits_title": "Safety and limits",
+      "limits": "Before every new agent session TIMEFLOW automatically saves a database backup (folder mcp_backups, 20 most recent copies). If the backup fails, the session is refused. The server accepts local connections only and always requires the token."
+    }
   },
   "webserver": {
     "login": {
@@ -2255,6 +2271,7 @@
     "webserver_setup_how_to_start": "How to start: open Settings > Web Server, enable the server, turn on \"LAN access\" if needed, choose a port, restart the app, and generate a pairing code.",
     "webserver_setup_limitations": "Limitations: this is a local feature, requires the same LAN, and currently covers the Clients group.",
     "webui_section_title": "Web UI (headless mode)",
+    "mcp": "MCP Server",
     "webui_description": "Serves the TIMEFLOW interface in a browser without opening the app window. The daemon acts as a server in the background.",
     "webui_what_it_does": "Opens a browser-accessible TIMEFLOW interface without the desktop window — the daemon runs silently in the background.",
     "webui_when_to_use": "Use it when you want to access TIMEFLOW from another device on the same network, or without a visible window on the host machine.",
