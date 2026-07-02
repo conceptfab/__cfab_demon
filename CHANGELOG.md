@@ -43,6 +43,7 @@ P4 = cleanup, P5 = docs/tests.
 ### P0 — Security
 
 #### Bezpieczeństwo i stabilność LAN Sync (2026-06-10)
+
 - Endpointy trigger/cancel sync przyjmują żądania wyłącznie z localhost (ochrona sekretu parowania).
 - Porównanie sekretu LAN odporne na timing side-channel.
 - Auto-sync (discovery/tray) blokuje synchronizację między różnymi wersjami TIMEFLOW — tak jak sync ręczny.
@@ -67,7 +68,7 @@ P4 = cleanup, P5 = docs/tests.
   import.** Po rozdzieleniu tracków widoczności scalony interwał mógł dostać
   start_time równy startowi wiersza drugiego tracku, a finałowy UPDATE nie miał
   ON CONFLICT. Ścieżka scalania używa teraz jednego upsertu (delete wchłoniętych
-  + INSERT..ON CONFLICT) z semantyką visible-wins — wspólnego dla obu gałęzi.
+  - INSERT..ON CONFLICT) z semantyką visible-wins — wspólnego dla obu gałęzi.
 - **Import: cały przebieg z wyłączonymi triggerami tombstonów** (lustro LAN
   merge daemona) — techniczne DELETE'y scalania/replayu nie mintują już
   tombstonów z `deleted_at = NOW`; tombstony z archiwum są utrwalane lokalnie
