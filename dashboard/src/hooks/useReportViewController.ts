@@ -11,6 +11,7 @@ import {
   createReportDurationFormatter,
 } from '@/lib/report-view-formatting';
 import { getTemplate } from '@/lib/report-templates';
+import { buildTimelineDays } from '@/lib/report-timeline';
 import { printCurrentView } from '@/lib/print';
 import { getDaemonRuntimeStatus, getProjectReportData } from '@/lib/tauri';
 import { REPORT_VIEW_SCREEN_LIMIT } from '@/pages/report-view/report-view-constants';
@@ -145,6 +146,11 @@ export function useReportViewController() {
     };
   }, [report]);
 
+  const timelineDays = useMemo(() => {
+    if (!report) return null;
+    return buildTimelineDays(report.sessions, report.manual_sessions);
+  }, [report]);
+
   const goToProject = () => setCurrentPage('project-card');
 
   return {
@@ -169,6 +175,7 @@ export function useReportViewController() {
     showAll,
     t,
     template,
+    timelineDays,
   };
 }
 
