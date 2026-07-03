@@ -259,6 +259,7 @@ pub async fn get_sessions(
                 let hist_confidence: Option<f64> = row.get(14).unwrap_or(None);
                 let hist_suggested_pid: Option<i64> = row.get(15).unwrap_or(None);
                 let hist_suggested_pname: Option<String> = row.get(16).unwrap_or(None);
+                let duration_seconds = row.get(4)?;
                 Ok((
                     SessionWithApp {
                         id,
@@ -267,7 +268,8 @@ pub async fn get_sessions(
                         split_source_session_id,
                         start_time: row.get(2)?,
                         end_time: row.get(3)?,
-                        duration_seconds: row.get(4)?,
+                        duration_seconds,
+                        effective_seconds: duration_seconds,
                         rate_multiplier: row.get(5)?,
                         app_name: row.get(6)?,
                         executable_name: row.get(7)?,

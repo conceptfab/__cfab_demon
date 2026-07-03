@@ -117,6 +117,11 @@ pub struct SessionWithApp {
     pub start_time: String,
     pub end_time: String,
     pub duration_seconds: i64,
+    /// Czas efektywny (kanon: dedup + podział czasu współbieżnego). Suma po
+    /// sesjach raportu zgadza się z totalem wyliczonym przez algorytm czasu.
+    /// `duration_seconds` pozostaje surowym czasem sesji do celów informacyjnych.
+    #[serde(default)]
+    pub effective_seconds: i64,
     pub rate_multiplier: f64,
     pub app_name: String,
     pub executable_name: String,
@@ -469,6 +474,10 @@ pub struct ManualSessionWithProject {
     pub start_time: String,
     pub end_time: String,
     pub duration_seconds: i64,
+    /// Czas efektywny (kanon: dedup + podział czasu współbieżnego).
+    /// `duration_seconds` pozostaje surowym czasem wpisu manualnego.
+    #[serde(default)]
+    pub effective_seconds: i64,
     pub date: String,
 }
 

@@ -44,6 +44,7 @@ fn read_manual_session_with_project(
          WHERE ms.id = ?1",
         [id],
         |row| {
+            let duration_seconds = row.get(9)?;
             Ok(ManualSessionWithProject {
                 id: row.get(0)?,
                 title: row.get(1)?,
@@ -54,7 +55,8 @@ fn read_manual_session_with_project(
                 project_color: row.get(6)?,
                 start_time: row.get(7)?,
                 end_time: row.get(8)?,
-                duration_seconds: row.get(9)?,
+                duration_seconds,
+                effective_seconds: duration_seconds,
                 date: row.get(10)?,
             })
         },
@@ -166,6 +168,7 @@ pub async fn get_manual_sessions(
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
+                let duration_seconds = row.get(9)?;
                 Ok(ManualSessionWithProject {
                     id: row.get(0)?,
                     title: row.get(1)?,
@@ -176,7 +179,8 @@ pub async fn get_manual_sessions(
                     project_color: row.get(6)?,
                     start_time: row.get(7)?,
                     end_time: row.get(8)?,
-                    duration_seconds: row.get(9)?,
+                    duration_seconds,
+                    effective_seconds: duration_seconds,
                     date: row.get(10)?,
                 })
             })
