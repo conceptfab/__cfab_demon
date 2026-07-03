@@ -8,6 +8,7 @@ use super::analysis::{
     compute_project_activity_unique, compute_project_clock_totals_by_id, daily_seconds_by_series,
     query_activity_date_range,
 };
+use super::daemon::load_persisted_session_min_duration;
 use super::helpers::{name_hash, run_db_blocking, LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
 use super::sql_fragments::{ensure_session_project_cache, SESSION_PROJECT_CTE};
 use super::time_algorithm::distribute_app_seconds;
@@ -555,6 +556,15 @@ pub(crate) fn query_active_project_with_stats(
     conn: &rusqlite::Connection,
     id: i64,
 ) -> Result<ProjectWithStats, String> {
+    let min_duration = load_persisted_session_min_duration();
+    query_active_project_with_stats_with_min(conn, id, min_duration)
+}
+
+pub(crate) fn query_active_project_with_stats_with_min(
+    conn: &rusqlite::Connection,
+    id: i64,
+    min_duration: i64,
+) -> Result<ProjectWithStats, String> {
     let (
         project_id,
         name,
@@ -634,7 +644,15 @@ pub(crate) fn query_active_project_with_stats(
         query_activity_date_range(conn)?
     {
         let (buckets, totals, meta, _, _, _) =
-            compute_project_activity_unique(conn, &all_time_range, false, true, None, None, true)?;
+            compute_project_activity_unique(
+                conn,
+                &all_time_range,
+                false,
+                true,
+                None,
+                Some(min_duration),
+                true,
+            )?;
         // Klucz serii tego projektu (scalone dzieci foldują się do rodzica).
         match meta
             .iter()
@@ -1915,7 +1933,8 @@ mod tests {
         auto_freeze_stale_projects, delete_all_excluded_projects_in_conn, delete_project_in_conn,
         ensure_app_project_from_file_hint, freeze_project_in_conn, merge_project_in_conn,
         project_id_is_active, prune_projects_missing_on_disk, query_projects_with_stats,
-        restore_project_in_conn, unmerge_project_in_conn, ProjectListFilter,
+        query_active_project_with_stats_with_min, restore_project_in_conn, unmerge_project_in_conn,
+        ProjectListFilter,
     };
 
     /// Full real schema (schema.sql + migrations) — same path as
@@ -2025,6 +2044,23 @@ mod tests {
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].name, "stage1");
         assert_eq!(merged[0].merged_into.as_deref(), Some("final"));
+    }
+
+    #[test]
+    fn project_card_total_honors_min_duration() {
+        let conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, created_at) VALUES (1, 'P', datetime('now'));
+             INSERT INTO applications (id, executable_name, display_name, project_id)
+             VALUES (1, 'code', 'Code', 1);
+             INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id)
+               VALUES (1, 1, '2026-03-01T10:00:00', '2026-03-01T11:00:00', 3600, '2026-03-01', 1),
+                      (2, 1, '2026-03-01T12:00:00', '2026-03-01T12:00:05', 5, '2026-03-01', 1);",
+        )
+        .unwrap();
+
+        let stats = query_active_project_with_stats_with_min(&conn, 1, 10).unwrap();
+        assert_eq!(stats.total_seconds, 3600, "5s session excluded by threshold");
     }
 
     #[test]
