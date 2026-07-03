@@ -179,6 +179,7 @@ export function useProjectPageController() {
             return {
               current_value: 0,
               period_value: 0,
+              value_base_seconds: 0,
               db_stats: {
                 session_count: 0,
                 file_activity_count: 0,
