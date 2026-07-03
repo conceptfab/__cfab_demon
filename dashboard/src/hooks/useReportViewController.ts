@@ -12,6 +12,7 @@ import {
 } from '@/lib/report-view-formatting';
 import { getTemplate } from '@/lib/report-templates';
 import { buildTimelineDays } from '@/lib/report-timeline';
+import { distributeReportRounding } from '@/lib/rounding';
 import { printCurrentView } from '@/lib/print';
 import { getDaemonRuntimeStatus, getProjectReportData } from '@/lib/tauri';
 import { REPORT_VIEW_SCREEN_LIMIT } from '@/pages/report-view/report-view-constants';
@@ -112,10 +113,31 @@ export function useReportViewController() {
     });
   }, [runDaemonRequest]);
 
+  const timelineDays = useMemo(() => {
+    if (!report) return null;
+    return buildTimelineDays(report.sessions, report.manual_sessions);
+  }, [report]);
+
+  const reportRounding = useMemo(() => {
+    if (!timelineDays) return null;
+    return distributeReportRounding(
+      timelineDays.map((day) => ({
+        date: day.date,
+        sessionSeconds: day.entries.map((entry) => entry.durationSeconds),
+      })),
+      rounded ? roundingSettings : { ...roundingSettings, enabled: false },
+    );
+  }, [timelineDays, rounded, roundingSettings]);
+
   const displayValues = useMemo(() => {
     if (!report) return null;
-    return computeReportDisplayValues(report, rounded, roundingSettings);
-  }, [report, rounded, roundingSettings]);
+    return computeReportDisplayValues(
+      report,
+      rounded,
+      roundingSettings,
+      reportRounding,
+    );
+  }, [report, rounded, roundingSettings, reportRounding]);
 
   // React Compiler nie jest w buildzie (Vite plugin-react) — useMemo działa
   // runtime'owo; hint „could not preserve" jest informacyjny, bez wpływu na działanie.
@@ -146,11 +168,6 @@ export function useReportViewController() {
     };
   }, [report]);
 
-  const timelineDays = useMemo(() => {
-    if (!report) return null;
-    return buildTimelineDays(report.sessions, report.manual_sessions);
-  }, [report]);
-
   const goToProject = () => setCurrentPage('project-card');
 
   return {
@@ -166,6 +183,7 @@ export function useReportViewController() {
     projectPageId,
     report,
     reportError,
+    reportRounding,
     rounded,
     screenLimit: REPORT_VIEW_SCREEN_LIMIT,
     sessionStats,

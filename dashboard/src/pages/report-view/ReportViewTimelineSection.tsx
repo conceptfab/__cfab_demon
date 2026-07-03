@@ -3,12 +3,13 @@ import { format, parseISO } from 'date-fns';
 
 import type { ReportViewController } from '@/hooks/useReportViewController';
 import i18n from '@/i18n';
+import { formatDurationRaw } from '@/lib/utils';
 import type { TimelineDay } from '@/lib/report-timeline';
 
 type ReportViewTimelineSectionProps = Pick<
   ReportViewController,
-  | 'fmtDur'
   | 'has'
+  | 'reportRounding'
   | 'screenLimit'
   | 'setShowAll'
   | 'showAll'
@@ -21,8 +22,8 @@ function weekdayName(date: string): string {
 }
 
 export function ReportViewTimelineSection({
-  fmtDur,
   has,
+  reportRounding,
   screenLimit,
   setShowAll,
   showAll,
@@ -47,6 +48,9 @@ export function ReportViewTimelineSection({
     visibleDays.push(day);
     shownEntries += day.entries.length;
   }
+  const roundedByDate = new Map(
+    reportRounding?.days.map((day) => [day.date, day]),
+  );
 
   return (
     <div>
@@ -54,7 +58,9 @@ export function ReportViewTimelineSection({
         {t('report_view.timeline')} ({totalEntries})
       </h2>
       <div className="space-y-3">
-        {visibleDays.map((day) => (
+        {visibleDays.map((day) => {
+          const roundedDay = roundedByDate.get(day.date);
+          return (
           <div key={day.date}>
             <div className="flex items-baseline justify-between border-b border-border/20 print:border-gray-300 pb-0.5 mb-0.5">
               <span className="text-[10px] font-semibold font-mono text-muted-foreground/70 print:text-gray-700">
@@ -64,12 +70,12 @@ export function ReportViewTimelineSection({
                 </span>
               </span>
               <span className="text-[10px] font-mono text-muted-foreground/60 print:text-gray-600">
-                {fmtDur(day.totalSeconds)}
+                {formatDurationRaw(roundedDay?.daySeconds ?? day.totalSeconds)}
               </span>
             </div>
             <table className="w-full text-[11px] border-collapse">
               <tbody>
-                {day.entries.map((entry) => (
+                {day.entries.map((entry, index) => (
                   <Fragment key={entry.key}>
                     <tr className="border-b border-border/10 print:border-gray-100">
                       <td className="py-1 pr-2 font-mono text-muted-foreground/60 print:text-gray-600 whitespace-nowrap w-12">
@@ -90,7 +96,9 @@ export function ReportViewTimelineSection({
                         ) : null}
                       </td>
                       <td className="py-1 font-mono text-right print:text-black whitespace-nowrap">
-                        {fmtDur(entry.durationSeconds)}
+                        {formatDurationRaw(
+                          roundedDay?.entrySeconds[index] ?? entry.durationSeconds,
+                        )}
                       </td>
                     </tr>
                     {entry.comment && (
@@ -109,7 +117,8 @@ export function ReportViewTimelineSection({
               </tbody>
             </table>
           </div>
-        ))}
+          );
+        })}
       </div>
       {!showAll && totalEntries > screenLimit && (
         <button

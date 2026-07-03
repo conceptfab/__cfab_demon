@@ -5,6 +5,7 @@ import {
   roundDailyTotals,
   roundSeconds,
   scaleValueToRounded,
+  type ReportRounding,
   type RoundingSettings,
 } from '@/lib/rounding';
 
@@ -16,6 +17,7 @@ export function computeReportDisplayValues(
   },
   rounded: boolean,
   roundingSettings: RoundingSettings,
+  reportRounding?: ReportRounding | null,
 ) {
   const realTotal = report.project.total_seconds;
   const interval = effectiveIntervalMinutes(roundingSettings);
@@ -23,9 +25,11 @@ export function computeReportDisplayValues(
   const usePerDay =
     roundingSettings.mode === 'per_day' && dailySeconds.length > 0;
   const displayTotal = rounded
-    ? usePerDay
-      ? roundDailyTotals(dailySeconds, roundingSettings)
-      : roundSeconds(realTotal, interval)
+    ? reportRounding
+      ? reportRounding.totalSeconds
+      : usePerDay
+        ? roundDailyTotals(dailySeconds, roundingSettings)
+        : roundSeconds(realTotal, interval)
     : realTotal;
   // Baza WARTOŚCI = dokładny (ułamkowy) clock z backendu, z którego liczony jest `estimate`.
   // Skalowanie po nim (a nie po `total_seconds: i64`) usuwa groszowy szum zaokrąglenia —
