@@ -4,6 +4,7 @@ import { Loader2, Shield } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { LanPeer } from '@/lib/lan-sync-types';
+import { getErrorMessage } from '@/lib/utils';
 
 const PIN_POSITION_KEYS = [
   'pin-a',
@@ -81,7 +82,7 @@ export function LanSyncPairCodeDialog({
       setOpen(false);
       setDigits(['', '', '', '', '', '']);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(getErrorMessage(e, t('ui.common.unknown_error')));
     } finally {
       setSubmitting(false);
     }

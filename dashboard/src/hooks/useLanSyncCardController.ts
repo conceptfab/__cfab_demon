@@ -3,12 +3,14 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { lanSyncApi } from '@/lib/tauri/lan-sync';
 import type { LanPeer } from '@/lib/lan-sync-types';
 import { useDaemonSyncUiSnapshot, useDaemonSyncPollInterval } from '@/lib/lan-sync-daemon-ui-store';
 import type { LanSyncCardProps } from '@/components/settings/lan-sync/lan-sync-card-types';
 import { logger } from '@/lib/logger';
+import { getErrorMessage } from '@/lib/utils';
 
 export function useLanSyncCardController({
   settings,
@@ -16,6 +18,7 @@ export function useLanSyncCardController({
   onManualPing,
   onPairWithPeer,
 }: LanSyncCardProps) {
+  const { t } = useTranslation();
   const [manualIp, setManualIp] = useState('');
   const [pinging, setPinging] = useState(false);
   const [pingError, setPingError] = useState<string | null>(null);
@@ -94,7 +97,7 @@ export function useLanSyncCardController({
       await onManualPing(trimmed, settings.serverPort);
       setManualIp('');
     } catch (e) {
-      setPingError(e instanceof Error ? e.message : String(e));
+      setPingError(getErrorMessage(e, t('ui.common.unknown_error')));
     } finally {
       setPinging(false);
     }

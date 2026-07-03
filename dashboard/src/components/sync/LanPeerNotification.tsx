@@ -9,6 +9,7 @@ import type { LanPeer } from '@/lib/lan-sync-types';
 import { useDataStore } from '@/store/data-store';
 import { SyncProgressOverlay } from './SyncProgressOverlay';
 import { logger } from '@/lib/logger';
+import { getErrorMessage } from '@/lib/utils';
 import {
   initialLanPeerNotificationState,
   lanPeerNotificationReducer,
@@ -183,7 +184,7 @@ export function LanPeerNotification() {
       dispatch({ type: 'set_visible_peer', visiblePeer: null });
       dismissPeer(peer.device_id);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = getErrorMessage(e, t('ui.common.unknown_error'));
       logger.warn('LAN sync failed:', msg);
       if (msg.includes('Ping failed') || msg.includes('connection') || msg.includes('refused')) {
         dispatch({

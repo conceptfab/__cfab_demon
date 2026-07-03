@@ -14,6 +14,7 @@ import type {
   SyncMarker,
 } from '@/lib/lan-sync-types';
 import { useDataStore } from '@/store/data-store';
+import { getErrorMessage } from '@/lib/utils';
 
 export function useLanSyncManager() {
   const { t } = useTranslation();
@@ -222,11 +223,11 @@ export function useLanSyncManager() {
       setPairingCodeRemaining(result.expires_in_secs);
     } catch (e) {
       setLanSyncResult({
-        text: e instanceof Error ? e.message : String(e),
+        text: getErrorMessage(e, t('ui.common.unknown_error')),
         success: false,
       });
     }
-  }, []);
+  }, [t]);
 
   const handlePairWithPeer = useCallback(
     async (peer: LanPeer, code: string) => {
@@ -255,11 +256,11 @@ export function useLanSyncManager() {
       });
     } catch (e) {
       setLanSyncResult({
-        text: e instanceof Error ? e.message : String(e),
+        text: getErrorMessage(e, t('ui.common.unknown_error')),
         success: false,
       });
     }
-  }, []);
+  }, [t]);
 
   const updateLanSettings = useCallback(
     (updater: (prev: LanSyncSettingsType) => LanSyncSettingsType) => {
@@ -315,7 +316,7 @@ export function useLanSyncManager() {
         setLanSyncResult({ text: `${label} — OK`, success: true });
         triggerRefresh('lan_sync_pull');
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
+        const msg = getErrorMessage(e, t('ui.common.unknown_error'));
         if (msg.includes('pairing_invalid') || msg.includes('401')) {
           setPairingExpiredDeviceIds(
             (prev) => new Set([...prev, peer.device_id]),

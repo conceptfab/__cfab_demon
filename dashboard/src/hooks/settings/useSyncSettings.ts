@@ -370,7 +370,7 @@ export function useSyncSettings({
             t('settings.license.token_persist_failed', {
               defaultValue:
                 'Licencja aktywowana, ale nie udało się zapisać tokena API: {{error}}. Token może nie przetrwać restartu.',
-              error: err instanceof Error ? err.message : String(err),
+              error: getErrorMessage(err, t('ui.common.unknown_error')),
             }),
           );
         }
@@ -398,7 +398,7 @@ export function useSyncSettings({
             t('settings.license.daemon_persist_failed', {
               defaultValue:
                 'Licencja aktywowana, ale nie udało się przekazać ustawień do demona: {{error}}. Kliknij „Zapisz ustawienia".',
-              error: err instanceof Error ? err.message : String(err),
+              error: getErrorMessage(err, t('ui.common.unknown_error')),
             }),
           );
           return;
@@ -528,13 +528,13 @@ export function useSyncSettings({
       }
     } catch (e) {
       setTestRoundtripResult(
-        `ERROR: ${e instanceof Error ? e.message : String(e)}`,
+        `ERROR: ${getErrorMessage(e, t('ui.common.unknown_error'))}`,
       );
       setTestRoundtripSuccess(false);
     } finally {
       setTestingRoundtrip(false);
     }
-  }, [onlineSyncSettings]);
+  }, [onlineSyncSettings, t]);
 
   return {
     onlineSyncSettings,
