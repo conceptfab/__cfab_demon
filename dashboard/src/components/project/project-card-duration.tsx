@@ -1,13 +1,20 @@
 import {
   formatDurationRaw,
   getDurationParts,
-  roundedAlternativeSeconds,
+  roundedAlternativeFromDaily,
 } from '@/lib/utils';
 
-export function ProjectCardDurationDisplay({ seconds }: { seconds: number }) {
+export function ProjectCardDurationDisplay({
+  seconds,
+  dailySeconds,
+}: {
+  seconds: number;
+  /** Sekundy per kalendarzowy dzień — wymagane, by tryb `per_day` liczył identycznie jak strona projektu. */
+  dailySeconds?: readonly number[];
+}) {
   const { hours, minutes, seconds: remainingSeconds } = getDurationParts(seconds);
   const unitClass = 'text-[0.7em] font-[400] opacity-70 ml-0.5 self-baseline';
-  const altSeconds = roundedAlternativeSeconds(seconds);
+  const altSeconds = roundedAlternativeFromDaily(seconds, dailySeconds ?? []);
   const alt =
     altSeconds === null ? null : (
       <span className="ml-1.5 self-baseline text-[0.55em] font-[400] opacity-60">

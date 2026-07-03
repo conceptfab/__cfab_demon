@@ -46,7 +46,10 @@ export function ProjectCardDialogPanel({
                 />
                 <span className="min-w-0 flex-1 truncate">{app.name}</span>
                 <span className="shrink-0 font-mono text-emerald-400">
-                  <ProjectCardDurationDisplay seconds={app.seconds} />
+                  <ProjectCardDurationDisplay
+                    seconds={app.seconds}
+                    dailySeconds={app.daily_seconds}
+                  />
                 </span>
               </div>
             ))}

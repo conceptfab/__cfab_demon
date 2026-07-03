@@ -198,7 +198,10 @@ function ProjectCardComponent({
               {t('projects.labels.total_time_value')}
             </p>
             <p className="flex flex-wrap items-baseline gap-x-1 text-lg leading-none font-[200] text-emerald-400 sm:text-xl">
-              <ProjectCardDurationDisplay seconds={project.total_seconds} />
+              <ProjectCardDurationDisplay
+                seconds={project.total_seconds}
+                dailySeconds={project.daily_seconds}
+              />
               <span className="text-[1em] font-[600] opacity-30">/</span>
               <span className="text-[0.8em] font-[200] opacity-90">
                 {formatMoney(estimateValue, currencyCode)}
