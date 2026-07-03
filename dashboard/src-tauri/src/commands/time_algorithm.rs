@@ -90,6 +90,7 @@ pub(crate) struct IntervalInput {
     pub start: DateTime<Local>,
     pub end: DateTime<Local>,
     pub project_key: String,
+    pub source_key: String,
     pub multiplier: f64,
     pub is_manual: bool,
     pub comment: Option<String>,
@@ -208,6 +209,7 @@ struct BucketPiece {
     start_ms: i64,
     end_ms: i64,
     project_key: String,
+    source_key: String,
     multiplier: f64,
     is_manual: bool,
     comment: Option<String>,
@@ -275,6 +277,16 @@ pub(crate) type ProjectActivityUniqueResult = (
     BucketFlags,
     BucketComments,
 );
+
+/// Stabilny klucz źródła interwału: rozłączny między sesjami auto i manualnymi
+/// o tym samym `id`. Używany do atrybucji czasu efektywnego per sesja.
+pub(crate) fn source_key(is_manual: bool, id: i64) -> String {
+    if is_manual {
+        format!("m{id}")
+    } else {
+        format!("a{id}")
+    }
+}
 
 fn project_display_label(project_id: Option<i64>, project_name: Option<String>) -> String {
     match project_id {
@@ -550,7 +562,8 @@ fn load_project_intervals(
     // `fold_merged_series` then moves these child series into the parent.
     let sql = format!(
         "{SESSION_PROJECT_CTE}
-         SELECT sp.start_time,
+         SELECT sp.id as src_id,
+                sp.start_time,
                 sp.end_time,
                 sp.project_id,
                 p.name as project_name,
@@ -566,7 +579,8 @@ fn load_project_intervals(
                     WHERE merged_into = (SELECT name FROM projects WHERE id = ?4))))
            AND sp.duration_seconds >= ?5
          UNION ALL
-         SELECT ms.start_time,
+         SELECT ms.id as src_id,
+                ms.start_time,
                 ms.end_time,
                 ms.project_id,
                 p.name as project_name,
@@ -600,6 +614,7 @@ fn load_project_intervals(
             ],
             |row| {
                 Ok((
+                    row.get::<_, i64>("src_id")?,
                     row.get::<_, String>("start_time")?,
                     row.get::<_, String>("end_time")?,
                     row.get::<_, Option<i64>>("project_id")?,
@@ -617,26 +632,28 @@ fn load_project_intervals(
     let mut series_meta_by_key: ProjectSeriesMetaMap = HashMap::new();
     for row in rows {
         let row = row.map_err(|e| format!("Failed to read project activity row: {}", e))?;
-        let Some(start) = parse_datetime_local(&row.0) else {
+        let Some(start) = parse_datetime_local(&row.1) else {
             continue;
         };
-        let Some(end) = parse_datetime_local(&row.1) else {
+        let Some(end) = parse_datetime_local(&row.2) else {
             continue;
         };
         if end <= start {
             continue;
         }
-        let series = build_project_series_meta(row.2, row.3, row.4);
+        let series = build_project_series_meta(row.3, row.4, row.5);
         series_meta_by_key
             .entry(series.key.clone())
             .or_insert(series.clone());
+        let is_manual = row.7 != 0;
         intervals.push(IntervalInput {
             start,
             end,
             project_key: series.key,
-            multiplier: row.5,
-            is_manual: row.6 != 0,
-            comment: row.7,
+            source_key: source_key(is_manual, row.0),
+            multiplier: row.6,
+            is_manual,
+            comment: row.8,
         });
     }
     finalize_project_series_labels(&mut series_meta_by_key);
@@ -708,6 +725,7 @@ impl TimeStrategy for WallClockStrategy {
                         start_ms: piece_start.timestamp_millis(),
                         end_ms: piece_end.timestamp_millis(),
                         project_key: interval.project_key.clone(),
+                        source_key: interval.source_key.clone(),
                         multiplier: interval.multiplier,
                         is_manual: interval.is_manual,
                         comment: interval.comment.clone(),
@@ -897,6 +915,12 @@ mod tests {
         let conn = setup_conn();
         // No estimate_settings table -> default
         assert_eq!(active_algorithm_id(&conn), "wall_clock");
+    }
+
+    #[test]
+    fn source_key_is_unique_across_auto_and_manual() {
+        assert_ne!(super::source_key(false, 5), super::source_key(true, 5));
+        assert_eq!(super::source_key(false, 5), super::source_key(false, 5));
     }
 
     #[test]
