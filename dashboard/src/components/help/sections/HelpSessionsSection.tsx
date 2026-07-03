@@ -35,6 +35,7 @@ export function HelpSessionsSection() {
         t18n('help_page.merge_sessions_select_two_or_more_adjacent_sessions_from'),
         t18n('help_page.sessions_multi_split_modal'),
         t18n('help_page.sessions_project_context_menu'),
+        t18n('help_page.sessions_canonical_group_totals'),
       ]}
     >
       <div className="text-sm space-y-4 text-foreground/90 leading-relaxed border-t border-border/10 pt-4">
