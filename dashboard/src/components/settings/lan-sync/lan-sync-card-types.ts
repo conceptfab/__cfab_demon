@@ -50,6 +50,11 @@ export interface LanSyncCardProps {
   noLogEntriesText?: string;
   firewallHintTitle?: string;
   firewallHintDescription?: string;
+  /**
+   * Gotowy, przetłumaczony blok komend zapory dla bieżącego OS (z komentarzami
+   * dla użytkownika). Buduje go strona ustawień; brak → fallback netsh (Windows).
+   */
+  firewallHintCommands?: string;
   forceMergeTooltip?: string;
   pairedDeviceIds?: Set<string>;
   pairingExpiredDeviceIds?: Set<string>;

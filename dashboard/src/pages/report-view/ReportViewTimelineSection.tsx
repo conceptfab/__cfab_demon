@@ -10,6 +10,7 @@ type ReportViewTimelineSectionProps = Pick<
   ReportViewController,
   | 'has'
   | 'reportRounding'
+  | 'rounded'
   | 'screenLimit'
   | 'setShowAll'
   | 'showAll'
@@ -24,6 +25,7 @@ function weekdayName(date: string): string {
 export function ReportViewTimelineSection({
   has,
   reportRounding,
+  rounded,
   screenLimit,
   setShowAll,
   showAll,
@@ -78,15 +80,23 @@ export function ReportViewTimelineSection({
                 {day.entries.map((entry, index) => (
                   <Fragment key={entry.key}>
                     <tr className="border-b border-border/10 print:border-gray-100">
-                      <td className="py-1 pr-2 font-mono text-muted-foreground/60 print:text-gray-600 whitespace-nowrap w-12">
-                        {format(parseISO(entry.startTime), 'HH:mm')}
-                      </td>
+                      {/* Przy zaokrągleniu jedyny czas w timeline to suma dzienna —
+                          godziny startu i czasy sesji są ukrywane, żeby raport nie
+                          pokazywał surowych minut obok zaokrąglonych sum. */}
+                      {!rounded && (
+                        <td className="py-1 pr-2 font-mono text-muted-foreground/60 print:text-gray-600 whitespace-nowrap w-12">
+                          {format(parseISO(entry.startTime), 'HH:mm')}
+                        </td>
+                      )}
                       <td className="py-1 pr-2 text-muted-foreground/50 print:text-gray-600 whitespace-nowrap w-14">
                         {entry.kind === 'manual'
                           ? t('report_view.timeline_manual')
                           : t('report_view.timeline_auto')}
                       </td>
-                      <td className="py-1 pr-2 truncate max-w-[200px] print:text-black">
+                      <td
+                        colSpan={rounded ? 2 : 1}
+                        className="py-1 pr-2 truncate max-w-[200px] print:text-black"
+                      >
                         {entry.label}
                         {entry.sessionType ? (
                           <span className="text-muted-foreground/50 print:text-gray-600">
@@ -95,17 +105,19 @@ export function ReportViewTimelineSection({
                           </span>
                         ) : null}
                       </td>
-                      <td className="py-1 font-mono text-right print:text-black whitespace-nowrap">
-                        {formatDurationRaw(
-                          roundedDay?.entrySeconds[index] ?? entry.durationSeconds,
-                        )}
-                      </td>
+                      {!rounded && (
+                        <td className="py-1 font-mono text-right print:text-black whitespace-nowrap">
+                          {formatDurationRaw(
+                            roundedDay?.entrySeconds[index] ?? entry.durationSeconds,
+                          )}
+                        </td>
+                      )}
                     </tr>
                     {entry.comment && (
                       <tr className="border-b border-border/10 print:border-gray-100">
                         <td />
                         <td
-                          colSpan={3}
+                          colSpan={rounded ? 2 : 3}
                           className="py-1 pl-2 text-muted-foreground/50 italic print:text-gray-600"
                         >
                           └ {entry.comment}

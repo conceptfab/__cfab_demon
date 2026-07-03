@@ -142,9 +142,11 @@ export interface ReportRounding {
 
 /**
  * Rozkłada zaokrąglenie na strukturę raportu (sesja -> dzień -> total) wg trybu.
- * Jedna kotwica dla nagłówka, timeline i sum sekcji, żeby dni sumowały się do
- * totalu w trybach opartych o strukturę:
- * - disabled/per_total: wpisy surowe; total = round(sumy) albo suma surowa.
+ * Jedna kotwica dla nagłówka, timeline i sum sekcji. INWARIANT (przy włączonym
+ * zaokrąglaniu): sumy dzienne zawsze składają się DOKŁADNIE na total.
+ * - disabled: wpisy surowe; dzień = suma wpisów; total = suma dni.
+ * - per_total: total = round(suma) raz; nadwyżka rozłożona na dni proporcjonalnie
+ *   (kwant 1 min), żeby dni sumowały się do totalu.
  * - per_session: każda sesja round; dzień = suma round(sesja); total = suma dni.
  * - per_day: dzień = round(suma dnia) do pełnej godziny; total = suma dni.
  */
@@ -199,15 +201,32 @@ export function distributeReportRounding(
     };
   }
 
+  // per_total: total zaokrąglony raz, a nadwyżka rozłożona na dni proporcjonalnie
+  // do ich surowych sum (kumulacyjnie, kwant 60 s) — dni sumują się do totalu.
   const roundedDays = days.map((day) => ({
     date: day.date,
     entrySeconds: [...day.sessionSeconds],
     daySeconds: sum(day.sessionSeconds),
   }));
   const rawTotal = roundedDays.reduce((acc, day) => acc + day.daySeconds, 0);
+  const totalSeconds = roundSeconds(rawTotal, settings.intervalMinutes);
+  if (rawTotal > 0 && totalSeconds !== rawTotal) {
+    const factor = totalSeconds / rawTotal;
+    let cumulative = 0;
+    let assigned = 0;
+    roundedDays.forEach((day, index) => {
+      cumulative += day.daySeconds * factor;
+      const target =
+        index === roundedDays.length - 1
+          ? totalSeconds
+          : Math.min(Math.round(cumulative / 60) * 60, totalSeconds);
+      day.daySeconds = Math.max(0, target - assigned);
+      assigned += day.daySeconds;
+    });
+  }
   return {
     days: roundedDays,
-    totalSeconds: roundSeconds(rawTotal, settings.intervalMinutes),
+    totalSeconds,
   };
 }
 

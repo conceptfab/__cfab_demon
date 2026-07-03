@@ -1,10 +1,15 @@
 import { LanSyncCard } from '@/components/settings/LanSyncCard';
 import { OnlineSyncCard } from '@/components/settings/OnlineSyncCard';
 import type { SettingsPageController } from '@/hooks/useSettingsPageController';
+import { isMacOS } from '@/lib/platform';
+import { useBackgroundStatusStore } from '@/store/background-status-store';
 
 type SettingsSyncTabProps = SettingsPageController;
 
 export function SettingsSyncTab(controller: SettingsSyncTabProps) {
+  const daemonExePath = useBackgroundStatusStore(
+    (s) => s.daemonStatus?.exe_path ?? null,
+  );
   const {
     defaultOnlineSyncServerUrl,
     demoModeSyncDisabled,
@@ -54,6 +59,20 @@ export function SettingsSyncTab(controller: SettingsSyncTabProps) {
     updateLanSettings,
     updateOnlineSyncSettings,
   } = controller;
+
+  // Blok komend zapory dla hinta „brak peerów", per OS i z komentarzami dla
+  // użytkownika. macOS: zapora działa per-aplikacja i celuje w binarkę DEMONA
+  // (to on nasłuchuje na 47891/47892) — ścieżka z żywego statusu demona.
+  const daemonPathForHint =
+    daemonExePath ?? `<${t('settings.lan_sync.firewall_hint_macos_path_placeholder')}>`;
+  const firewallHintCommands = isMacOS()
+    ? [
+        `# ${t('settings.lan_sync.firewall_hint_macos_comment_add')}`,
+        `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add "${daemonPathForHint}"`,
+        `# ${t('settings.lan_sync.firewall_hint_macos_comment_allow')}`,
+        `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "${daemonPathForHint}"`,
+      ].join('\n')
+    : undefined;
 
   return (
     <div className="space-y-4">
@@ -194,7 +213,12 @@ export function SettingsSyncTab(controller: SettingsSyncTabProps) {
         hideLogLabel={t('settings.lan_sync.hide_log')}
         noLogEntriesText={t('settings.lan_sync.no_log_entries')}
         firewallHintTitle={t('settings.lan_sync.firewall_hint_title')}
-        firewallHintDescription={t('settings.lan_sync.firewall_hint_description')}
+        firewallHintDescription={t(
+          isMacOS()
+            ? 'settings.lan_sync.firewall_hint_description_macos'
+            : 'settings.lan_sync.firewall_hint_description',
+        )}
+        firewallHintCommands={firewallHintCommands}
         forceMergeTooltip={t('settings.lan_sync.force_merge_tooltip')}
         pairedDeviceIds={pairedDeviceIds}
         pairingExpiredDeviceIds={pairingExpiredDeviceIds}

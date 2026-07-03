@@ -37,12 +37,13 @@ describe('report rounding consistency', () => {
     expect(r.totalSeconds).toBe(4800);
   });
 
-  it('rounds only the grand total in per_total mode', () => {
+  it('rounds the grand total once and spreads the surplus across days in per_total mode', () => {
     const r = distributeReportRounding(days, enabledSettings('per_total'));
 
     expect(r.days.map((day) => day.entrySeconds)).toEqual([[2700, 900], [1200]]);
-    expect(r.days.map((day) => day.daySeconds)).toEqual([3600, 1200]);
-    expect(sum(r.days.map((day) => day.daySeconds))).toBe(4800);
+    // raw 4800s -> total 5400s; +600s nadwyżki rozłożone proporcjonalnie na dni
+    expect(r.days.map((day) => day.daySeconds)).toEqual([4080, 1320]);
+    expect(sum(r.days.map((day) => day.daySeconds))).toBe(5400);
     expect(r.totalSeconds).toBe(5400);
   });
 
@@ -65,14 +66,10 @@ describe('report rounding consistency', () => {
   });
 
   for (const mode of ['per_total', 'per_session', 'per_day'] as const) {
-    it(`timeline days reconcile with total in ${mode}`, () => {
+    it(`timeline days reconcile exactly with total in ${mode}`, () => {
       const r = distributeReportRounding(days, enabledSettings(mode));
       const daysSum = r.days.reduce((acc, day) => acc + day.daySeconds, 0);
-      if (mode === 'per_total') {
-        expect(r.totalSeconds).toBeGreaterThanOrEqual(daysSum);
-      } else {
-        expect(daysSum).toBe(r.totalSeconds);
-      }
+      expect(daysSum).toBe(r.totalSeconds);
     });
   }
 });

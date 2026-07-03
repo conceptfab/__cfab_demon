@@ -175,13 +175,15 @@ describe('distributeReportRounding', () => {
     expect(r.totalSeconds).toBe(2400);
   });
 
-  it('per_total -> entries raw, total rounded once', () => {
+  it('per_total -> entries raw, total rounded once, surplus spread so days sum to total', () => {
     const r = distributeReportRounding(
       days,
       settings({ enabled: true, mode: 'per_total', intervalMinutes: 15 }),
     );
     expect(r.days[0]?.entrySeconds).toEqual([600, 600]);
-    expect(r.days[0]?.daySeconds).toBe(1200);
+    // raw 2400s -> total 2700s; +300s rozłożone na dni (kwant 1 min)
+    expect(r.days[0]?.daySeconds).toBe(1380);
+    expect(r.days[1]?.daySeconds).toBe(1320);
     expect(r.totalSeconds).toBe(2700);
   });
 

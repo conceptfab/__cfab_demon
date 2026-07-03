@@ -9,11 +9,12 @@ import { logger } from '@/lib/logger';
 import {
   computeReportDisplayValues,
   createReportDurationFormatter,
+  scaleAppSecondsToRounded,
 } from '@/lib/report-view-formatting';
 import { getTemplate } from '@/lib/report-templates';
 import { buildTimelineDays } from '@/lib/report-timeline';
 import { distributeReportRounding, roundSeconds } from '@/lib/rounding';
-import { formatDurationRaw } from '@/lib/utils';
+import { formatDurationRaw, formatDurationSlimRaw } from '@/lib/utils';
 import { printCurrentView } from '@/lib/print';
 import { getDaemonRuntimeStatus, getProjectReportData } from '@/lib/tauri';
 import { REPORT_VIEW_SCREEN_LIMIT } from '@/pages/report-view/report-view-constants';
@@ -165,6 +166,44 @@ export function useReportViewController() {
     [rounded, roundingSettings],
   );
 
+  // Czas aplikacji (MOST USED APPLICATIONS) przy zaokrąglaniu: udział aplikacji
+  // (proporcja wśród top_apps) mapowany na zdeduplikowany czas sesji auto,
+  // przeskalowany współczynnikiem displayTotal/realTotal i kwantyzowany do
+  // najbliższego interwału — spójny z sumami dziennymi timeline. Ślad poniżej
+  // pół interwału pokazujemy jako "<1h", nie zawyżamy do pełnej godziny.
+  const appShareBase = useMemo(() => {
+    if (!report) return null;
+    return {
+      appsTotal: report.extra.top_apps.reduce((acc, a) => acc + a.seconds, 0),
+      autoEffective: report.sessions.reduce(
+        (acc, s) => acc + (s.effective_seconds ?? s.duration_seconds),
+        0,
+      ),
+    };
+  }, [report]);
+
+  const fmtAppDur = useCallback(
+    (seconds: number) => {
+      if (!rounded || !displayValues || !report || !appShareBase) {
+        return formatDurationRaw(seconds);
+      }
+      const value = scaleAppSecondsToRounded(
+        seconds,
+        appShareBase.appsTotal,
+        appShareBase.autoEffective,
+        report.project.total_seconds,
+        displayValues.displayTotal,
+        displayValues.interval,
+      );
+      const format = displayValues.fullHour
+        ? formatDurationSlimRaw
+        : formatDurationRaw;
+      if (value <= 0) return `<${format(displayValues.interval * 60)}`;
+      return format(value);
+    },
+    [rounded, displayValues, report, appShareBase],
+  );
+
   const sessionStats = useMemo(() => {
     if (!report) return null;
     return {
@@ -185,6 +224,7 @@ export function useReportViewController() {
     appVersion,
     currencyCode,
     displayValues,
+    fmtAppDur,
     fmtDur,
     fmtSessionDur,
     generatedAt,

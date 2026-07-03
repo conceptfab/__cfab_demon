@@ -5,6 +5,7 @@ import { DEFAULT_ROUNDING_SETTINGS } from './rounding';
 import {
   computeReportDisplayValues,
   createReportDurationFormatter,
+  scaleAppSecondsToRounded,
 } from './report-view-formatting';
 
 afterEach(() => {
@@ -103,6 +104,56 @@ describe('report formatter hides minutes when rounding to a FULL HOUR', () => {
     expect(dv.fullHour).toBe(false);
     const fmt = createReportDurationFormatter(false, dv.usePerDay, settings, dv.interval);
     expect(fmt(11700)).toBe('3h 15m');
+  });
+});
+
+describe('app hours = app share of DEDUPLICATED auto time, scaled like the total', () => {
+  // Tło (01_26_RM_Jutrzenki): backendowe top_apps[].seconds to surowe, NAKŁADAJĄCE
+  // się czasy (C4D chodzi w tle, gdy używany jest ZWCAD/Photoshop) — większe niż
+  // zdeduplikowany zegar. Skalowanie ich wprost współczynnikiem raportu dawało
+  // C4D 20h przy 15h dni, w których w ogóle występuje. Poprawnie: udział aplikacji
+  // mapujemy na zdeduplikowany czas auto i dopiero ten skalujemy.
+  const appsTotal = 45900; // surowa suma aplikacji z nakładkami (12h45m)
+  const autoEffective = 27000; // zdeduplikowany czas sesji auto (7h30m)
+  const realTotal = 144000; // 40h raw (auto + manual, dedup)
+  const displayTotal = 50 * 3600; // 50h po zaokrągleniu
+  const interval = 60;
+
+  const scale = (appSeconds: number, intervalMinutes = interval) =>
+    scaleAppSecondsToRounded(
+      appSeconds,
+      appsTotal,
+      autoEffective,
+      realTotal,
+      displayTotal,
+      intervalMinutes,
+    );
+
+  it('maps app share onto scaled deduplicated auto time (nearest hour, not ceil)', () => {
+    // budżet auto po skali: 27000 × 50/40 = 33750s (9h22m)
+    expect(scale(36000)).toBe(7 * 3600); // 78.4% -> 7h21m -> 7h
+    expect(scale(9000)).toBe(2 * 3600); // 19.6% -> 1h50m -> 2h
+  });
+
+  it('quantizes a trace usage to 0 instead of inflating it to a full hour', () => {
+    expect(scale(900)).toBe(0); // ~2% udziału -> 11m -> "<1h"
+  });
+
+  it('apps sum never exceeds the scaled auto budget rounded up', () => {
+    const sum = [36000, 9000, 900].reduce((acc, s) => acc + scale(s), 0);
+    expect(sum).toBe(9 * 3600); // 9h <= 9h22m budżetu auto <= sumy dni auto
+    expect(sum).toBeLessThanOrEqual(Math.ceil((autoEffective * 1.25) / 3600) * 3600);
+  });
+
+  it('respects sub-hour intervals in per_total mode', () => {
+    expect(scale(36000, 15)).toBe(26100); // 7h21m -> kwant 15 min -> 7h15m
+  });
+
+  it('returns 0 for empty/invalid inputs', () => {
+    expect(scale(0)).toBe(0);
+    expect(
+      scaleAppSecondsToRounded(3600, 0, autoEffective, realTotal, displayTotal, interval),
+    ).toBe(0);
   });
 });
 

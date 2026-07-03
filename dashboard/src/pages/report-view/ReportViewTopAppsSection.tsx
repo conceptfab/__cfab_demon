@@ -2,11 +2,11 @@ import type { ReportViewController } from '@/hooks/useReportViewController';
 
 type ReportViewTopAppsSectionProps = Pick<
   ReportViewController,
-  'fmtDur' | 'has' | 'report' | 't'
+  'fmtAppDur' | 'has' | 'report' | 't'
 >;
 
 export function ReportViewTopAppsSection({
-  fmtDur,
+  fmtAppDur,
   has,
   report,
   t,
@@ -33,7 +33,7 @@ export function ReportViewTopAppsSection({
                   style={{ width: `${pct}%` }}
                 >
                   <span className="text-[10px] font-mono text-foreground/70 print:text-black whitespace-nowrap">
-                    {fmtDur(app.seconds, app.daily_seconds)}
+                    {fmtAppDur(app.seconds)}
                   </span>
                 </div>
               </div>

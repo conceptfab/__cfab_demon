@@ -57,6 +57,45 @@ export function computeReportDisplayValues(
   };
 }
 
+/**
+ * Czas aplikacji w raporcie przy zaokrąglaniu.
+ *
+ * UWAGA na skale: `top_apps[].seconds` z backendu to surowe sumy `duration_seconds`
+ * (aplikacje działające równolegle NAKŁADAJĄ się i sumują ponad zegar), podczas gdy
+ * total raportu jest zdeduplikowany. Dlatego sekund aplikacji NIE wolno skalować
+ * wprost współczynnikiem raportu — trzeba najpierw zmapować UDZIAŁ aplikacji
+ * (jej proporcję wśród wszystkich aplikacji) na zdeduplikowany czas sesji auto
+ * (`autoEffectiveSeconds`, ta sama skala co wpisy timeline), a dopiero ten czas
+ * przeskalować współczynnikiem displayTotal/realTotal jak wartość ($).
+ * Wynik kwantyzujemy do NAJBLIŻSZEGO interwału (nie w górę!), więc suma aplikacji
+ * nie przekracza zaokrąglonych sum dziennych dni z sesjami auto.
+ */
+export function scaleAppSecondsToRounded(
+  appSeconds: number,
+  appsTotalSeconds: number,
+  autoEffectiveSeconds: number,
+  realTotalSeconds: number,
+  displayTotalSeconds: number,
+  intervalMinutes: number,
+): number {
+  if (
+    !Number.isFinite(appSeconds) ||
+    appSeconds <= 0 ||
+    !Number.isFinite(appsTotalSeconds) ||
+    appsTotalSeconds <= 0
+  ) {
+    return 0;
+  }
+  const share = appSeconds / appsTotalSeconds;
+  const scaledAuto = scaleValueToRounded(
+    autoEffectiveSeconds,
+    realTotalSeconds,
+    displayTotalSeconds,
+  );
+  const step = Math.max(1, Math.round(intervalMinutes)) * 60;
+  return Math.round((share * scaledAuto) / step) * step;
+}
+
 export function createReportDurationFormatter(
   rounded: boolean,
   usePerDay: boolean,

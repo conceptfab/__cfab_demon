@@ -25,6 +25,7 @@ type LanSyncPeersSectionProps = Pick<
   | 'slaveInfoText'
   | 'firewallHintTitle'
   | 'firewallHintDescription'
+  | 'firewallHintCommands'
   | 'forceMergeTooltip'
   | 'pairedDeviceIds'
   | 'pairingExpiredDeviceIds'
@@ -80,6 +81,7 @@ export function LanSyncPeersSection({
   slaveInfoText,
   firewallHintTitle,
   firewallHintDescription,
+  firewallHintCommands,
   forceMergeTooltip,
   pairedDeviceIds,
   pairingExpiredDeviceIds,
@@ -186,8 +188,11 @@ export function LanSyncPeersSection({
                 <div className="text-xs text-amber-300/80 space-y-1">
                   <p className="font-medium">{firewallHintTitle ?? 'No visible peers — check your firewall'}</p>
                   <p>{firewallHintDescription ?? 'If the daemon did not have administrator privileges, firewall rules may not have been added. Add them manually:'}</p>
+                  {/* Blok komend buduje SettingsSyncTab per OS (z i18n komentarzami);
+                      fallback netsh zachowuje dotychczasowe zachowanie na Windows. */}
                   <pre className="text-[10px] bg-black/20 rounded p-1.5 overflow-x-auto whitespace-pre-wrap">
-{`netsh advfirewall firewall add rule name="TIMEFLOW LAN Discovery" dir=in action=allow protocol=UDP localport=47892
+{firewallHintCommands ??
+`netsh advfirewall firewall add rule name="TIMEFLOW LAN Discovery" dir=in action=allow protocol=UDP localport=47892
 netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=allow protocol=TCP localport=47891`}
                   </pre>
                 </div>
