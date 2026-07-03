@@ -107,6 +107,9 @@ pub(crate) struct ComputeRange {
 struct ActivityOutput {
     bucket_project_seconds: BucketDurations,
     total_by_project: ProjectTotals,
+    /// Czas efektywny (po dedupie i podziale czasu współbieżnego) per klucz źródła.
+    /// Niezmiennik: suma źródeł danego projektu równa się jego total_by_project.
+    effective_by_source: HashMap<String, f64>,
     bucket_flags: BucketFlags,
     bucket_comments: BucketComments,
 }
@@ -736,6 +739,7 @@ impl TimeStrategy for WallClockStrategy {
 
         let mut bucket_project_seconds: BucketDurations = BTreeMap::new();
         let mut total_by_project: ProjectTotals = HashMap::new();
+        let mut effective_by_source: HashMap<String, f64> = HashMap::new();
         let mut bucket_flags: BucketFlags = HashMap::new();
         let mut bucket_comments: BucketComments = HashMap::new();
 
@@ -767,20 +771,25 @@ impl TimeStrategy for WallClockStrategy {
                 bucket_comments.insert(bucket.clone(), comments);
             }
 
-            let mut events: Vec<(i64, i32, String)> = Vec::with_capacity(slices.len() * 2);
+            let mut events: Vec<(i64, i32, String, String)> = Vec::with_capacity(slices.len() * 2);
             for slice in slices {
                 if slice.end_ms <= slice.start_ms {
                     continue;
                 }
-                events.push((slice.start_ms, 1, slice.project_key.clone()));
-                events.push((slice.end_ms, -1, slice.project_key));
+                events.push((
+                    slice.start_ms,
+                    1,
+                    slice.source_key.clone(),
+                    slice.project_key.clone(),
+                ));
+                events.push((slice.end_ms, -1, slice.source_key, slice.project_key));
             }
             if events.is_empty() {
                 continue;
             }
             events.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
-            let mut active: HashMap<String, i32> = HashMap::new();
+            let mut active: HashMap<String, (String, i32)> = HashMap::new();
             let mut i = 0usize;
             let mut prev_ms = events[0].0;
             let mut seconds_for_bucket: HashMap<String, f64> = HashMap::new();
@@ -789,35 +798,39 @@ impl TimeStrategy for WallClockStrategy {
                 let current_ms = events[i].0;
                 if current_ms > prev_ms && !active.is_empty() {
                     let delta_seconds = (current_ms - prev_ms) as f64 / 1000.0;
-                    let active_items: Vec<String> = active
-                        .iter()
-                        .filter_map(
-                            |(name, count)| {
-                                if *count > 0 {
-                                    Some(name.clone())
-                                } else {
-                                    None
-                                }
-                            },
-                        )
-                        .collect();
+                    let mut sources_by_project: HashMap<String, Vec<String>> = HashMap::new();
+                    for (source, (project, count)) in active.iter() {
+                        if *count > 0 {
+                            sources_by_project
+                                .entry(project.clone())
+                                .or_default()
+                                .push(source.clone());
+                        }
+                    }
 
-                    if !active_items.is_empty() {
-                        let share = delta_seconds / active_items.len() as f64;
-                        for name in active_items {
-                            *seconds_for_bucket.entry(name.clone()).or_insert(0.0) += share;
-                            *total_by_project.entry(name).or_insert(0.0) += share;
+                    let project_count = sources_by_project.len();
+                    if project_count > 0 {
+                        let project_share = delta_seconds / project_count as f64;
+                        for (project, sources) in sources_by_project {
+                            *seconds_for_bucket.entry(project.clone()).or_insert(0.0) +=
+                                project_share;
+                            *total_by_project.entry(project).or_insert(0.0) += project_share;
+                            let per_source = project_share / sources.len() as f64;
+                            for source in sources {
+                                *effective_by_source.entry(source).or_insert(0.0) += per_source;
+                            }
                         }
                     }
                 }
 
                 while i < events.len() && events[i].0 == current_ms {
                     let delta = events[i].1;
-                    let name = events[i].2.clone();
-                    let entry = active.entry(name.clone()).or_insert(0);
-                    *entry += delta;
-                    if *entry <= 0 {
-                        active.remove(&name);
+                    let source = events[i].2.clone();
+                    let project = events[i].3.clone();
+                    let entry = active.entry(source.clone()).or_insert((project, 0));
+                    entry.1 += delta;
+                    if entry.1 <= 0 {
+                        active.remove(&source);
                     }
                     i += 1;
                 }
@@ -832,6 +845,7 @@ impl TimeStrategy for WallClockStrategy {
         ActivityOutput {
             bucket_project_seconds,
             total_by_project,
+            effective_by_source,
             bucket_flags,
             bucket_comments,
         }
@@ -842,8 +856,10 @@ impl TimeStrategy for WallClockStrategy {
 mod tests {
     use super::{
         active_algorithm_id, compute_project_activity_unique, distribute_app_seconds,
-        finalize_project_series_labels, registry, ProjectSeriesMetaMap,
+        finalize_project_series_labels, registry, ComputeRange, IntervalInput, ProjectSeriesMetaMap,
+        TimeStrategy, WallClockStrategy,
     };
+    use crate::commands::datetime::parse_datetime_local;
     use crate::commands::types::{DateRange, StackedSeriesMeta, TopApp};
     use std::collections::HashMap;
 
@@ -909,6 +925,27 @@ mod tests {
         conn
     }
 
+    fn day_range(day: &str) -> ComputeRange {
+        let start = parse_datetime_local(&format!("{day}T00:00:00")).expect("range start");
+        ComputeRange {
+            start,
+            end_exclusive: start + chrono::Duration::days(1),
+            bucket_kind: super::BucketKind::Day,
+        }
+    }
+
+    fn interval(start: &str, end: &str, project_key: &str, source_key: &str) -> IntervalInput {
+        IntervalInput {
+            start: parse_datetime_local(start).expect("start"),
+            end: parse_datetime_local(end).expect("end"),
+            project_key: project_key.to_string(),
+            source_key: source_key.to_string(),
+            multiplier: 1.0,
+            is_manual: false,
+            comment: None,
+        }
+    }
+
     #[test]
     fn registry_has_wall_clock_and_active_defaults() {
         assert!(registry().iter().any(|s| s.id() == "wall_clock"));
@@ -921,6 +958,24 @@ mod tests {
     fn source_key_is_unique_across_auto_and_manual() {
         assert_ne!(super::source_key(false, 5), super::source_key(true, 5));
         assert_eq!(super::source_key(false, 5), super::source_key(false, 5));
+    }
+
+    #[test]
+    fn effective_seconds_split_within_and_across_projects() {
+        let range = day_range("2026-03-01");
+        let out = WallClockStrategy.compute(
+            &[
+                interval("2026-03-01T10:00:00", "2026-03-01T11:00:00", "p:1", "a1"),
+                interval("2026-03-01T10:30:00", "2026-03-01T11:00:00", "p:1", "a2"),
+            ],
+            &range,
+        );
+
+        let eff = &out.effective_by_source;
+        assert_eq!(eff.get("a1").copied().unwrap_or(0.0).round() as i64, 2700);
+        assert_eq!(eff.get("a2").copied().unwrap_or(0.0).round() as i64, 900);
+        let total_p1 = out.total_by_project.get("p:1").copied().unwrap();
+        assert!((eff.values().sum::<f64>() - total_p1).abs() < 1e-6);
     }
 
     #[test]
