@@ -30,6 +30,7 @@ export interface Session {
   start_time: string;
   end_time: string;
   duration_seconds: number;
+  effective_seconds?: number;
   rate_multiplier?: number;
   comment?: string | null;
   is_hidden?: boolean;
@@ -504,6 +505,7 @@ export interface ManualSessionWithProject {
   start_time: string;
   end_time: string;
   duration_seconds: number;
+  effective_seconds?: number;
   date: string;
 }
 

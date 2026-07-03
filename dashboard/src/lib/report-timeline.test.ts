@@ -4,7 +4,7 @@ import type { ManualSessionWithProject, SessionWithApp } from '@/lib/db-types';
 import { buildTimelineDays } from '@/lib/report-timeline';
 
 function makeAuto(over: Partial<SessionWithApp>): SessionWithApp {
-  return {
+  const session = {
     id: 1,
     app_id: 1,
     project_id: 1,
@@ -14,12 +14,16 @@ function makeAuto(over: Partial<SessionWithApp>): SessionWithApp {
     app_name: 'VS Code',
     ...over,
   } as SessionWithApp;
+  return {
+    ...session,
+    effective_seconds: over.effective_seconds ?? session.duration_seconds,
+  };
 }
 
 function makeManual(
   over: Partial<ManualSessionWithProject>,
 ): ManualSessionWithProject {
-  return {
+  const session = {
     id: 1,
     title: 'Spotkanie',
     session_type: 'meeting',
@@ -31,6 +35,10 @@ function makeManual(
     date: '2026-03-01',
     ...over,
   } as ManualSessionWithProject;
+  return {
+    ...session,
+    effective_seconds: over.effective_seconds ?? session.duration_seconds,
+  };
 }
 
 describe('buildTimelineDays', () => {
@@ -77,6 +85,29 @@ describe('buildTimelineDays', () => {
     );
     expect(days[0]?.entries[0]?.comment).toBe('refactor raportu');
     expect(days[0]?.entries[1]?.comment).toBeNull();
+  });
+
+  it('day total uses effective_seconds (dedup), not raw duration', () => {
+    const days = buildTimelineDays(
+      [
+        makeAuto({
+          id: 1,
+          start_time: '2026-03-01T10:00:00',
+          duration_seconds: 3600,
+          effective_seconds: 2700,
+        }),
+        makeAuto({
+          id: 2,
+          start_time: '2026-03-01T10:30:00',
+          duration_seconds: 1800,
+          effective_seconds: 900,
+        }),
+      ],
+      [],
+    );
+
+    expect(days[0]?.totalSeconds).toBe(3600);
+    expect(days[0]?.entries.map((e) => e.durationSeconds)).toEqual([2700, 900]);
   });
 
   it('manual entries carry sessionType and never a comment', () => {
