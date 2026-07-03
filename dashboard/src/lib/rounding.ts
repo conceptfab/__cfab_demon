@@ -123,6 +123,94 @@ export function roundDailyTotals(
   return roundDurations(perDaySeconds, settings);
 }
 
+export interface ReportDayInput {
+  date: string;
+  /** Czas efektywny (już zdedupowany) per sesja w tym dniu. */
+  sessionSeconds: readonly number[];
+}
+
+export interface ReportDayRounded {
+  date: string;
+  entrySeconds: number[];
+  daySeconds: number;
+}
+
+export interface ReportRounding {
+  days: ReportDayRounded[];
+  totalSeconds: number;
+}
+
+/**
+ * Rozkłada zaokrąglenie na strukturę raportu (sesja -> dzień -> total) wg trybu.
+ * Jedna kotwica dla nagłówka, timeline i sum sekcji, żeby dni sumowały się do
+ * totalu w trybach opartych o strukturę:
+ * - disabled/per_total: wpisy surowe; total = round(sumy) albo suma surowa.
+ * - per_session: każda sesja round; dzień = suma round(sesja); total = suma dni.
+ * - per_day: dzień = round(suma dnia) do pełnej godziny; total = suma dni.
+ */
+export function distributeReportRounding(
+  days: readonly ReportDayInput[],
+  settings: RoundingSettings,
+): ReportRounding {
+  const sum = (values: readonly number[]) =>
+    values.reduce(
+      (acc, seconds) => acc + (Number.isFinite(seconds) && seconds > 0 ? seconds : 0),
+      0,
+    );
+
+  if (!settings.enabled) {
+    const roundedDays = days.map((day) => ({
+      date: day.date,
+      entrySeconds: [...day.sessionSeconds],
+      daySeconds: sum(day.sessionSeconds),
+    }));
+    return {
+      days: roundedDays,
+      totalSeconds: roundedDays.reduce((acc, day) => acc + day.daySeconds, 0),
+    };
+  }
+
+  if (settings.mode === 'per_session') {
+    const roundedDays = days.map((day) => {
+      const entrySeconds = day.sessionSeconds.map((seconds) =>
+        roundSeconds(seconds, settings.intervalMinutes),
+      );
+      return {
+        date: day.date,
+        entrySeconds,
+        daySeconds: sum(entrySeconds),
+      };
+    });
+    return {
+      days: roundedDays,
+      totalSeconds: roundedDays.reduce((acc, day) => acc + day.daySeconds, 0),
+    };
+  }
+
+  if (settings.mode === 'per_day') {
+    const roundedDays = days.map((day) => ({
+      date: day.date,
+      entrySeconds: [...day.sessionSeconds],
+      daySeconds: roundSeconds(sum(day.sessionSeconds), FULL_HOUR_MINUTES),
+    }));
+    return {
+      days: roundedDays,
+      totalSeconds: roundedDays.reduce((acc, day) => acc + day.daySeconds, 0),
+    };
+  }
+
+  const roundedDays = days.map((day) => ({
+    date: day.date,
+    entrySeconds: [...day.sessionSeconds],
+    daySeconds: sum(day.sessionSeconds),
+  }));
+  const rawTotal = roundedDays.reduce((acc, day) => acc + day.daySeconds, 0);
+  return {
+    days: roundedDays,
+    totalSeconds: roundSeconds(rawTotal, settings.intervalMinutes),
+  };
+}
+
 /**
  * Zaokrągla pojedynczy, już zagregowany total (gdy nie mamy rozbicia na sesje,
  * np. licznik na Dashboardzie). Wariant per_session bez rozbicia sprowadza się do

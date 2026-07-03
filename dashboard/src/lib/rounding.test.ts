@@ -7,6 +7,7 @@ import {
   effectiveIntervalMinutes,
   scaleValueToRounded,
   normalizeRoundingSettings,
+  distributeReportRounding,
   DEFAULT_ROUNDING_SETTINGS,
   FULL_HOUR_MINUTES,
   type RoundingSettings,
@@ -158,5 +159,49 @@ describe('normalizeRoundingSettings', () => {
   it('accepts the per_day mode', () => {
     const n = normalizeRoundingSettings({ enabled: true, intervalMinutes: 15, mode: 'per_day' });
     expect(n.mode).toBe('per_day');
+  });
+});
+
+describe('distributeReportRounding', () => {
+  const days = [
+    { date: '2026-03-01', sessionSeconds: [600, 600] },
+    { date: '2026-03-02', sessionSeconds: [1200] },
+  ];
+
+  it('disabled -> raw entries, day = sum entries, total = sum days', () => {
+    const r = distributeReportRounding(days, settings({ enabled: false }));
+    expect(r.days[0]?.entrySeconds).toEqual([600, 600]);
+    expect(r.days[0]?.daySeconds).toBe(1200);
+    expect(r.totalSeconds).toBe(2400);
+  });
+
+  it('per_total -> entries raw, total rounded once', () => {
+    const r = distributeReportRounding(
+      days,
+      settings({ enabled: true, mode: 'per_total', intervalMinutes: 15 }),
+    );
+    expect(r.days[0]?.entrySeconds).toEqual([600, 600]);
+    expect(r.days[0]?.daySeconds).toBe(1200);
+    expect(r.totalSeconds).toBe(2700);
+  });
+
+  it('per_session -> each session rounded, day = sum rounded, total = sum days', () => {
+    const r = distributeReportRounding(
+      days,
+      settings({ enabled: true, mode: 'per_session', intervalMinutes: 15 }),
+    );
+    expect(r.days[0]?.entrySeconds).toEqual([900, 900]);
+    expect(r.days[0]?.daySeconds).toBe(1800);
+    expect(r.days[1]?.entrySeconds).toEqual([1800]);
+    expect(r.totalSeconds).toBe(3600);
+  });
+
+  it('per_day -> each day rounded to full hour, total = sum days', () => {
+    const r = distributeReportRounding(
+      days,
+      settings({ enabled: true, mode: 'per_day' }),
+    );
+    expect(r.days[0]?.daySeconds).toBe(3600);
+    expect(r.totalSeconds).toBe(7200);
   });
 });
