@@ -279,6 +279,7 @@ pub(crate) type ProjectActivityUniqueResult = (
     ProjectSeriesMetaMap,
     BucketFlags,
     BucketComments,
+    HashMap<String, f64>,
 );
 
 /// Stabilny klucz źródła interwału: rozłączny między sesjami auto i manualnymi
@@ -386,7 +387,7 @@ pub(crate) fn compute_project_clock_totals_by_id(
     active_only: bool,
     rollup_merged: bool,
 ) -> Result<HashMap<i64, f64>, String> {
-    let (_, totals, series_meta_by_key, _, _) = compute_project_activity_unique(
+    let (_, totals, series_meta_by_key, _, _, _) = compute_project_activity_unique(
         conn,
         date_range,
         false,
@@ -440,6 +441,7 @@ pub(crate) fn compute_project_activity_unique(
             series_meta_by_key,
             HashMap::new(),
             HashMap::new(),
+            HashMap::new(),
         ));
     }
 
@@ -460,6 +462,7 @@ pub(crate) fn compute_project_activity_unique(
         series_meta_by_key,
         output.bucket_flags,
         output.bucket_comments,
+        output.effective_by_source,
     ))
 }
 
@@ -979,6 +982,28 @@ mod tests {
     }
 
     #[test]
+    fn compute_unique_exposes_effective_by_source() {
+        let conn = setup_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, color) VALUES (1, 'P', '#111111');
+             INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id)
+               VALUES (10, 1, '2026-03-01T10:00:00', '2026-03-01T11:00:00', 3600, '2026-03-01', 1),
+                      (11, 1, '2026-03-01T10:30:00', '2026-03-01T11:00:00', 1800, '2026-03-01', 1);",
+        )
+        .unwrap();
+        let range = DateRange {
+            start: "2026-03-01".into(),
+            end: "2026-03-01".into(),
+        };
+        let (_buckets, totals, _meta, _flags, _comments, effective) =
+            compute_project_activity_unique(&conn, &range, false, true, None, None, true).unwrap();
+        let total: f64 = totals.values().sum();
+        let eff: f64 = effective.values().sum();
+        assert!((total - eff).abs() < 1e-6, "Σ effective == Σ total");
+        assert_eq!(effective.get("a10").copied().unwrap().round() as i64, 2700);
+    }
+
+    #[test]
     fn distribute_app_seconds_scales_down_to_clock_total() {
         let mut apps = vec![
             TopApp {
@@ -1071,7 +1096,7 @@ mod tests {
         )
         .expect("insert session");
 
-        let (bucket_seconds, totals, _, flags, _) = compute_project_activity_unique(
+        let (bucket_seconds, totals, _, flags, _, _) = compute_project_activity_unique(
             &conn,
             &DateRange {
                 start: "2026-03-01".to_string(),

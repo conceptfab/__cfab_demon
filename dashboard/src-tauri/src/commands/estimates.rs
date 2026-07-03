@@ -211,7 +211,7 @@ pub(crate) fn build_estimate_rows(
     ensure_session_project_cache(conn, &date_range.start, &date_range.end)?;
 
     let global_hourly_rate = get_global_hourly_rate(conn)?;
-    let (bucket_project_seconds, totals, series_meta_by_key, _, _) =
+    let (bucket_project_seconds, totals, series_meta_by_key, _, _, _) =
         compute_project_activity_unique(
             conn,
             date_range,

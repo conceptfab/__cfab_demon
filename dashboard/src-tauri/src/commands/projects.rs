@@ -431,7 +431,7 @@ fn query_projects_with_stats(
 
     // 1. Always compute All-Time totals
     if let Some(all_time_range) = query_activity_date_range(conn)? {
-        let (buckets, totals, meta, _, _) = compute_project_activity_unique(
+        let (buckets, totals, meta, _, _, _) = compute_project_activity_unique(
             conn,
             &all_time_range,
             false,
@@ -633,7 +633,7 @@ pub(crate) fn query_active_project_with_stats(
     let (total_seconds, daily_seconds) = if let Some(all_time_range) =
         query_activity_date_range(conn)?
     {
-        let (buckets, totals, meta, _, _) =
+        let (buckets, totals, meta, _, _, _) =
             compute_project_activity_unique(conn, &all_time_range, false, true, None, None, true)?;
         // Klucz serii tego projektu (scalone dzieci foldują się do rodzica).
         match meta

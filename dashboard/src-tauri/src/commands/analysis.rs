@@ -167,6 +167,7 @@ pub async fn get_project_timeline(
             series_meta_by_key,
             bucket_flags,
             bucket_comments,
+            _effective_by_source,
         ) = compute_project_activity_unique(
             conn,
             &date_range,

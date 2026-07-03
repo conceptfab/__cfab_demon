@@ -751,7 +751,7 @@ pub async fn get_clients_summary(
         let mut daily_by_project: HashMap<i64, Vec<i64>> = HashMap::new();
         let mut client_date_secs: HashMap<String, BTreeMap<String, i64>> = HashMap::new();
         {
-            let (buckets_map, _totals, meta, _, _) = compute_project_activity_unique(
+            let (buckets_map, _totals, meta, _, _, _) = compute_project_activity_unique(
                 conn,
                 &date_range,
                 false,

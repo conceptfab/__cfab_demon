@@ -226,6 +226,7 @@ pub async fn get_dashboard_data(
             series_meta_by_key,
             bucket_flags,
             bucket_comments,
+            _effective_by_source,
         ) = compute_project_activity_unique(
             conn,
             &date_range,
@@ -290,7 +291,7 @@ pub async fn get_dashboard_stats(
     date_range: DateRange,
 ) -> Result<DashboardStats, CommandError> {
     run_db_blocking(app, move |conn| {
-        let (bucket_project_seconds, project_totals, series_meta_by_key, _, _) =
+        let (bucket_project_seconds, project_totals, series_meta_by_key, _, _, _) =
             compute_project_activity_unique(
                 conn,
                 &date_range,
@@ -446,7 +447,7 @@ pub async fn get_timeline(
     date_range: DateRange,
 ) -> Result<Vec<TimelinePoint>, CommandError> {
     run_db_blocking(app, move |conn| {
-        let (bucket_map, _, _, _, _) = compute_project_activity_unique(
+        let (bucket_map, _, _, _, _, _) = compute_project_activity_unique(
             conn,
             &date_range,
             false,
@@ -794,7 +795,7 @@ mod tests {
             start: "2026-02-01".to_string(),
             end: "2026-02-01".to_string(),
         };
-        let (buckets, totals, series_meta_by_key, _, _) =
+        let (buckets, totals, series_meta_by_key, _, _, _) =
             compute_project_activity_unique(&conn, &date_range, false, true, None, None, false)
                 .expect("compute project activity");
         let counts = query_project_counts(&conn, &date_range.start, &date_range.end, true)
