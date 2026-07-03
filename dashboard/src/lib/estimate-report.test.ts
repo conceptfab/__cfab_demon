@@ -149,6 +149,24 @@ describe('buildEstimateReportModel', () => {
     expect(model.projects[0]!.displaySeconds).toBe(3600);
     expect(model.projects[0]!.displayValue).toBeCloseTo(150, 6); // waga przechodzi bez zmian
   });
+
+  it('per_total total is round(sum), matching dashboard convention', () => {
+    const PER_TOTAL_15: RoundingSettings = {
+      enabled: true,
+      intervalMinutes: 15,
+      mode: 'per_total',
+    };
+    const model = buildEstimateReportModel(
+      [
+        row({ project_id: 1, seconds: 1200, estimated_value: 100, daily_seconds: [1200], days: [{ date: 'd1', seconds: 1200 }] }),
+        row({ project_id: 2, seconds: 1200, estimated_value: 100, daily_seconds: [1200], days: [{ date: 'd1', seconds: 1200 }] }),
+      ],
+      true,
+      PER_TOTAL_15,
+    );
+
+    expect(model.totalSeconds).toBe(2700);
+  });
 });
 
 describe('roundedEstimatesSummary', () => {
@@ -168,16 +186,14 @@ describe('roundedEstimatesSummary', () => {
     expect(roundedEstimatesSummary(rows, PER_TOTAL)).toBeNull();
   });
 
-  it('sums per-row rounded totals and scales value (per_total)', () => {
+  it('rounds the raw sum once and scales value (per_total)', () => {
     const rows = [
-      row({ seconds: 4000, estimated_value: 100, daily_seconds: [4000] }),
-      row({ seconds: 5000, estimated_value: 200, daily_seconds: [5000] }),
+      row({ seconds: 1200, estimated_value: 100, daily_seconds: [1200] }),
+      row({ seconds: 1200, estimated_value: 100, daily_seconds: [1200] }),
     ];
     const out = roundedEstimatesSummary(rows, PER_TOTAL);
-    // 4000→4500 (75 min), 5000→5400 (90 min) → suma 9900 s.
-    expect(out?.seconds).toBe(9900);
-    // wartość skalowana proporcjonalnie do zaokrąglonego czasu wiersza.
-    expect(out?.value).toBeCloseTo(100 * (4500 / 4000) + 200 * (5400 / 5000));
+    expect(out?.seconds).toBe(2700);
+    expect(out?.value).toBeCloseTo(225);
   });
 
   it('rounds each day to a full hour in per_day mode', () => {

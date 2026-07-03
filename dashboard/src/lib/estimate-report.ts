@@ -114,8 +114,23 @@ export function buildEstimateReportModel(
     };
   });
 
-  const totalSeconds = projects.reduce((acc, p) => acc + p.displaySeconds, 0);
-  const totalValue = projects.reduce((acc, p) => acc + p.displayValue, 0);
+  const rawTotalSeconds = rows.reduce(
+    (acc, row) => acc + (Number.isFinite(row.seconds) && row.seconds > 0 ? row.seconds : 0),
+    0,
+  );
+  const rawValueSeconds = rows.reduce(
+    (acc, row) => acc + (Number.isFinite(row.hours) && row.hours > 0 ? row.hours * 3600 : 0),
+    0,
+  );
+  const rawValue = rows.reduce((acc, row) => acc + row.estimated_value, 0);
+  const totalSeconds =
+    rounded && settings.mode === 'per_total'
+      ? roundSeconds(rawTotalSeconds, settings.intervalMinutes)
+      : projects.reduce((acc, p) => acc + p.displaySeconds, 0);
+  const totalValue =
+    rounded && settings.mode === 'per_total'
+      ? scaleValueToRounded(rawValue, rawValueSeconds, totalSeconds)
+      : projects.reduce((acc, p) => acc + p.displayValue, 0);
   return { projects, totalSeconds, totalValue };
 }
 
@@ -140,6 +155,25 @@ export function roundedEstimatesSummary(
   if (!settings.enabled) return null;
   const interval = effectiveIntervalMinutes(settings);
   const usePerDay = settings.mode === 'per_day';
+
+  if (settings.mode === 'per_total') {
+    const rawSeconds = rows.reduce(
+      (acc, row) => acc + (Number.isFinite(row.seconds) && row.seconds > 0 ? Math.floor(row.seconds) : 0),
+      0,
+    );
+    const rawValueSeconds = rows.reduce(
+      (acc, row) => acc + (Number.isFinite(row.hours) && row.hours > 0 ? row.hours * 3600 : 0),
+      0,
+    );
+    const rawValue = rows.reduce((acc, row) => acc + row.estimated_value, 0);
+    const roundedSeconds = roundSeconds(rawSeconds, interval);
+    return roundedSeconds === rawSeconds
+      ? null
+      : {
+          seconds: roundedSeconds,
+          value: scaleValueToRounded(rawValue, rawValueSeconds, roundedSeconds),
+        };
+  }
 
   let roundedSeconds = 0;
   let rawSeconds = 0;
