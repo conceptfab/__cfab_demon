@@ -12,7 +12,8 @@ import {
 } from '@/lib/report-view-formatting';
 import { getTemplate } from '@/lib/report-templates';
 import { buildTimelineDays } from '@/lib/report-timeline';
-import { distributeReportRounding } from '@/lib/rounding';
+import { distributeReportRounding, roundSeconds } from '@/lib/rounding';
+import { formatDurationRaw } from '@/lib/utils';
 import { printCurrentView } from '@/lib/print';
 import { getDaemonRuntimeStatus, getProjectReportData } from '@/lib/tauri';
 import { REPORT_VIEW_SCREEN_LIMIT } from '@/pages/report-view/report-view-constants';
@@ -154,6 +155,16 @@ export function useReportViewController() {
     );
   }, [displayValues, rounded, roundingSettings]);
 
+  const fmtSessionDur = useCallback(
+    (seconds: number) =>
+      formatDurationRaw(
+        rounded && roundingSettings.mode === 'per_session'
+          ? roundSeconds(seconds, roundingSettings.intervalMinutes)
+          : seconds,
+      ),
+    [rounded, roundingSettings],
+  );
+
   const sessionStats = useMemo(() => {
     if (!report) return null;
     return {
@@ -175,6 +186,7 @@ export function useReportViewController() {
     currencyCode,
     displayValues,
     fmtDur,
+    fmtSessionDur,
     generatedAt,
     goToProject,
     handlePrint,

@@ -4,11 +4,11 @@ import type { ReportViewController } from '@/hooks/useReportViewController';
 
 type ReportViewSessionsSectionProps = Pick<
   ReportViewController,
-  'fmtDur' | 'has' | 'report' | 'screenLimit' | 'setShowAll' | 'showAll' | 't'
+  'fmtSessionDur' | 'has' | 'report' | 'screenLimit' | 'setShowAll' | 'showAll' | 't'
 >;
 
 export function ReportViewSessionsSection({
-  fmtDur,
+  fmtSessionDur,
   has,
   report,
   screenLimit,
@@ -51,7 +51,7 @@ export function ReportViewSessionsSection({
                 {s.app_name}
               </td>
               <td className="py-1 pr-2 font-mono text-right print:text-black">
-                {fmtDur(s.duration_seconds)}
+                {fmtSessionDur(s.effective_seconds ?? s.duration_seconds)}
               </td>
               <td className="py-1 text-muted-foreground/50 truncate max-w-[200px] print:text-gray-600">
                 {s.comment?.trim() || ''}
