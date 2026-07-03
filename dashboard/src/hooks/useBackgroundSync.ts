@@ -28,7 +28,7 @@ export function useOnlineSyncSSE() {
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const refreshTimerRef = useRef<number | null>(null);
   const triggerRefreshRef = useRef(triggerRefresh);
-  // Zapis refa poza renderem (react-hooks/refs); czytany w callbacku SSE.
+  // Store the ref outside render (react-hooks/refs); read from the SSE callback.
   useEffect(() => {
     triggerRefreshRef.current = triggerRefresh;
   });
@@ -40,12 +40,12 @@ export function useOnlineSyncSSE() {
 
     const ownDeviceId = settings.deviceId;
     void connectSSE(async (event) => {
-      // Ignoruj echo WŁASNYCH pushy: serwer rozsyła SSE do wszystkich klientów,
-      // też do nadawcy. Bez tego push → echo → trigger → push tworzy pętlę
-      // (storm). Floor po stronie demona i tak by ją zdławił, ale tu odcinamy
-      // ją u źródła (zero zbędnych 429).
+      // Ignore echoes of our own pushes: the server broadcasts SSE to all clients,
+      // including the sender. Without this, push -> echo -> trigger -> push creates
+      // a loop. The daemon floor would still throttle it, but this cuts it off at
+      // the source and avoids unnecessary 429s.
       if (event.sourceDeviceId && event.sourceDeviceId === ownDeviceId) {
-        logger.log(`[SSE] Ignoruję echo własnego pushu (rev ${event.revision})`);
+        logger.log(`[SSE] Ignoring own push echo (rev ${event.revision})`);
         return;
       }
       logger.log(`[SSE] Peer ${event.sourceDeviceId} pushed rev ${event.revision} — triggering daemon sync`);

@@ -114,7 +114,7 @@ export function DaemonSyncOverlay() {
 
         // Idle or terminal: if a silent online sync was running, persist its
         // outcome so the sidebar indicator can show success/FAILURE of background
-        // syncs (not just manual ones) — bez tego porażka tła była niewidoczna.
+        // syncs (not just manual ones); otherwise background failures stay invisible.
         if (onlineRunningRef.current) {
           onlineRunningRef.current = false;
           try {
@@ -134,7 +134,7 @@ export function DaemonSyncOverlay() {
               saveOnlineSyncLastResult({ ok: false, error: res.error, finishedAt: res.finishedAt });
             }
             refreshIndicatorFromStorage();
-          } catch { /* demon nieosiągalny — zostaw poprzedni stan */ }
+          } catch { /* daemon unreachable; keep previous state */ }
           if (!progress.phase.startsWith('error')) {
             triggerRefresh('daemon_sync_finished');
           }

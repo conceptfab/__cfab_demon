@@ -107,10 +107,10 @@ describe('report formatter hides minutes when rounding to a FULL HOUR', () => {
 });
 
 describe('full-hour value is consistent (no grosze noise)', () => {
-  // Realny scenariusz: stawka 100/h, dokładny clock 42h47m13.7s → zaokrąglenie do 43h.
-  // Wartość musi wyjść dokładnie 43 × 100 = 4300,00 (bez końcówki typu 4300,02).
+  // Real scenario: 100/h rate, exact clock 42h47m13.7s -> rounded to 43h.
+  // Value must be exactly 43 x 100 = 4300.00, without cents noise.
   const RATE = 100;
-  const valueBase = 154033.7; // ułamkowe sekundy z backendu (baza wartości)
+  const valueBase = 154033.7; // fractional backend seconds used as value base
   const estimate = (valueBase / 3600) * RATE;
   const settings = { enabled: true, intervalMinutes: 60, mode: 'per_total' as const };
 
@@ -132,7 +132,7 @@ describe('full-hour value is consistent (no grosze noise)', () => {
     };
     const dv = computeReportDisplayValues(report, true, settings);
     expect(dv.displayTotal).toBe(43 * 3600);
-    // Dowód, że mianownik i64 wstrzykuje szum — kwota NIE jest równa 4300,00.
+    // Proof that the i64 denominator injects noise: the amount is not 4300.00.
     expect(Number(dv.displayValue.toFixed(2))).not.toBe(4300);
   });
 });

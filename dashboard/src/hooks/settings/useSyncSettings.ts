@@ -165,7 +165,7 @@ export function useSyncSettings({
         });
         return;
       }
-      if (manualSyncing) return; // single-flight: nie odpalaj drugiego synca równolegle
+      if (manualSyncing) return; // single-flight: avoid starting a second sync in parallel
 
       setManualSyncing(true);
       setManualSyncResult(null);
@@ -206,7 +206,7 @@ export function useSyncSettings({
               break;
             }
           } catch {
-            // demon chwilowo nieosiągalny — spróbuj ponownie
+            // daemon temporarily unreachable; retry
           }
         }
 
@@ -252,7 +252,7 @@ export function useSyncSettings({
   const handleForceSyncNow = useCallback(
     async (demoModeEnabled: boolean) => {
       if (demoModeEnabled) return;
-      if (manualSyncing) return; // single-flight: nie odpalaj drugiego synca równolegle
+      if (manualSyncing) return; // single-flight: avoid starting a second sync in parallel
 
       setManualSyncing(true);
       setManualSyncResult(null);
@@ -278,7 +278,7 @@ export function useSyncSettings({
               break;
             }
           } catch {
-            // demon chwilowo nieosiągalny — spróbuj ponownie
+            // daemon temporarily unreachable; retry
           }
         }
 
