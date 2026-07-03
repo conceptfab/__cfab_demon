@@ -1,7 +1,12 @@
 use tauri::AppHandle;
 
+use std::collections::HashMap;
+
+use super::analysis::compute_project_activity_unique;
+use super::daemon::load_persisted_session_min_duration;
 use super::types::{
-    MultiProjectAnalysis, SessionFilters, SessionSplittableFlag, SessionWithApp, SplitPart,
+    DateRange, MultiProjectAnalysis, SessionFilters, SessionSplittableFlag, SessionWithApp,
+    SplitPart,
 };
 use crate::commands::error::CommandError;
 
@@ -33,6 +38,34 @@ pub async fn get_session_count(
     query::get_session_count(app, filters)
         .await
         .map_err(CommandError::Other)
+}
+
+#[tauri::command]
+pub async fn get_project_canonical_totals(
+    app: AppHandle,
+    date_range: DateRange,
+) -> Result<HashMap<i64, i64>, CommandError> {
+    super::helpers::run_db_blocking(app, move |conn| {
+        let (_buckets, totals, meta, _flags, _comments, _effective) =
+            compute_project_activity_unique(
+                conn,
+                &date_range,
+                false,
+                true,
+                None,
+                Some(load_persisted_session_min_duration()),
+                true,
+            )?;
+        Ok(totals
+            .into_iter()
+            .filter_map(|(series_key, seconds)| {
+                meta.get(&series_key)
+                    .and_then(|series| series.project_id.map(|id| (id, seconds.round() as i64)))
+            })
+            .collect())
+    })
+    .await
+    .map_err(CommandError::Other)
 }
 
 #[tauri::command]

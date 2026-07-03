@@ -134,6 +134,7 @@ pub fn dispatch_generated(
         "get_paired_devices" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_paired_devices())?) })()),
         "get_persisted_language" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_persisted_language())?) })()),
         "get_project" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_project(app.clone(), from_arg(args, "id")?))?) })()),
+        "get_project_canonical_totals" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_project_canonical_totals(app.clone(), from_arg(args, "date_range")?))?) })()),
         "get_project_estimates" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_project_estimates(app.clone(), from_arg(args, "date_range")?))?) })()),
         "get_project_extra_info" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_project_extra_info(app.clone(), from_arg(args, "id")?, from_arg(args, "date_range")?))?) })()),
         "get_project_folders" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_project_folders(app.clone()))?) })()),

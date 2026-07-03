@@ -26,11 +26,10 @@ export const SESSION_PAGE_SIZE = 100;
  * [start_time, end_time] intervals, so overlapping ranges (e.g. two apps
  * active at once on the same project) are counted only once.
  *
- * This mirrors the backend's unique-time computation
- * (compute_project_activity_unique) so per-project/group totals stay
- * consistent with the Dashboard and Earnings. It deliberately uses
- * end - start (clock time) instead of duration_seconds, which can carry
- * boost inflation, and skips unparseable or zero/negative intervals.
+ * NOTE: this is a per-group union of intervals. It does NOT split time between
+ * concurrent PROJECTS the way the backend canon (compute_project_activity_unique)
+ * does. Used only as a fallback for groups without a canonical total (e.g.
+ * unassigned). Project group totals come from the backend canon.
  */
 export function wallClockSeconds(
   sessions: readonly { start_time: string; end_time: string }[],

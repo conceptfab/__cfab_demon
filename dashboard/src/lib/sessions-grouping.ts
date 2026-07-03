@@ -23,6 +23,7 @@ export function groupSessionsByProject(
   >,
   unassignedLabel: string,
   projectIdByName: Map<string, number>,
+  canonicalByProjectId?: Map<number, number>,
 ): GroupedProject[] {
   const groups = new Map<string, GroupedProject>();
   for (const session of mergedSessions) {
@@ -66,7 +67,11 @@ export function groupSessionsByProject(
     group.sessions.push(session);
   }
   for (const group of groups.values()) {
-    group.totalSeconds = wallClockSeconds(group.sessions);
+    const canonical =
+      group.projectId != null
+        ? canonicalByProjectId?.get(group.projectId)
+        : undefined;
+    group.totalSeconds = canonical ?? wallClockSeconds(group.sessions);
   }
   return Array.from(groups.values()).sort((a, b) => {
     const aUnassigned = a.projectId == null;

@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { usePageError } from '@/hooks/usePageError';
 import { format, parseISO } from 'date-fns';
 
-import { manualSessionsApi } from '@/lib/tauri';
+import { manualSessionsApi, sessionsApi } from '@/lib/tauri';
 import type {
   ManualSessionWithProject,
   SessionWithApp,
@@ -139,6 +139,9 @@ export function useSessionsPageController() {
   const [manualSessions, setManualSessions] = useState<
     ManualSessionWithProject[]
   >([]);
+  const [canonicalTotals, setCanonicalTotals] = useState<Map<number, number>>(
+    () => new Map(),
+  );
   useEffect(() => {
     let cancelled = false;
     manualSessionsApi
@@ -155,6 +158,35 @@ export function useSessionsPageController() {
             'load manual sessions',
             e,
             t('sessions.errors.load_manual_sessions'),
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDateRange, dataReloadVersion, reportError, t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    sessionsApi
+      .getProjectCanonicalTotals(activeDateRange)
+      .then((data) => {
+        if (cancelled) return;
+        setCanonicalTotals(
+          new Map(
+            Object.entries(data).map(([projectId, seconds]) => [
+              Number(projectId),
+              seconds,
+            ]),
+          ),
+        );
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          reportError(
+            'load canonical session totals',
+            e,
+            t('sessions.errors.load_sessions'),
           );
         }
       });
@@ -245,8 +277,13 @@ export function useSessionsPageController() {
 
   const groupedByProject = useMemo(
     () =>
-      groupSessionsByProject(mergedSessions, unassignedLabel, projectIdByName),
-    [mergedSessions, unassignedLabel, projectIdByName],
+      groupSessionsByProject(
+        mergedSessions,
+        unassignedLabel,
+        projectIdByName,
+        canonicalTotals,
+      ),
+    [mergedSessions, unassignedLabel, projectIdByName, canonicalTotals],
   );
 
   const {

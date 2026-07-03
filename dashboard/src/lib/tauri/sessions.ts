@@ -29,6 +29,9 @@ export const getSessionCount = (filters: {
   minDuration?: number;
 }) => invoke<number>('get_session_count', { filters });
 
+export const getProjectCanonicalTotals = (dateRange: DateRange) =>
+  invoke<Record<string, number>>('get_project_canonical_totals', { dateRange });
+
 export const rebuildSessions = (gapFillMinutes: number) =>
   invokeMutation<number>('rebuild_sessions', { gapFillMinutes }, {
     notify: (merged) => merged > 0,
@@ -107,6 +110,7 @@ export const getSessionScoreBreakdown = (sessionId: number) =>
 export const sessionsApi = {
   getSessions,
   getSessionCount,
+  getProjectCanonicalTotals,
   rebuildSessions,
   deleteSession,
   deleteSessionsBatch,

@@ -241,6 +241,7 @@ pub fn run() {
             commands::get_applications,
             commands::get_sessions,
             commands::get_session_count,
+            commands::get_project_canonical_totals,
             commands::assign_session_to_project,
             commands::assign_sessions_to_project,
             commands::delete_session,
