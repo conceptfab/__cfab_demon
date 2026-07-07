@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { format, parseISO } from 'date-fns';
+import { Monitor, Pencil } from 'lucide-react';
 
 import type { ReportViewController } from '@/hooks/useReportViewController';
 import i18n from '@/i18n';
@@ -89,9 +90,21 @@ export function ReportViewTimelineSection({
                         </td>
                       )}
                       <td className="py-1 pr-2 text-muted-foreground/50 print:text-gray-600 whitespace-nowrap w-14">
-                        {entry.kind === 'manual'
-                          ? t('report_view.timeline_manual')
-                          : t('report_view.timeline_auto')}
+                        {entry.kind === 'manual' ? (
+                          <Pencil
+                            className="size-3 print:text-gray-600"
+                            aria-label={t('report_view.timeline_manual')}
+                          >
+                            <title>{t('report_view.timeline_manual')}</title>
+                          </Pencil>
+                        ) : (
+                          <Monitor
+                            className="size-3 print:text-gray-600"
+                            aria-label={t('report_view.timeline_auto')}
+                          >
+                            <title>{t('report_view.timeline_auto')}</title>
+                          </Monitor>
+                        )}
                       </td>
                       <td
                         colSpan={rounded ? 2 : 1}
