@@ -11,7 +11,7 @@ import {
   createReportDurationFormatter,
   scaleAppSecondsToRounded,
 } from '@/lib/report-view-formatting';
-import { getTemplate } from '@/lib/report-templates';
+import { getProjectTemplate } from '@/lib/report-templates';
 import { buildTimelineDays } from '@/lib/report-timeline';
 import { distributeReportRounding, roundSeconds } from '@/lib/rounding';
 import { formatDurationRaw, formatDurationSlimRaw } from '@/lib/utils';
@@ -41,7 +41,7 @@ export function useReportViewController() {
   const [appVersion, setAppVersion] = useState('');
   const [showAll, setShowAll] = useState(false);
   const template = useMemo(
-    () => getTemplate(reportTemplateId || 'default'),
+    () => getProjectTemplate(reportTemplateId),
     [reportTemplateId],
   );
   const [generatedAt] = useState(() => format(new Date(), 'yyyy-MM-dd HH:mm'));

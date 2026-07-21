@@ -71,3 +71,36 @@ describe('report templates with kind', () => {
     expect(all.find((t) => t.id === 'default')?.sections).toContain('timeline');
   });
 });
+
+// Regresja: raport projektu renderował się pusty, gdy dla projektu wybrano
+// szablon estymacji (sekcje `est_*` nie pasują do sekcji projektu → wszystkie
+// sekcje null). Selektor projektu i kontroler muszą trzymać się kind === 'project'.
+describe('project report template resolution', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  it('loadProjectTemplates pomija szablony estymacji', async () => {
+    const { loadProjectTemplates } = await import('@/lib/report-templates');
+    const list = loadProjectTemplates();
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.every((t) => t.kind === 'project')).toBe(true);
+    expect(list.some((t) => t.id === ESTIMATE_SIMPLE_TEMPLATE_ID)).toBe(false);
+    expect(list.some((t) => t.id === 'default')).toBe(true);
+  });
+
+  it('getProjectTemplate spada na szablon projektu, gdy id wskazuje estymację', async () => {
+    const { getProjectTemplate } = await import('@/lib/report-templates');
+    const tpl = getProjectTemplate(ESTIMATE_SIMPLE_TEMPLATE_ID);
+    expect(tpl.kind).toBe('project');
+    expect(tpl.sections).toContain('header');
+  });
+
+  it('getProjectTemplate zwraca szablon projektu dla null', async () => {
+    const { getProjectTemplate } = await import('@/lib/report-templates');
+    const tpl = getProjectTemplate(null);
+    expect(tpl.kind).toBe('project');
+    expect(tpl.sections).toContain('header');
+  });
+});

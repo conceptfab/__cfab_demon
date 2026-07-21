@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FileText, Check, Edit2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { loadTemplates, getSelectedTemplateId, setSelectedTemplateId } from '@/lib/report-templates';
+import { loadProjectTemplates, getProjectTemplate, getSelectedTemplateId, setSelectedTemplateId } from '@/lib/report-templates';
 import type { ReportTemplate } from '@/lib/report-templates';
 import { useTranslation } from 'react-i18next';
 
@@ -13,8 +13,15 @@ interface Props {
 
 export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: Props) {
   const { t } = useTranslation();
-  const [templates] = useState<ReportTemplate[]>(() => loadTemplates());
-  const [selectedId, setSelectedId] = useState(() => getSelectedTemplateId());
+  // Selektor jest otwierany tylko z karty projektu → pokazujemy wyłącznie
+  // szablony projektowe. Szablon estymacji dałby pusty raport (sekcje `est_*`
+  // nie pasują do sekcji projektu).
+  const [templates] = useState<ReportTemplate[]>(() => loadProjectTemplates());
+  // Zachowaj ostatni projektowy wybór; gdy zapisany id jest estymacyjny lub
+  // nieznany — getProjectTemplate spada na 'default'.
+  const [selectedId, setSelectedId] = useState(
+    () => getProjectTemplate(getSelectedTemplateId()).id,
+  );
 
   const handleSelect = () => {
     setSelectedTemplateId(selectedId);

@@ -159,6 +159,27 @@ export function getTemplate(id: string): ReportTemplate {
   return normalizeTemplate(all.find(t => t.id === id) || all[0] || createDefaultTemplate());
 }
 
+/** Zwraca wyłącznie szablony raportu projektowego (kind === 'project'). */
+export function loadProjectTemplates(): ReportTemplate[] {
+  return loadTemplates().filter((t) => t.kind === 'project');
+}
+
+/**
+ * Zwraca szablon projektowy dla danego id. Gdy id wskazuje szablon estymacji
+ * (sekcje `est_*`) lub nie istnieje, spada na 'default' — chroni raport projektu
+ * przed pustym renderem (sekcje estymacji nie pasują do sekcji projektu).
+ */
+export function getProjectTemplate(id: string | null): ReportTemplate {
+  const projectTemplates = loadProjectTemplates();
+  const found = id ? projectTemplates.find((t) => t.id === id) : undefined;
+  return normalizeTemplate(
+    found ??
+      projectTemplates.find((t) => t.id === 'default') ??
+      projectTemplates[0] ??
+      createDefaultTemplate(),
+  );
+}
+
 export function saveTemplate(template: ReportTemplate): ReportTemplate[] {
   const all = loadTemplates();
   const idx = all.findIndex(t => t.id === template.id);
