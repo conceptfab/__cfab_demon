@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { Flame, MessageSquare, Scissors, Sparkles, Type } from 'lucide-react';
+import { Flame, MessageSquare, PenLine, Scissors, Sparkles, Type } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { AppTooltip } from '@/components/ui/app-tooltip';
@@ -44,6 +44,7 @@ type SessionContextMenuProps = {
   onEditComment: () => void;
   onOpenSplit: () => void;
   onAssign: (projectId: number | null, source?: string) => void;
+  onEditManual?: () => void;
   isManual?: boolean;
 };
 
@@ -64,6 +65,7 @@ export function SessionContextMenu({
   onEditComment,
   onOpenSplit,
   onAssign,
+  onEditManual,
   isManual,
 }: SessionContextMenuProps) {
   const { t } = useTranslation();
@@ -83,6 +85,16 @@ export function SessionContextMenu({
           app: menu.session.app_name,
         })}
       </div>
+      {isManual && onEditManual && (
+        <button
+          type="button"
+          className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+          onClick={onEditManual}
+        >
+          <PenLine className="size-4 shrink-0 text-emerald-400" />
+          <span>{t('sessions.menu.edit_manual_session')}</span>
+        </button>
+      )}
       {menu.session.suggested_project_id !== undefined &&
         menu.session.suggested_project_name &&
         menu.session.project_name === null && (

@@ -16,6 +16,7 @@ export function HelpSessionsSection() {
         t18n('help_page.rate_multipliers_define_rate_x2_or_custom_for_higher_val'),
         t18n('help_page.ai_suggestions_review_and_approve_or_reject_project_sugg'),
         t18n('help_page.manual_session_addition_register_meetings_calls_or_offli'),
+        t18n('help_page.edit_manual_session_from_list_right_click'),
         t18n('help_page.multi_day_manual_sessions_the_allow_session_across_multi'),
         t18n('help_page.batch_assign_select_multiple_sessions_and_assign_them_to'),
         t18n('help_page.mobile_session_assign_button'),

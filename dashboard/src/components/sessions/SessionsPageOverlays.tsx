@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { sessionsApi } from '@/lib/tauri';
 import { logTauriError } from '@/lib/utils';
 import { PromptModal } from '@/components/ui/prompt-modal';
+import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { MultiSplitSessionModal } from '@/components/sessions/MultiSplitSessionModal';
 import { SessionContextMenu } from '@/components/sessions/SessionContextMenu';
 import { SessionsProjectContextMenu } from '@/components/sessions/SessionsProjectContextMenu';
@@ -24,11 +25,14 @@ export function SessionsPageOverlays({ controller }: SessionsPageOverlaysProps) 
     ctxMenuSplitSuggested,
     ctxRef,
     displayProjectName,
+    editingManualSession,
     handleAcceptSuggestion,
     handleRejectSuggestion,
     handleAssign,
     handleCustomRateMultiplier,
     handleEditComment,
+    handleEditManualSession,
+    handleManualSessionSaved,
     handleSetRateMultiplier,
     multiSplitSession,
     openMultiSplitModal,
@@ -41,6 +45,7 @@ export function SessionsPageOverlays({ controller }: SessionsPageOverlaysProps) 
     setAssignProjectListMode,
     setCurrentPage,
     setMultiSplitSession,
+    setEditingManualSession,
     setProjectCtxMenu,
     setProjectPageId,
     setPromptConfig,
@@ -88,6 +93,7 @@ export function SessionsPageOverlays({ controller }: SessionsPageOverlaysProps) 
           onAssign={(projectId, source) => {
             void handleAssign(projectId, source);
           }}
+          onEditManual={handleEditManualSession}
           isManual={
             'isManual' in ctxMenu.session &&
             !!(ctxMenu.session as { isManual?: boolean }).isManual
@@ -163,6 +169,16 @@ export function SessionsPageOverlays({ controller }: SessionsPageOverlaysProps) 
           onCancel={() => setMultiSplitSession(null)}
         />
       )}
+
+      <ManualSessionDialog
+        open={editingManualSession !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingManualSession(null);
+        }}
+        projects={projects}
+        editSession={editingManualSession}
+        onSaved={handleManualSessionSaved}
+      />
     </>
   );
 }

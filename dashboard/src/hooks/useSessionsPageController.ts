@@ -86,6 +86,8 @@ export function useSessionsPageController() {
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const [multiSplitSession, setMultiSplitSession] =
     useState<SessionWithApp | null>(null);
+  const [editingManualSession, setEditingManualSession] =
+    useState<ManualSessionWithProject | null>(null);
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
@@ -331,6 +333,18 @@ export function useSessionsPageController() {
     ensureCommentForBoost,
   });
 
+  const handleEditManualSession = useCallback(() => {
+    if (!ctxMenu) return;
+    const manual = manualSessions.find((m) => m.id === ctxMenu.session.id);
+    setCtxMenu(null);
+    if (manual) setEditingManualSession(manual);
+  }, [ctxMenu, manualSessions, setCtxMenu, setEditingManualSession]);
+
+  const handleManualSessionSaved = useCallback(() => {
+    setEditingManualSession(null);
+    triggerRefresh('sessions_mutation');
+  }, [triggerRefresh, setEditingManualSession]);
+
   const [freezeThresholdDays] = useState(
     () => loadFreezeSettings().thresholdDays,
   );
@@ -439,6 +453,7 @@ export function useSessionsPageController() {
     deleteSessions,
     dismissedSuggestions,
     displayProjectName,
+    editingManualSession,
     flattenedItems,
     getScoreBreakdownData,
     handleAcceptSuggestion,
@@ -446,6 +461,8 @@ export function useSessionsPageController() {
     handleContextMenu,
     handleCustomRateMultiplier,
     handleEditComment,
+    handleEditManualSession,
+    handleManualSessionSaved,
     handleProjectContextMenu,
     handleRejectSuggestion,
     handleSetRateMultiplier,
@@ -472,6 +489,7 @@ export function useSessionsPageController() {
     setActiveProjectId,
     setAssignProjectListMode,
     setCtxMenu,
+    setEditingManualSession,
     setCurrentPage,
     setMultiSplitSession,
     setOverrideDateRange,

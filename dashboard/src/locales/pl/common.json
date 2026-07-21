@@ -357,6 +357,7 @@
     },
     "menu": {
       "session_actions": "Akcje sesji ({{app}})",
+      "edit_manual_session": "Edytuj sesję ręczną",
       "ai_suggests": "AI sugeruje:",
       "accept": "Akceptuj",
       "reject": "Odrzuć",
@@ -1911,6 +1912,7 @@
     "rate_multipliers_define_rate_x2_or_custom_for_higher_val": "Mnożniki stawek (Multiplier) – definiuj stawki x2 lub własne dla pracy o wyższej wartości.",
     "ai_suggestions_review_and_approve_or_reject_project_sugg": "AI Suggestions – przeglądaj i zatwierdzaj (lub odrzucaj) sugestie projektów wygenerowane przez AI.",
     "manual_session_addition_register_meetings_calls_or_offli": "Ręczne dodawanie sesji (Add Session) – rejestruj spotkania, telefony lub pracę poza komputerem.",
+    "edit_manual_session_from_list_right_click": "Edycja sesji ręcznej – kliknij sesję ręczną prawym przyciskiem myszy na liście Sesje i wybierz \"Edytuj sesję ręczną\", aby zmienić projekt, czas, typ lub opis (lub ją usunąć).",
     "multi_day_manual_sessions_the_allow_session_across_multi": "Sesje ręczne wielodniowe – opcja \"Pozwól rozciągnąć sesję na wiele dni\" pozwala zapisać dłuższe zdarzenia przechodzące przez północ.",
     "batch_assign_select_multiple_sessions_and_assign_them_to": "Masowe przypisywanie (Batch Assign) – zaznacz wiele sesji i przypisz je do projektu jednym kliknięciem.",
     "mobile_session_assign_button": "Przypisywanie na telefonie – użyj przycisku „Przypisz do projektu” w wierszu sesji; otwiera to to samo menu projektów co prawy klik na desktopie.",
