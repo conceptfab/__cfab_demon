@@ -1,7 +1,7 @@
 {
   "name": "dashboard",
   "private": true,
-  "version": "0.1.5755",
+  "version": "0.1.5756",
   "type": "module",
   "scripts": {
     "pretauri": "node scripts/sync-version.cjs",
