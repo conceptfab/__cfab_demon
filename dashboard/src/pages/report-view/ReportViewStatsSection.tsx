@@ -1,13 +1,13 @@
+import { formatDurationRaw, formatDurationSlimRaw } from '@/lib/utils';
 import type { ReportViewController } from '@/hooks/useReportViewController';
 
 type ReportViewStatsSectionProps = Pick<
   ReportViewController,
-  'displayValues' | 'fmtDur' | 'has' | 'report' | 'sessionStats' | 't'
+  'displayValues' | 'has' | 'report' | 'sessionStats' | 't'
 >;
 
 export function ReportViewStatsSection({
   displayValues,
-  fmtDur,
   has,
   report,
   sessionStats,
@@ -20,7 +20,12 @@ export function ReportViewStatsSection({
       {[
         {
           label: t('report_view.total_time'),
-          value: fmtDur(report.project.total_seconds, displayValues.dailySeconds),
+          // Ta sama kotwica co oś czasu i finanse (displayTotal = suma dni
+          // z distributeReportRounding). Osobne zaokrąglanie surowego
+          // total_seconds dawało inną liczbę niż suma dni w raporcie.
+          value: (
+            displayValues.fullHour ? formatDurationSlimRaw : formatDurationRaw
+          )(displayValues.displayTotal),
           accent: true,
         },
         {
