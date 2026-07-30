@@ -1,18 +1,28 @@
 import { ChevronLeft, Printer } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { ReportPeriodPicker } from '@/components/reports/ReportPeriodPicker';
 import type { ReportViewController } from '@/hooks/useReportViewController';
 
 type ReportViewToolbarProps = Pick<
   ReportViewController,
-  'displayValues' | 'goToProject' | 'handlePrint' | 'rounded' | 'setRounded' | 't'
+  | 'displayValues'
+  | 'goToProject'
+  | 'handlePrint'
+  | 'period'
+  | 'rounded'
+  | 'setPeriod'
+  | 'setRounded'
+  | 't'
 >;
 
 export function ReportViewToolbar({
   displayValues,
   goToProject,
   handlePrint,
+  period,
   rounded,
+  setPeriod,
   setRounded,
   t,
 }: ReportViewToolbarProps) {
@@ -26,7 +36,9 @@ export function ReportViewToolbar({
           {t('report_view.back_to_project')}
         </Button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ReportPeriodPicker period={period} onChange={setPeriod} compact />
+
           <fieldset
             className="m-0 flex overflow-hidden rounded-md border border-border/60 p-0 text-xs"
             aria-label={t('report_view.rounding_mode')}

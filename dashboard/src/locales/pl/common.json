@@ -135,6 +135,13 @@
     "to": "Do",
     "apply": "Zastosuj"
   },
+  "report_period": {
+    "label": "Okres rozliczeniowy",
+    "document_label": "Okres",
+    "all_time": "Cały okres",
+    "this_month": "Ten miesiąc",
+    "last_month": "Poprzedni miesiąc"
+  },
   "dashboard": {
     "actions": {
       "refresh": "Odśwież",
@@ -2086,6 +2093,7 @@
     "report_view_toolbar_focuses_on_preview_print_and_pdf_": "Toolbar ReportView – czysty pełnoekranowy podgląd z akcją Drukuj / PDF; użyj go do sprawdzenia układu, skali i podziału stron przed eksportem.",
     "report_work_time_uses_the_same_deduplicated_clock_time_a": "Spójny czas pracy w raportach – karty projektów, Dashboard, raporty, timeline, Estymacje i Sesje używają kanonicznego czasu zegarowego: nakładki są deduplikowane, a czas równoległych projektów dzielony. Mnożniki wpływają na wartość finansową, nie na sumę godzin.",
     "report_rounding_toggle_feature": "Przełącznik Pełny/Zaokrąglony – w pasku raportu można wybrać czas rzeczywisty albo zaokrąglony. Wariant suma zaokrągla sumę raz; każda sesja zaokrągla wpisy i potem je sumuje; per dzień zaokrągla każdy dzień do pełnych godzin. Sumy dzienne zawsze składają się dokładnie na sumę całkowitą raportu. W trybie zaokrąglonym oś czasu pokazuje wyłącznie sumy dzienne – bez godzin startu i czasów pojedynczych sesji (opisy i komentarze zostają). Zaokrąglenie obejmuje czas i proporcjonalnie wartość ($) oraz godziny aplikacji (udział skalowany do sumy raportu; śladowe użycie pokazywane jako \"<1h\"), działa też przy druku/PDF.",
+    "report_period_feature": "Okres rozliczeniowy raportu – raport projektowy można zawęzić do wybranego okresu zamiast całej historii. Presety: Cały okres, Ten miesiąc, Poprzedni miesiąc oraz własny zakres (od–do). Okres wybierasz przy generowaniu raportu i możesz go zmienić w pasku podglądu bez wracania do karty projektu.",
     "additional_sections_boosts_sessions_with_time_multiplier": "Sekcje dodatkowe: sesje z mnożnikiem czasu, sesje ręczne (ręcznie dodane), komentarze i statystyki AI.",
     "timeline_section_merged_chronological_view": "Sekcja „Oś czasu\": łączy sesje automatyczne, sesje ręczne i komentarze w jeden chronologiczny widok pogrupowany po dniu startu (najstarsze pierwsze). Typ wpisu oznacza ikona: ołówek = sesja ręczna, monitor = sesja automatyczna. Wpisy używają efektywnych sekund kanonicznych, więc grand total zgadza się z totalem raportu. Ograniczenie: sesja przechodząca przez północ jest pokazana pod dniem startu, choć kanoniczne buckety dzienne dzielą ją między dni.",
     "section_reordering_up_down_arrows_on_each_section_in_the": "Zmiana kolejności sekcji – strzałki góra/dół przy każdej sekcji w edytorze szablonu pozwalają ustalić własną kolejność elementów raportu.",
@@ -2315,7 +2323,12 @@
     "estimates_report_rounding": "Zaokrąglenia w raporcie — raport respektuje ustawienia zaokrąglania (przełącznik „pełny / zaokrąglony”) i drukuje się do PDF, tak jak raporty projektów.",
     "estimates_custom_range": "Własny zakres dat — przycisk „Zakres” w pasku obok presetów otwiera wybór od–do; wybrany zakres obejmuje metryki, listę projektów i raport.",
     "dashboard_custom_range": "Własny zakres dat — przycisk „Zakres” obok presetów Dziś/Tydzień/Miesiąc/Cały okres otwiera wybór od–do; wybrany zakres obejmuje metryki, oś czasu i wykresy.",
-    "analysis_custom_range": "Własny zakres dat — przycisk „Zakres” obok presetów Dzień/Tydzień/Miesiąc otwiera wybór od–do; dowolny przedział jest pokazywany jako kalendarz dni i słupki dzienne."
+    "analysis_custom_range": "Własny zakres dat — przycisk „Zakres” obok presetów Dzień/Tydzień/Miesiąc otwiera wybór od–do; dowolny przedział jest pokazywany jako kalendarz dni i słupki dzienne.",
+    "report_period_detail_title": "Okres rozliczeniowy – raport za wybrany miesiąc",
+    "report_period_detail_what_it_does": "Co robi: zawęża CAŁY raport do wybranego okresu – sesje, oś czasu, sumę godzin, listę aplikacji oraz wartość finansową ($). Wszystkie liczby w dokumencie dotyczą tego samego okresu, więc kwota zgadza się z wykazanymi sesjami.",
+    "report_period_detail_when_to_use": "Kiedy użyć: przy rozliczeniu miesięcznym projektu, który trwa dłużej niż jeden okres – wybierz Poprzedni miesiąc i wystaw fakturę tylko za ten miesiąc.",
+    "report_period_detail_how_to_use": "Jak ustawić: przy generowaniu raportu wybierz okres w oknie wyboru szablonu, albo zmień go w pasku narzędzi podglądu – raport przeliczy się od razu. Wybrany okres jest drukowany w nagłówku i stopce dokumentu, a nazwa pliku PDF dostaje sufiks (np. _2026-07).",
+    "report_period_detail_limitations": "Ograniczenia: przypisanie do okresu działa po dacie rozpoczęcia sesji, więc sesja z nocy 31.07 na 01.08 liczy się w całości do lipca. Okres nie jest zapamiętywany – każdy nowy raport startuje od Całego okresu, żeby nie wystawić dokumentu za zły miesiąc."
   },
   "sync_progress": {
     "title": "Synchronizacja LAN",

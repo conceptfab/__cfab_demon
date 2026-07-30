@@ -3,8 +3,12 @@ import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
 import { useCancellableAsync } from '@/lib/async-utils';
-import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
 import type { ProjectReportData } from '@/lib/db-types';
+import {
+  buildPeriodFileSuffix,
+  formatPeriodLabel,
+  isAllTimePeriod,
+} from '@/lib/report-period';
 import { logger } from '@/lib/logger';
 import {
   computeReportDisplayValues,
@@ -26,6 +30,8 @@ export function useReportViewController() {
   const setCurrentPage = useUIStore((s) => s.setCurrentPage);
   const projectPageId = useUIStore((s) => s.projectPageId);
   const reportTemplateId = useUIStore((s) => s.reportTemplateId);
+  const period = useUIStore((s) => s.reportPeriod);
+  const setPeriod = useUIStore((s) => s.setReportPeriod);
   const currencyCode = useSettingsStore((s) => s.currencyCode);
   const roundingSettings = useSettingsStore((s) => s.roundingSettings);
   const [rounded, setRounded] = useState(roundingSettings.enabled);
@@ -45,6 +51,13 @@ export function useReportViewController() {
     [reportTemplateId],
   );
   const [generatedAt] = useState(() => format(new Date(), 'yyyy-MM-dd HH:mm'));
+  // Rozbite na prymitywy — obiekt `period` z zustand jest stabilny referencyjnie,
+  // ale efekt ma się przeładować dokładnie przy zmianie granic okresu.
+  const { start: periodStart, end: periodEnd } = period.range;
+  const dateRange = useMemo(
+    () => ({ start: periodStart, end: periodEnd }),
+    [periodStart, periodEnd],
+  );
 
   const sections = template.sections;
   const has = useCallback(
@@ -56,7 +69,10 @@ export function useReportViewController() {
     if (!report) return;
     const originalTitle = document.title;
     const safeName = report.project.name.replace(/[^a-zA-Z0-9_\-\s]/g, '_');
-    document.title = `${t('report_view.pdf_prefix', 'timeflow_report')}_${safeName}`;
+    const periodSuffix = buildPeriodFileSuffix(period);
+    document.title = `${t('report_view.pdf_prefix', 'timeflow_report')}_${safeName}${
+      periodSuffix ? `_${periodSuffix}` : ''
+    }`;
     if (
       report.sessions.length <= REPORT_VIEW_SCREEN_LIMIT &&
       report.manual_sessions.length <= REPORT_VIEW_SCREEN_LIMIT
@@ -74,12 +90,11 @@ export function useReportViewController() {
         });
       });
     }
-  }, [report, t]);
+  }, [report, period, t]);
 
   useEffect(() => {
     if (!projectPageId) return;
-    const dr = ALL_TIME_DATE_RANGE;
-    void runReportRequest(() => getProjectReportData(projectPageId, dr), {
+    void runReportRequest(() => getProjectReportData(projectPageId, dateRange), {
       onSuccess: (data) => {
         startTransition(() => {
           setReportState({
@@ -105,7 +120,7 @@ export function useReportViewController() {
         });
       },
     });
-  }, [projectPageId, runReportRequest, setCurrentPage]);
+  }, [projectPageId, dateRange, runReportRequest, setCurrentPage]);
 
   useEffect(() => {
     void runDaemonRequest(() => getDaemonRuntimeStatus(), {
@@ -232,8 +247,11 @@ export function useReportViewController() {
     handlePrint,
     has,
     loadedProjectId,
+    period,
+    periodLabel: isAllTimePeriod(period) ? null : formatPeriodLabel(period),
     projectPageId,
     report,
+    setPeriod,
     reportError,
     reportRounding,
     rounded,

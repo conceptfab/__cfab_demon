@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { FileText, Check, Edit2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ReportPeriodPicker } from '@/components/reports/ReportPeriodPicker';
 import { loadProjectTemplates, getProjectTemplate, getSelectedTemplateId, setSelectedTemplateId } from '@/lib/report-templates';
 import type { ReportTemplate } from '@/lib/report-templates';
+import { ALL_TIME_PERIOD, type ReportPeriod } from '@/lib/report-period';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
-  onSelect: (templateId: string) => void;
+  onSelect: (templateId: string, period: ReportPeriod) => void;
   onCancel: () => void;
   onEditTemplates: () => void;
 }
@@ -22,15 +24,18 @@ export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: 
   const [selectedId, setSelectedId] = useState(
     () => getProjectTemplate(getSelectedTemplateId()).id,
   );
+  // Okres celowo NIE jest zapamiętywany między raportami — start zawsze od całego
+  // okresu, żeby nie wystawić dokumentu za miesiąc wybrany poprzednim razem.
+  const [period, setPeriod] = useState<ReportPeriod>(ALL_TIME_PERIOD);
 
   const handleSelect = () => {
     setSelectedTemplateId(selectedId);
-    onSelect(selectedId);
+    onSelect(selectedId, period);
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in-0">
-      <div className="w-full max-w-sm rounded-xl border border-border bg-popover p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
+      <div className="w-full max-w-md rounded-xl border border-border bg-popover p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="size-5 text-sky-400" />
@@ -61,6 +66,10 @@ export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: 
               </p>
             </button>
           ))}
+        </div>
+
+        <div className="border-t border-border/30 pt-3">
+          <ReportPeriodPicker period={period} onChange={setPeriod} />
         </div>
 
         <div className="flex justify-between pt-1">

@@ -150,9 +150,10 @@ export function ProjectPageOverlays({ controller }: ProjectPageOverlaysProps) {
 
       {showTemplateSelector && project && (
         <ReportTemplateSelector
-          onSelect={(templateId) => {
+          onSelect={(templateId, period) => {
             setShowTemplateSelector(false);
             useUIStore.getState().setReportTemplateId(templateId);
+            useUIStore.getState().setReportPeriod(period);
             setProjectPageId(project.id);
             setCurrentPage('report-view');
           }}

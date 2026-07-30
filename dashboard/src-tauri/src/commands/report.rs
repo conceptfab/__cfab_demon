@@ -2,11 +2,10 @@ use tauri::AppHandle;
 
 use crate::commands::error::CommandError;
 
-use super::analysis::query_activity_date_range;
 use super::daemon::load_persisted_session_min_duration;
 use super::helpers::run_db_blocking;
 use super::manual_sessions::get_manual_sessions;
-use super::projects::{query_active_project_with_stats, query_project_extra_info};
+use super::projects::{query_active_project_with_stats_in_range, query_project_extra_info};
 use super::sql_fragments::{ensure_session_project_cache, SESSION_PROJECT_CTE};
 use super::time_algorithm::{compute_project_activity_unique, source_key};
 use super::types::{
@@ -14,9 +13,16 @@ use super::types::{
     ProjectReportData, ProjectWithStats, SessionWithApp,
 };
 
-async fn get_report_project(app: AppHandle, project_id: i64) -> Result<ProjectWithStats, String> {
+/// `date_range` zawęża statystyki projektu do okresu raportu (rozliczenie miesięczne).
+/// Zakres obejmujący całą historię daje ten sam wynik co wcześniej.
+async fn get_report_project(
+    app: AppHandle,
+    project_id: i64,
+    date_range: DateRange,
+    min_duration: i64,
+) -> Result<ProjectWithStats, String> {
     run_db_blocking(app, move |conn| {
-        query_active_project_with_stats(conn, project_id)
+        query_active_project_with_stats_in_range(conn, project_id, min_duration, Some(&date_range))
     })
     .await
 }
@@ -24,13 +30,10 @@ async fn get_report_project(app: AppHandle, project_id: i64) -> Result<ProjectWi
 async fn get_report_extra_info(
     app: AppHandle,
     project_id: i64,
+    date_range: DateRange,
 ) -> Result<ProjectExtraInfo, String> {
     run_db_blocking(app, move |conn| {
-        let all_time_range = query_activity_date_range(conn)?.unwrap_or(DateRange {
-            start: "0001-01-01".to_string(),
-            end: "0001-01-01".to_string(),
-        });
-        query_project_extra_info(conn, project_id, &all_time_range)
+        query_project_extra_info(conn, project_id, &date_range)
     })
     .await
 }
@@ -182,19 +185,21 @@ pub async fn get_project_report_data(
     // Phase 1: independent tasks — run in parallel
     let project_handle = tauri::async_runtime::spawn({
         let app = app.clone();
+        let date_range = date_range.clone();
         async move {
             log::info!("[report] get_report_project START");
-            let r = get_report_project(app, project_id).await;
+            let r = get_report_project(app, project_id, date_range, min_duration).await;
             log::info!("[report] get_report_project DONE ({:?})", t0.elapsed());
             r
         }
     });
     let extra_handle = tauri::async_runtime::spawn({
         let app = app.clone();
+        let date_range = date_range.clone();
         let t0 = t0;
         async move {
             log::info!("[report] get_report_extra_info START");
-            let r = get_report_extra_info(app, project_id).await;
+            let r = get_report_extra_info(app, project_id, date_range).await;
             log::info!("[report] get_report_extra_info DONE ({:?})", t0.elapsed());
             r
         }
@@ -303,7 +308,9 @@ pub fn print_report(window: tauri::WebviewWindow) -> Result<(), CommandError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        attach_effective_seconds, compute_effective_by_source, query_report_sessions, DateRange,
+        attach_effective_seconds, compute_effective_by_source,
+        query_active_project_with_stats_in_range, query_project_extra_info, query_report_sessions,
+        DateRange,
     };
 
     fn test_conn() -> rusqlite::Connection {
@@ -338,5 +345,51 @@ mod tests {
         let sum_eff: i64 = sessions.iter().map(|s| s.effective_seconds).sum();
         assert_eq!(sum_eff, 3600, "Σ effective == total raportu");
         assert_eq!(sessions.iter().find(|s| s.id == 1).unwrap().effective_seconds, 2700);
+    }
+
+    /// Raport za okres: sesje, suma godzin i wartość ($) muszą pochodzić z TEGO SAMEGO
+    /// okresu — inaczej kwota na fakturze nie zgadza się z wykazanymi sesjami.
+    #[test]
+    fn report_period_narrows_sessions_total_and_value() {
+        let conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, hourly_rate, created_at)
+               VALUES (1, 'P', 100.0, datetime('now'));
+             INSERT INTO applications (id, executable_name, display_name, project_id)
+             VALUES (1, 'code', 'Code', 1);
+             INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id)
+               VALUES (1, 1, '2026-06-15T10:00:00', '2026-06-15T11:00:00', 3600, '2026-06-15', 1),
+                      (2, 1, '2026-07-10T10:00:00', '2026-07-10T12:00:00', 7200, '2026-07-10', 1);",
+        )
+        .unwrap();
+
+        let july = DateRange {
+            start: "2026-07-01".into(),
+            end: "2026-07-31".into(),
+        };
+        let all_time = DateRange {
+            start: "2020-01-01".into(),
+            end: "2100-01-01".into(),
+        };
+
+        let july_sessions = query_report_sessions(&conn, 1, &july, 0).unwrap();
+        assert_eq!(july_sessions.len(), 1, "tylko sesja lipcowa");
+        assert_eq!(july_sessions[0].id, 2);
+
+        let july_extra = query_project_extra_info(&conn, 1, &july).unwrap();
+        let all_time_extra = query_project_extra_info(&conn, 1, &all_time).unwrap();
+
+        // 2h × 100 = 200 za lipiec; 3h × 100 = 300 za całą historię.
+        assert!((july_extra.current_value - 200.0).abs() < 0.01);
+        assert!((all_time_extra.current_value - 300.0).abs() < 0.01);
+        assert!((july_extra.value_base_seconds - 7200.0).abs() < 1.0);
+
+        let july_project =
+            query_active_project_with_stats_in_range(&conn, 1, 0, Some(&july)).unwrap();
+        let all_time_project = query_active_project_with_stats_in_range(&conn, 1, 0, None).unwrap();
+        assert_eq!(july_project.total_seconds, 7200);
+        assert_eq!(july_project.period_seconds, Some(7200));
+        assert_eq!(all_time_project.total_seconds, 10800);
+        assert_eq!(all_time_project.period_seconds, None);
     }
 }

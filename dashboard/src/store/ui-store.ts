@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { DateRange } from '@/lib/db-types';
 import { DEFAULT_HELP_TAB, type HelpTabId } from '@/lib/help-navigation';
 import { logger } from '@/lib/logger';
+import { ALL_TIME_PERIOD, type ReportPeriod } from '@/lib/report-period';
 
 type PageChangeGuard = (
   nextPage: string,
@@ -87,6 +88,13 @@ interface UIState {
   setClientPageName: (name: string | null) => void;
   reportTemplateId: string | null;
   setReportTemplateId: (id: string | null) => void;
+  /**
+   * Okres rozliczeniowy raportu projektowego. Celowo NIE jest utrwalany — każdy nowy
+   * raport startuje od „całego okresu", żeby przypadkiem nie wystawić dokumentu za zły
+   * miesiąc. Zmieniany też z toolbara podglądu (przełączenie okresu bez regeneracji).
+   */
+  reportPeriod: ReportPeriod;
+  setReportPeriod: (period: ReportPeriod) => void;
   estimateReport: EstimateReportConfig | null;
   setEstimateReport: (config: EstimateReportConfig | null) => void;
   firstRun: boolean;
@@ -136,6 +144,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   setClientPageName: (name) => set({ clientPageName: name }),
   reportTemplateId: null,
   setReportTemplateId: (id) => set({ reportTemplateId: id }),
+  reportPeriod: ALL_TIME_PERIOD,
+  setReportPeriod: (period) => set({ reportPeriod: period }),
   estimateReport: null,
   setEstimateReport: (config) => set({ estimateReport: config }),
   firstRun: readFirstRunFlag(),

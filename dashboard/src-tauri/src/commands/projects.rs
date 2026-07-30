@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use tauri::AppHandle;
 
@@ -565,6 +565,18 @@ pub(crate) fn query_active_project_with_stats_with_min(
     id: i64,
     min_duration: i64,
 ) -> Result<ProjectWithStats, String> {
+    query_active_project_with_stats_in_range(conn, id, min_duration, None)
+}
+
+/// Jak [`query_active_project_with_stats_with_min`], ale `range` zawęża `total_seconds`
+/// i `daily_seconds` do wskazanego okresu (raport rozliczeniowy). `None` = cała historia
+/// aktywności (dotychczasowe zachowanie karty projektu i listy projektów).
+pub(crate) fn query_active_project_with_stats_in_range(
+    conn: &rusqlite::Connection,
+    id: i64,
+    min_duration: i64,
+    range: Option<&DateRange>,
+) -> Result<ProjectWithStats, String> {
     let (
         project_id,
         name,
@@ -640,13 +652,15 @@ pub(crate) fn query_active_project_with_stats_with_min(
     // are counted only once (wall-clock time, not raw sum).
     // IMPORTANT: must compute ALL projects (project_id_filter: None) so that
     // cross-project time splitting works correctly, then pick this project's total.
-    let (total_seconds, daily_seconds) = if let Some(all_time_range) =
-        query_activity_date_range(conn)?
-    {
+    let scope_range = match range {
+        Some(range) => Some(range.clone()),
+        None => query_activity_date_range(conn)?,
+    };
+    let (total_seconds, daily_seconds) = if let Some(scope_range) = scope_range {
         let (buckets, totals, meta, _, _, _) =
             compute_project_activity_unique(
                 conn,
-                &all_time_range,
+                &scope_range,
                 false,
                 true,
                 None,
@@ -689,7 +703,9 @@ pub(crate) fn query_active_project_with_stats_with_min(
         merged_into,
         merged_at,
         total_seconds,
-        period_seconds: None,
+        // Gdy zawężono do okresu, `total_seconds` JEST sumą okresu — duplikujemy ją tutaj,
+        // żeby konsument widział, że raport nie obejmuje całej historii.
+        period_seconds: range.map(|_| total_seconds),
         app_count,
         last_activity,
         assigned_folder_path,
@@ -1688,50 +1704,26 @@ pub(crate) fn query_project_extra_info(
             .map_err(|e| e.to_string())
         };
 
-    let all_time_range = query_activity_date_range(conn)?;
-    let all_time_bounds = all_time_range
-        .as_ref()
-        .map(|range| (range.start.as_str(), range.end.as_str()));
+    // WSZYSTKIE agregaty poniżej liczą się dla `date_range` — wywołania z
+    // ALL_TIME_DATE_RANGE (karta projektu, lista projektów) dostają to samo co wcześniej,
+    // a raport rozliczeniowy może zawęzić okres bez rozjazdu kwoty względem sesji.
+    let (start, end) = (date_range.start.as_str(), date_range.end.as_str());
 
-    if let Some((start, end)) = all_time_bounds {
-        ensure_session_project_cache(conn, start, end)?;
-    }
+    ensure_session_project_cache(conn, start, end)?;
 
-    let all_time_totals = if let Some(range) = all_time_range.as_ref() {
-        compute_project_clock_totals_by_id(conn, range, false, true)?
-    } else {
-        HashMap::new()
-    };
+    let range_totals = compute_project_clock_totals_by_id(conn, date_range, false, true)?;
 
-    let period_totals = if all_time_range
-        .as_ref()
-        .is_some_and(|range| range.start == date_range.start && range.end == date_range.end)
-    {
-        all_time_totals.clone()
-    } else {
-        compute_project_clock_totals_by_id(conn, date_range, false, true)?
-    };
-
-    // Dokładny, ułamkowy all-time clock — baza WARTOŚCI. Front skaluje po nim (nie po
+    // Dokładny, ułamkowy clock okresu — baza WARTOŚCI. Front skaluje po nim (nie po
     // zaokrąglonym `total_seconds: i64`), żeby zaokrąglenie czasu do pełnej godziny dawało
     // spójną kwotę (np. 43h × 100 = 4300,00, bez groszowej końcówki).
-    let value_base_seconds = all_time_totals.get(&id).copied().unwrap_or(0.0);
-    let current_value = if let Some((start, end)) = all_time_bounds {
-        let extra_seconds = get_extra_secs(conn, start, end, id)?;
-        ((value_base_seconds + extra_seconds) / 3600.0) * effective_rate
-    } else {
-        0.0
-    };
+    let value_base_seconds = range_totals.get(&id).copied().unwrap_or(0.0);
+    let extra_seconds = get_extra_secs(conn, start, end, id)?;
+    let current_value = ((value_base_seconds + extra_seconds) / 3600.0) * effective_rate;
+    // Zachowane dla kompatybilności: od kiedy cały `ProjectExtraInfo` jest liczony dla
+    // `date_range`, wartość okresu jest tożsama z `current_value`.
+    let period_value = current_value;
 
-    let period_clock_seconds = period_totals.get(&id).copied().unwrap_or(0.0);
-    let period_extra_seconds = get_extra_secs(conn, &date_range.start, &date_range.end, id)?;
-    let period_value = ((period_clock_seconds + period_extra_seconds) / 3600.0) * effective_rate;
-
-    let (session_count, file_activity_count, comment_count, boosted_session_count) = if let Some(
-        (start, end),
-    ) =
-        all_time_bounds
-    {
+    let (session_count, file_activity_count, comment_count, boosted_session_count) = {
         let session_count_sql = format!(
             "{SESSION_PROJECT_CTE}
                  SELECT COUNT(*) FROM session_projects sp
@@ -1773,8 +1765,6 @@ pub(crate) fn query_project_extra_info(
             comment_count,
             boosted_session_count,
         )
-    } else {
-        (0, 0, 0, 0)
     };
 
     let manual_session_count: i64 = conn
@@ -1790,7 +1780,7 @@ pub(crate) fn query_project_extra_info(
         + (manual_session_count * 150)
         + (comment_count * 100);
 
-    let top_apps = if let Some((start, end)) = all_time_bounds {
+    let top_apps = {
         let top_apps_sql = format!(
             "{SESSION_PROJECT_CTE}
              SELECT COALESCE(a.display_name, 'Unknown App') as display_name,
@@ -1837,7 +1827,7 @@ pub(crate) fn query_project_extra_info(
                 |row| Ok(row.get::<_, i64>(0)? as f64),
             )
             .map_err(|e| e.to_string())?;
-        let clock_total = all_time_totals.get(&id).copied().unwrap_or(0.0);
+        let clock_total = value_base_seconds;
         distribute_app_seconds(&mut apps, clock_total, raw_sum_all);
 
         // Dzienne rozbicie per aplikacja, przeskalowane TYM SAMYM współczynnikiem co
@@ -1878,8 +1868,6 @@ pub(crate) fn query_project_extra_info(
             }
         }
         apps
-    } else {
-        Vec::new()
     };
 
     Ok(ProjectExtraInfo {

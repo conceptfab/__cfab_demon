@@ -3,13 +3,20 @@ import type { ReportViewController } from '@/hooks/useReportViewController';
 
 type ReportViewHeaderSectionProps = Pick<
   ReportViewController,
-  'appVersion' | 'generatedAt' | 'has' | 'report' | 't' | 'template'
+  | 'appVersion'
+  | 'generatedAt'
+  | 'has'
+  | 'periodLabel'
+  | 'report'
+  | 't'
+  | 'template'
 >;
 
 export function ReportViewHeaderSection({
   appVersion,
   generatedAt,
   has,
+  periodLabel,
   report,
   t,
   template,
@@ -43,6 +50,11 @@ export function ReportViewHeaderSection({
           {report.project.name}
         </h1>
       </div>
+      {periodLabel && (
+        <p className="text-sm font-medium text-sky-400 print:text-blue-700 mt-1">
+          {t('report_period.document_label')}: {periodLabel}
+        </p>
+      )}
       <p className="text-xs text-muted-foreground print:text-gray-500 mt-1">
         {t('report_view.report_generated')}: {generatedAt}
         {report.project.frozen_at && ` · ${t('report_view.project_frozen')}`}

@@ -21,6 +21,7 @@ export function HelpReportsSection() {
         t18n('help_page.report_view_toolbar_focuses_on_preview_print_and_pdf_'),
         t18n('help_page.report_work_time_uses_the_same_deduplicated_clock_time_a'),
         t18n('help_page.report_rounding_toggle_feature'),
+        t18n('help_page.report_period_feature'),
         t18n('help_page.additional_sections_boosts_sessions_with_time_multiplier'),
         t18n('help_page.timeline_section_merged_chronological_view'),
         t18n('help_page.section_reordering_up_down_arrows_on_each_section_in_the'),
@@ -36,6 +37,15 @@ export function HelpReportsSection() {
           t18n('help_page.reportview_detail_when_to_use'),
           t18n('help_page.reportview_detail_how_to_print'),
           t18n('help_page.reportview_detail_limitations'),
+        ]}
+      />
+      <HelpDetailsBlock
+        title={t18n('help_page.report_period_detail_title')}
+        items={[
+          t18n('help_page.report_period_detail_what_it_does'),
+          t18n('help_page.report_period_detail_when_to_use'),
+          t18n('help_page.report_period_detail_how_to_use'),
+          t18n('help_page.report_period_detail_limitations'),
         ]}
       />
     </SectionHelp>

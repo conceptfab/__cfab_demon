@@ -135,6 +135,13 @@
     "to": "To",
     "apply": "Apply"
   },
+  "report_period": {
+    "label": "Billing period",
+    "document_label": "Period",
+    "all_time": "All time",
+    "this_month": "This month",
+    "last_month": "Last month"
+  },
   "dashboard": {
     "actions": {
       "refresh": "Refresh",
@@ -2086,6 +2093,7 @@
     "report_view_toolbar_focuses_on_preview_print_and_pdf_": "ReportView toolbar – clean full-screen preview with Print / PDF action; use it to verify layout, scaling, and page breaks before export.",
     "report_work_time_uses_the_same_deduplicated_clock_time_a": "Consistent work time in reports – project cards, Dashboard, reports, timeline, Estimates and Sessions use canonical clock time: overlaps are deduplicated and concurrent projects split the shared time. Multipliers affect financial value instead of hour totals.",
     "report_rounding_toggle_feature": "Full/Rounded toggle – the report toolbar lets you pick real or rounded time. Per total rounds the sum once; per session rounds each session and then sums; per day rounds each day to full hours. Daily sums always add up exactly to the report total. In rounded mode the timeline shows daily sums only – no session start times or per-session durations (labels and comments stay). Rounding covers time, proportionally the value ($) and application hours (share scaled to the report total; trace usage shown as \"<1h\"), and also applies to print/PDF.",
+    "report_period_feature": "Report billing period – a project report can be narrowed to a selected period instead of the whole history. Presets: All time, This month, Last month, plus a custom range (from–to). Pick the period when generating the report and change it from the preview toolbar without going back to the project card.",
     "additional_sections_boosts_sessions_with_time_multiplier": "Additional sections: Boosts (sessions with time multiplier), Manual sessions (manually added), Comments, AI Statistics.",
     "timeline_section_merged_chronological_view": "\"Timeline\" section: merges automatic sessions, manual sessions and comments into a single chronological view grouped by start day (oldest first). An icon marks the entry type: pencil = manual session, monitor = automatic session. Entries use effective canonical seconds, so the grand total matches the report total. Limitation: a session crossing midnight is shown under its start day, although the canonical daily buckets split it across days.",
     "section_reordering_up_down_arrows_on_each_section_in_the": "Section reordering – up/down arrows on each section in the template editor let you set a custom order of report elements.",
@@ -2315,7 +2323,12 @@
     "estimates_report_rounding": "Report rounding — the report respects the rounding settings (\"full / rounded\" toggle) and prints to PDF just like project reports.",
     "estimates_custom_range": "Custom date range — the \"Range\" button next to the presets opens a from–to picker; the chosen range drives the metrics, project list and report.",
     "dashboard_custom_range": "Custom date range — the \"Range\" button next to the Today/Week/Month/All Time presets opens a from–to picker; the chosen range drives the metrics, timeline and charts.",
-    "analysis_custom_range": "Custom date range — the \"Range\" button next to the Day/Week/Month presets opens a from–to picker; any span is shown as a day calendar and per-day bars."
+    "analysis_custom_range": "Custom date range — the \"Range\" button next to the Day/Week/Month presets opens a from–to picker; any span is shown as a day calendar and per-day bars.",
+    "report_period_detail_title": "Billing period – report for a selected month",
+    "report_period_detail_what_it_does": "What it does: narrows the ENTIRE report to the selected period – sessions, timeline, total hours, application list and the financial value ($). Every number in the document covers the same period, so the amount matches the listed sessions.",
+    "report_period_detail_when_to_use": "When to use: for monthly billing of a project that spans more than one period – pick Last month and invoice only that month.",
+    "report_period_detail_how_to_use": "How to set it: choose the period in the template selection dialog when generating the report, or change it in the preview toolbar – the report reloads immediately. The selected period is printed in the document header and footer, and the PDF filename gets a suffix (e.g. _2026-07).",
+    "report_period_detail_limitations": "Limitations: a session belongs to the period of its start date, so a session running from 31.07 into 01.08 counts entirely towards July. The period is not remembered – every new report starts at All time, so you never issue a document for the wrong month."
   },
   "sync_progress": {
     "title": "LAN Synchronization",
