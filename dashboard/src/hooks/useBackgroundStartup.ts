@@ -13,6 +13,7 @@ import {
   runHeavyOperation,
   runAutoAiAssignmentCycle,
   dispatchAiAssignmentDone,
+  dispatchSessionRebuildResult,
 } from '@/lib/background-helpers';
 
 export function useAutoImporter() {
@@ -102,17 +103,48 @@ async function runAutoProjectSyncStartup(
 // rebuild merges only sessions sharing the same project_id, so projects must
 // be assigned first — otherwise adjacent sessions belonging to different
 // projects could be glued into one block.
+// Baza bywa zajęta zaraz po starcie (import, backfill, przypisania AI działające
+// równolegle). Zamiast cicho odpuścić — ponawiamy z rosnącym odstępem.
+const REBUILD_RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
+
+function isDatabaseBusy(error: unknown): boolean {
+  return /database is locked|database table is locked|busy/i.test(String(error));
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function runAutoSessionRebuild(): Promise<void> {
-  try {
-    const settings = loadSessionSettings();
-    if (settings.rebuildOnStartup && settings.gapFillMinutes > 0) {
-      await runHeavyOperation('rebuild', () =>
+  const settings = loadSessionSettings();
+  if (!settings.rebuildOnStartup || settings.gapFillMinutes <= 0) return;
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= REBUILD_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      const merged = await runHeavyOperation('rebuild', () =>
         sessionsApi.rebuildSessions(settings.gapFillMinutes),
       );
+      // null = ta sama operacja już trwa gdzie indziej; jej wynik zgłosi ona sama.
+      if (merged === null) return;
+      if (merged > 0) {
+        dispatchSessionRebuildResult({ status: 'merged', merged });
+      }
+      return;
+    } catch (e) {
+      lastError = e;
+      const canRetry =
+        isDatabaseBusy(e) && attempt < REBUILD_RETRY_DELAYS_MS.length;
+      if (!canRetry) break;
+      logger.warn(
+        `Auto session rebuild: database busy, retry ${attempt + 1}/${REBUILD_RETRY_DELAYS_MS.length}`,
+      );
+      await delay(REBUILD_RETRY_DELAYS_MS[attempt]!);
     }
-  } catch (e) {
-    logger.warn('Auto session rebuild failed:', e);
   }
+
+  logger.warn('Auto session rebuild failed:', lastError);
+  dispatchSessionRebuildResult({ status: 'failed', error: String(lastError) });
 }
 
 export function useStartupProjectSyncAndAiAssignment() {

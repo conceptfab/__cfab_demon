@@ -2123,6 +2123,7 @@
     "time_algorithm_tab_choose_how_tracked_time_is_computed": "Algorytm czasu – wybór sposobu liczenia śledzonego czasu w całej aplikacji. Domyślny deduplikuje nakładające się sesje (czas zegarowy); zmiana działa natychmiast i przelicza te same surowe dane bez ich modyfikacji.",
     "session_management_set_session_merging_threshold_gap_fil": "Session Management – ustalanie progu łączenia sesji (Gap Fill) oraz ignorowania krótkich bloków.",
     "auto_rebuild_on_startup_automatically_rebuild_merge_sess": "Auto-rebuild on startup – automatyczne scalanie sesji przy starcie aplikacji.",
+    "auto_rebuild_startup_result_notice": "Wynik auto-przebudowy jest pokazywany komunikatem: ile sesji scalono, a przy niepowodzeniu (np. baza chwilowo zajęta po starcie) — informacja o błędzie. Przebudowa jest ponawiana automatycznie kilka razy; jeśli nadal się nie uda, uruchom ją ręcznie przyciskiem „Przebuduj”.",
     "freeze_threshold_configure_the_number_of_days_after_whic": "Próg zamrożenia – konfiguracja liczby dni, po których projekty są zamrażane.",
     "currency_choose_valuation_currency_pln_usd_eur_used_acro": "Waluta (Currency) – wybór waluty wycen (PLN/USD/EUR) używanej w modułach finansowych.",
     "ui_language_pl_en_language_switch_for_the_whole_dashboar": "Język interfejsu (PL/EN) – przełącznik języka całego Dashboardu i menu tray Daemona.",
@@ -2463,7 +2464,9 @@
     "ai_assigned_sessions": "AI automatycznie przypisał {{count}} sesji",
     "online_sync_pulled": "Dane zsynchronizowane z serwera",
     "online_sync_pushed": "Dane wysłane na serwer",
-    "lan_sync_done": "LAN sync z {{peer}} zakończony"
+    "lan_sync_done": "LAN sync z {{peer}} zakończony",
+    "session_rebuild_merged": "Auto-przebudowa przy starcie: scalono {{count}} sesji",
+    "session_rebuild_failed": "Auto-przebudowa przy starcie nie powiodła się: {{error}}. Użyj przycisku „Przebuduj” w Ustawieniach."
   },
   "daemon_sync": {
     "dismiss_warning": "Zamknij — synchronizacja może nadal trwać"

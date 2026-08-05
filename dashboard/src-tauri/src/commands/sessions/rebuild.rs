@@ -42,7 +42,15 @@ pub(crate) fn rebuild_sessions_conn(
     conn: &mut rusqlite::Connection,
     gap_fill_minutes: i64,
 ) -> Result<i64, String> {
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    // IMMEDIATE, nie DEFERRED: rebuild najpierw czyta całą tabelę sesji, a dopiero
+    // potem pisze. Transakcja DEFERRED musiałaby awansować read -> write, a wtedy
+    // SQLite zwraca SQLITE_BUSY natychmiast (z pominięciem busy_timeout), jeśli
+    // inne połączenie zdążyło zapisać po otwarciu snapshotu. Przy starcie (import,
+    // backfill, przypisania AI) dzieje się to regularnie. BEGIN IMMEDIATE bierze
+    // blokadę zapisu od razu i honoruje busy_timeout.
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
 
     #[derive(Debug, Clone)]
     struct SessionRow {

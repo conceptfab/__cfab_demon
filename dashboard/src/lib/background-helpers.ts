@@ -130,6 +130,19 @@ export async function runAutoAiAssignmentCycle(): Promise<AiAssignmentResult> {
 export const AI_ASSIGNMENT_DONE_EVENT = 'timeflow:ai-assignment-done';
 export const ONLINE_SYNC_DONE_EVENT = 'timeflow:online-sync-done';
 export const LAN_SYNC_DONE_EVENT = 'timeflow:lan-sync-done';
+export const SESSION_REBUILD_DONE_EVENT = 'timeflow:session-rebuild-done';
+
+/** Wynik auto-przebudowy sesji przy starcie — raportowany do UI, by cicha
+ *  awaria (np. zajęta baza) nie wyglądała jak zignorowane ustawienie. */
+export type SessionRebuildOutcome =
+  | { status: 'merged'; merged: number }
+  | { status: 'failed'; error: string };
+
+export function dispatchSessionRebuildResult(outcome: SessionRebuildOutcome) {
+  window.dispatchEvent(
+    new CustomEvent(SESSION_REBUILD_DONE_EVENT, { detail: outcome }),
+  );
+}
 
 export function dispatchLanSyncDone(peerName: string) {
   window.dispatchEvent(

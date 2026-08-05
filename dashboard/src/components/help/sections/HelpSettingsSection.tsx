@@ -18,6 +18,7 @@ export function HelpSettingsSection() {
         t18n('help_page.rounding_tab_feature'),
         t18n('help_page.session_management_set_session_merging_threshold_gap_fil'),
         t18n('help_page.auto_rebuild_on_startup_automatically_rebuild_merge_sess'),
+        t18n('help_page.auto_rebuild_startup_result_notice'),
         t18n('help_page.freeze_threshold_configure_the_number_of_days_after_whic'),
         t18n('help_page.currency_choose_valuation_currency_pln_usd_eur_used_acro'),
         t18n('help_page.ui_language_pl_en_language_switch_for_the_whole_dashboar'),

@@ -7,6 +7,8 @@ import {
   AI_ASSIGNMENT_DONE_EVENT,
   ONLINE_SYNC_DONE_EVENT,
   LAN_SYNC_DONE_EVENT,
+  SESSION_REBUILD_DONE_EVENT,
+  type SessionRebuildOutcome,
 } from '@/lib/background-helpers';
 import {
   useAutoImporter,
@@ -26,12 +28,14 @@ export function BackgroundServices() {
   useOnlineSyncSSE();
 
   const { t } = useTranslation();
-  const { showInfo } = useToast();
+  const { showInfo, showError } = useToast();
   const showInfoRef = useRef(showInfo);
+  const showErrorRef = useRef(showError);
   const tRef = useRef(t);
   // Zapis refów poza renderem (react-hooks/refs); czytane w handlerach poniżej.
   useEffect(() => {
     showInfoRef.current = showInfo;
+    showErrorRef.current = showError;
     tRef.current = t;
   });
   useEffect(() => {
@@ -52,13 +56,32 @@ export function BackgroundServices() {
       showInfoRef.current(tRef.current('background.lan_sync_done', { peer: peerName, defaultValue: `LAN sync with ${peerName} completed` }));
     };
 
+    const onSessionRebuildDone = (e: Event) => {
+      const outcome = (e as CustomEvent<SessionRebuildOutcome>).detail;
+      if (outcome.status === 'merged') {
+        showInfoRef.current(
+          tRef.current('background.session_rebuild_merged', {
+            count: outcome.merged,
+          }),
+        );
+      } else {
+        showErrorRef.current(
+          tRef.current('background.session_rebuild_failed', {
+            error: outcome.error,
+          }),
+        );
+      }
+    };
+
     window.addEventListener(AI_ASSIGNMENT_DONE_EVENT, onAiAssignmentDone);
     window.addEventListener(ONLINE_SYNC_DONE_EVENT, onOnlineSyncDone);
     window.addEventListener(LAN_SYNC_DONE_EVENT, onLanSyncDone);
+    window.addEventListener(SESSION_REBUILD_DONE_EVENT, onSessionRebuildDone);
     return () => {
       window.removeEventListener(AI_ASSIGNMENT_DONE_EVENT, onAiAssignmentDone);
       window.removeEventListener(ONLINE_SYNC_DONE_EVENT, onOnlineSyncDone);
       window.removeEventListener(LAN_SYNC_DONE_EVENT, onLanSyncDone);
+      window.removeEventListener(SESSION_REBUILD_DONE_EVENT, onSessionRebuildDone);
     };
   }, []);
 

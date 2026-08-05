@@ -2123,6 +2123,7 @@
     "time_algorithm_tab_choose_how_tracked_time_is_computed": "Time algorithm – choose how tracked time is computed app-wide. The default deduplicates overlapping sessions (wall-clock); switching is instant and recomputes from the same raw data without changing it.",
     "session_management_set_session_merging_threshold_gap_fil": "Session Management – set session merging threshold (Gap Fill) and ignore short blocks.",
     "auto_rebuild_on_startup_automatically_rebuild_merge_sess": "Auto-rebuild on startup – automatically rebuild/merge sessions on application startup.",
+    "auto_rebuild_startup_result_notice": "The auto-rebuild result is reported as a notification: how many sessions were merged, or an error message if it fails (e.g. the database is briefly busy right after startup). The rebuild is retried automatically a few times; if it still fails, run it manually with the \"Rebuild\" button.",
     "freeze_threshold_configure_the_number_of_days_after_whic": "Freeze Threshold – configure the number of days after which projects are frozen.",
     "currency_choose_valuation_currency_pln_usd_eur_used_acro": "Currency – choose valuation currency (PLN/USD/EUR) used across financial modules.",
     "ui_language_pl_en_language_switch_for_the_whole_dashboar": "UI language (PL/EN) – language switch for the whole Dashboard and Daemon tray menu.",
@@ -2463,7 +2464,9 @@
     "ai_assigned_sessions": "AI auto-assigned {{count}} session(s)",
     "online_sync_pulled": "Data synchronized from server",
     "online_sync_pushed": "Data sent to server",
-    "lan_sync_done": "LAN sync with {{peer}} completed"
+    "lan_sync_done": "LAN sync with {{peer}} completed",
+    "session_rebuild_merged": "Auto-rebuild on startup: merged {{count}} session(s)",
+    "session_rebuild_failed": "Auto-rebuild on startup failed: {{error}}. Use the \"Rebuild\" button in Settings."
   },
   "daemon_sync": {
     "dismiss_warning": "Dismiss — sync may still be running"
