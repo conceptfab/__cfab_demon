@@ -1,8 +1,9 @@
-import { FolderOpen, Flame, MousePointerClick } from 'lucide-react';
+import { FolderOpen, Flame, MousePointerClick, ListTodo } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatDurationWithDaily } from '@/lib/utils';
 import { localizeProjectLabel } from '@/lib/project-labels';
 import { useUIStore } from '@/store/ui-store';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import type {
   ProjectTimeRow,
   ProjectWithStats,
@@ -16,6 +17,8 @@ interface TopProjectsListProps {
   setSessionsFocusDate: (date: string | null) => void;
   boostedByProject?: Map<string, number>;
   manualCountsByProject?: Map<string, number>;
+  /** Nazwa projektu → liczba OTWARTYCH zadań z terminem w przyszłości (lub dziś). */
+  upcomingTodosByProject?: Map<string, number>;
 }
 
 const UNASSIGNED_PROJECT_KEY = 'unassigned';
@@ -27,6 +30,7 @@ export function TopProjectsList({
   setSessionsFocusDate,
   boostedByProject,
   manualCountsByProject,
+  upcomingTodosByProject,
 }: TopProjectsListProps) {
   const { t } = useTranslation();
   const setCurrentPage = useUIStore((s) => s.setCurrentPage);
@@ -79,6 +83,21 @@ export function TopProjectsList({
                 <div className="flex items-center gap-2">
                   <FolderOpen className="size-3 shrink-0 text-muted-foreground" />
                   <span className="truncate text-xs font-medium">{projectLabel}</span>
+                  {(() => {
+                    const upcoming =
+                      upcomingTodosByProject?.get(linkedProject?.name ?? p.name) ?? 0;
+                    if (upcoming === 0) return null;
+                    return (
+                      <AppTooltip
+                        content={t('todo.upcoming_for_project', { count: upcoming })}
+                      >
+                        <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-sky-400">
+                          <ListTodo className="size-3" />
+                          {upcoming}
+                        </span>
+                      </AppTooltip>
+                    );
+                  })()}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 ml-5.5">
                   <span className="text-[10px] text-muted-foreground">

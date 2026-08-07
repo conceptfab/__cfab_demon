@@ -890,7 +890,8 @@
     "help_feature": "Zadania — lista z podziałem na globalne, klienckie i projektowe, z terminem i priorytetem, synchronizowana między maszynami.",
     "help_what": "Lista zadań z terminem i priorytetem, w trzech zakresach: globalnym, przypisanym do klienta i przypisanym do projektu.",
     "help_when": "Gdy chcesz trzymać rzeczy do zrobienia obok czasu pracy, zamiast w osobnym narzędziu.",
-    "help_limits": "Zadania nie są powiązane z sesjami i nie liczą czasu — to czysta lista. Usunięcie projektu lub klienta kasuje przypisane do nich zadania. Zadanie projektowe wymaga projektu, klienckie wymaga klienta."
+    "help_limits": "Zadania nie są powiązane z sesjami i nie liczą czasu — to czysta lista. Usunięcie projektu lub klienta kasuje przypisane do nich zadania. Zadanie projektowe wymaga projektu, klienckie wymaga klienta.",
+    "upcoming_for_project": "Zadania w tym projekcie: {{count}}"
   },
   "data_page": {
     "sections": {

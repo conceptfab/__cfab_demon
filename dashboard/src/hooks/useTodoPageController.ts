@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useDataStore } from '@/store/data-store';
 
+import { useTranslation } from 'react-i18next';
+import { resolveDateFnsLocale } from '@/lib/date-helpers';
+import {
+  buildTodoMonthCalendar,
+  buildTodoWeekCalendar,
+  undatedTodos,
+} from '@/lib/todo-calendar';
 import { groupTodosByDue } from '@/lib/todo-grouping';
 import { logger } from '@/lib/logger';
 import {
@@ -28,7 +35,15 @@ const EMPTY_FORM: TodoInput = {
 };
 
 export function useTodoPageController() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // Ten sam zakres dat co reszta aplikacji (Dashboard, Sesje, Wyceny) — zadania
+  // muszą dać się przeglądać na tej samej osi czasu, a nie tylko względem dziś.
+  const dateRange = useDataStore((s) => s.dateRange);
+  const timePreset = useDataStore((s) => s.timePreset);
+  const setTimePreset = useDataStore((s) => s.setTimePreset);
+  const setDateRange = useDataStore((s) => s.setDateRange);
+  const shiftDateRange = useDataStore((s) => s.shiftDateRange);
+  const canShiftForward = useDataStore((s) => s.canShiftForward);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,11 +84,40 @@ export function useTodoPageController() {
       if (!showDone && todo.status === 'done') return false;
       if (scopeFilter !== 'all' && todo.scope !== scopeFilter) return false;
       if (needle && !todo.title.toLowerCase().includes(needle)) return false;
+      // Filtr okresu po terminie. Zadania BEZ terminu przechodzą zawsze — nie mają
+      // daty, po której można je odsiać, a ukrycie ich czyniłoby je nieosiągalnymi
+      // w każdym zakresie poza „wszystko".
+      if (timePreset !== 'all' && todo.due_date) {
+        if (todo.due_date < dateRange.start || todo.due_date > dateRange.end) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [todos, search, scopeFilter, showDone]);
+  }, [todos, search, scopeFilter, showDone, timePreset, dateRange]);
 
   const groups = useMemo(() => groupTodosByDue(filtered), [filtered]);
+
+  // Kalendarz — ta sama siatka co „Miesięczna mapa kalendarza" w Analizie czasu.
+  // Kotwicą jest początek wybranego zakresu, więc strzałki paska dat przewijają
+  // kalendarz; preset 'week' daje jeden tydzień, pozostałe pełny miesiąc.
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language);
+  const calendarWeeks = useMemo(() => {
+    const anchor = new Date(`${dateRange.start}T12:00:00`);
+    return timePreset === 'week'
+      ? buildTodoWeekCalendar(anchor, filtered, locale)
+      : buildTodoMonthCalendar(anchor, filtered, locale);
+  }, [dateRange.start, timePreset, filtered, locale]);
+
+  const withoutDate = useMemo(() => undatedTodos(filtered), [filtered]);
+
+  /** Klik w dzień kalendarza — nowe zadanie z wypełnionym terminem. */
+  const openCreateForDate = useCallback((date: string) => {
+    setEditing(null);
+    setForm({ ...EMPTY_FORM, dueDate: date });
+    setDialogError(null);
+    setDialogOpen(true);
+  }, []);
 
   const openCreate = useCallback(() => {
     setEditing(null);
@@ -163,8 +207,17 @@ export function useTodoPageController() {
 
   return {
     t,
+    dateRange,
+    timePreset,
+    setTimePreset,
+    setDateRange,
+    shiftDateRange,
+    canShiftForward,
     todos,
     groups,
+    calendarWeeks,
+    withoutDate,
+    openCreateForDate,
     hasAnyTodo: todos.length > 0,
     loading,
     error,
