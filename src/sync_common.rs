@@ -2719,6 +2719,23 @@ mod tests {
                  name TEXT NOT NULL UNIQUE,
                  updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
              );
+             CREATE TABLE project_costs (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 uid TEXT NOT NULL UNIQUE,
+                 project_name TEXT NOT NULL,
+                 cost_date TEXT NOT NULL,
+                 amount REAL NOT NULL,
+                 comment TEXT,
+                 created_at TEXT,
+                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+             );
+             CREATE TABLE todos (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 uid TEXT NOT NULL UNIQUE,
+                 scope TEXT NOT NULL,
+                 title TEXT NOT NULL,
+                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+             );
              CREATE TABLE tombstones (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
                  table_name TEXT NOT NULL,
