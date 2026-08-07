@@ -127,8 +127,15 @@ lista to komplet punktów wpięcia; pominięcie któregokolwiek powtarza tamten 
 3. **Merge** — `merge_project_costs` i `merge_todos` w `shared/sync/merge.rs`.
    Last-writer-wins po `updated_at`, identyfikacja po `uid`, `local_tombstone_covers`
    blokuje wskrzeszenie skasowanego rekordu. Wzorzec: `merge_clients`.
-4. **Eksport delty** — `project_costs` i `todos` w `DeltaArchive` w
-   `dashboard/src-tauri/src/commands/delta_export.rs`, wraz z licznikami w logu.
+4. **Eksport delty — DWA niezależne miejsca.** Dashboard buduje archiwum przez
+   serde w `dashboard/src-tauri/src/commands/delta_export.rs` (`DeltaArchive`
+   + `TableHashes`). Demon ma własny, całkowicie odrębny eksport:
+   `build_delta_for_pull` w `src/lan_server.rs` składa JSON ręcznie przez
+   `fetch_all_rows`, i własną strukturę `TableHashes` z osobnym `build_table_hashes`
+   oraz ręcznym `impl PartialEq`. Obie ścieżki trzeba rozszerzyć — demon jest
+   serwerem LAN sync, więc pominięcie go oznacza, że rekordy nigdy nie wyjdą do
+   peera mimo poprawnego merge. Pominięcie warunku w `PartialEq` jest groźniejsze:
+   rozjazd nie zostałby wykryty i peery raportowałyby „zsynchronizowane".
 5. **Lista tabel** — `"project_costs"`, `"todos"` w `src/lan_common.rs:206`.
 6. **Obrona demona** — `ensure_project_costs_table` / `ensure_todos_table`
    w `src/sync_common.rs`. Demon może wystartować przed migracją dashboardu.
