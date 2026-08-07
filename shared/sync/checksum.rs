@@ -88,7 +88,7 @@ pub fn table_hash_sql(table: &str) -> Option<&'static str> {
             "SELECT COALESCE(group_concat( \
                 uid || '|' || scope || '|' || COALESCE(project_name,'') || '|' || \
                 COALESCE(client_name,'') || '|' || title || '|' || COALESCE(notes,'') || '|' || \
-                COALESCE(due_date,'') || '|' || COALESCE(due_time,'') || '|' || priority || '|' || \
+                COALESCE(due_date,'') || '|' || COALESCE(end_date,'') || '|' || COALESCE(due_time,'') || '|' || priority || '|' || \
                 status || '|' || COALESCE(completed_at,'') || '|' || COALESCE(sort_order,'') || '|' || \
                 updated_at, ';'), '') \
              FROM (SELECT * FROM todos ORDER BY uid)",
@@ -138,7 +138,7 @@ mod table_hash_sql_tests {
     const TODOS_SCHEMA: &str = "CREATE TABLE todos (
         id INTEGER PRIMARY KEY, uid TEXT NOT NULL UNIQUE, scope TEXT NOT NULL,
         project_name TEXT, client_name TEXT, title TEXT NOT NULL, notes TEXT,
-        due_date TEXT, due_time TEXT, priority INTEGER NOT NULL DEFAULT 1,
+        due_date TEXT, end_date TEXT, due_time TEXT, priority INTEGER NOT NULL DEFAULT 1,
         status TEXT NOT NULL DEFAULT 'open', completed_at TEXT, sort_order REAL,
         gcal_event_id TEXT, gcal_synced_at TEXT, created_at TEXT,
         updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00');";

@@ -14,7 +14,7 @@ const STATUS_OPEN: &str = "open";
 const STATUS_DONE: &str = "done";
 
 const TODO_COLUMNS: &str = "uid, scope, project_name, client_name, title, notes, due_date, \
-     due_time, priority, status, completed_at, sort_order, created_at, updated_at";
+     end_date, due_time, priority, status, completed_at, sort_order, created_at, updated_at";
 
 /// `scope` rozstrzyga, które pole linku jest wymagane. Walidujemy tutaj, bo SQLite
 /// nie wyrazi tej zależności constraintem, a rekord z `scope='project'` bez
@@ -72,6 +72,19 @@ fn validate_due_date(due_date: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
+/// Koniec zakresu nie może wypaść przed początkiem, a bez początku sam koniec
+/// nie ma sensu — zadanie „do 5 maja" bez daty od nie da się narysować.
+fn validate_range(due_date: Option<&str>, end_date: Option<&str>) -> Result<(), String> {
+    let Some(end) = end_date else { return Ok(()) };
+    let Some(start) = due_date else {
+        return Err("End date requires a start date".to_string());
+    };
+    if end < start {
+        return Err(format!("End date '{end}' is before start date '{start}'"));
+    }
+    Ok(())
+}
+
 fn normalize_opt(value: Option<String>) -> Option<String> {
     value.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
@@ -85,13 +98,14 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TodoRow> {
         title: row.get(4)?,
         notes: row.get(5)?,
         due_date: row.get(6)?,
-        due_time: row.get(7)?,
-        priority: row.get(8)?,
-        status: row.get(9)?,
-        completed_at: row.get(10)?,
-        sort_order: row.get(11)?,
-        created_at: row.get(12)?,
-        updated_at: row.get(13)?,
+        end_date: row.get(7)?,
+        due_time: row.get(8)?,
+        priority: row.get(9)?,
+        status: row.get(10)?,
+        completed_at: row.get(11)?,
+        sort_order: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
     })
 }
 
@@ -148,6 +162,7 @@ pub async fn todos_create(
     title: String,
     notes: Option<String>,
     due_date: Option<String>,
+    end_date: Option<String>,
     due_time: Option<String>,
     priority: i64,
 ) -> Result<TodoRow, CommandError> {
@@ -159,16 +174,19 @@ pub async fn todos_create(
         let project_name = normalize_opt(project_name);
         let client_name = normalize_opt(client_name);
         let due_date = normalize_opt(due_date);
+        let end_date = normalize_opt(end_date);
         validate_scope(&scope, project_name.as_deref(), client_name.as_deref())?;
         validate_priority(priority)?;
         validate_due_date(due_date.as_deref())?;
+        validate_due_date(end_date.as_deref())?;
+        validate_range(due_date.as_deref(), end_date.as_deref())?;
 
         let uid = new_uid();
         let sort_order = next_sort_order(conn);
         conn.execute(
             "INSERT INTO todos (uid, scope, project_name, client_name, title, notes, due_date, \
-             due_time, priority, status, sort_order, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open', ?10, datetime('now'), datetime('now'))",
+             end_date, due_time, priority, status, sort_order, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11, datetime('now'), datetime('now'))",
             rusqlite::params![
                 uid,
                 scope,
@@ -177,6 +195,7 @@ pub async fn todos_create(
                 title,
                 normalize_opt(notes),
                 due_date,
+                end_date,
                 normalize_opt(due_time),
                 priority,
                 sort_order
@@ -200,6 +219,7 @@ pub async fn todos_update(
     title: String,
     notes: Option<String>,
     due_date: Option<String>,
+    end_date: Option<String>,
     due_time: Option<String>,
     priority: i64,
 ) -> Result<TodoRow, CommandError> {
@@ -211,16 +231,19 @@ pub async fn todos_update(
         let project_name = normalize_opt(project_name);
         let client_name = normalize_opt(client_name);
         let due_date = normalize_opt(due_date);
+        let end_date = normalize_opt(end_date);
         validate_scope(&scope, project_name.as_deref(), client_name.as_deref())?;
         validate_priority(priority)?;
         validate_due_date(due_date.as_deref())?;
+        validate_due_date(end_date.as_deref())?;
+        validate_range(due_date.as_deref(), end_date.as_deref())?;
 
         // `updated_at` MUSI się odświeżyć — to on rozstrzyga LWW przy synchronizacji.
         let changed = conn
             .execute(
                 "UPDATE todos SET scope = ?1, project_name = ?2, client_name = ?3, title = ?4, \
-                 notes = ?5, due_date = ?6, due_time = ?7, priority = ?8, \
-                 updated_at = datetime('now') WHERE uid = ?9",
+                 notes = ?5, due_date = ?6, end_date = ?7, due_time = ?8, priority = ?9, \
+                 updated_at = datetime('now') WHERE uid = ?10",
                 rusqlite::params![
                     scope,
                     project_name,
@@ -228,6 +251,7 @@ pub async fn todos_update(
                     title,
                     normalize_opt(notes),
                     due_date,
+                    end_date,
                     normalize_opt(due_time),
                     priority,
                     uid
@@ -296,7 +320,7 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 uid TEXT NOT NULL UNIQUE, scope TEXT NOT NULL,
                 project_name TEXT, client_name TEXT, title TEXT NOT NULL, notes TEXT,
-                due_date TEXT, due_time TEXT, priority INTEGER NOT NULL DEFAULT 1,
+                due_date TEXT, end_date TEXT, due_time TEXT, priority INTEGER NOT NULL DEFAULT 1,
                 status TEXT NOT NULL DEFAULT 'open', completed_at TEXT, sort_order REAL,
                 gcal_event_id TEXT, gcal_synced_at TEXT, created_at TEXT,
                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
@@ -338,6 +362,19 @@ mod tests {
         assert!(validate_priority(2).is_ok());
         assert!(validate_priority(-1).is_err());
         assert!(validate_priority(3).is_err());
+    }
+
+    #[test]
+    fn end_date_must_not_precede_start() {
+        assert!(validate_range(None, None).is_ok());
+        assert!(validate_range(Some("2026-06-01"), None).is_ok(), "jednodniowe");
+        assert!(validate_range(Some("2026-06-01"), Some("2026-06-05")).is_ok());
+        assert!(validate_range(Some("2026-06-01"), Some("2026-06-01")).is_ok());
+        assert!(validate_range(Some("2026-06-05"), Some("2026-06-01")).is_err());
+        assert!(
+            validate_range(None, Some("2026-06-05")).is_err(),
+            "sam koniec bez poczatku nie da sie narysowac"
+        );
     }
 
     #[test]

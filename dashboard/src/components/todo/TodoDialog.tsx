@@ -171,6 +171,20 @@ export function TodoDialog({
                 className="w-full rounded border bg-background px-3 py-2 text-sm"
               />
             </label>
+            <label className="block flex-1 space-y-1">
+              <span className="text-sm text-muted-foreground">
+                {t('todo.field_end_date')}
+              </span>
+              <input
+                type="date"
+                value={form.endDate ?? ''}
+                min={form.dueDate ?? undefined}
+                onChange={(e) =>
+                  setForm({ ...form, endDate: e.target.value || null })
+                }
+                className="w-full rounded border bg-background px-3 py-2 text-sm"
+              />
+            </label>
             <label className="block w-28 space-y-1">
               <span className="text-sm text-muted-foreground">
                 {t('todo.field_due_time')}

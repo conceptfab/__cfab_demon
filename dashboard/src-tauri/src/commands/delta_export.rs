@@ -75,8 +75,8 @@ pub struct DeltaArchive {
 pub(crate) fn query_todos(conn: &rusqlite::Connection) -> Result<Vec<TodoRow>, CommandError> {
     let mut stmt = conn
         .prepare(
-            "SELECT uid, scope, project_name, client_name, title, notes, due_date, due_time, \
-             priority, status, completed_at, sort_order, created_at, updated_at FROM todos",
+            "SELECT uid, scope, project_name, client_name, title, notes, due_date, end_date, \
+             due_time, priority, status, completed_at, sort_order, created_at, updated_at FROM todos",
         )
         .map_err(|e| CommandError::Other(e.to_string()))?;
     let rows = stmt
@@ -89,13 +89,14 @@ pub(crate) fn query_todos(conn: &rusqlite::Connection) -> Result<Vec<TodoRow>, C
                 title: row.get(4)?,
                 notes: row.get(5)?,
                 due_date: row.get(6)?,
-                due_time: row.get(7)?,
-                priority: row.get(8)?,
-                status: row.get(9)?,
-                completed_at: row.get(10)?,
-                sort_order: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
+                end_date: row.get(7)?,
+                due_time: row.get(8)?,
+                priority: row.get(9)?,
+                status: row.get(10)?,
+                completed_at: row.get(11)?,
+                sort_order: row.get(12)?,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
             })
         })
         .map_err(|e| CommandError::Other(e.to_string()))?
@@ -579,7 +580,7 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 uid TEXT NOT NULL UNIQUE, scope TEXT NOT NULL,
                 project_name TEXT, client_name TEXT, title TEXT NOT NULL, notes TEXT,
-                due_date TEXT, due_time TEXT, priority INTEGER NOT NULL DEFAULT 1,
+                due_date TEXT, end_date TEXT, due_time TEXT, priority INTEGER NOT NULL DEFAULT 1,
                 status TEXT NOT NULL DEFAULT 'open', completed_at TEXT, sort_order REAL,
                 gcal_event_id TEXT, gcal_synced_at TEXT, created_at TEXT,
                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'

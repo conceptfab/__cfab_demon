@@ -18,6 +18,7 @@ function todo(uid: string, dueDate: string | null, priority = 1): Todo {
     title: uid,
     notes: null,
     due_date: dueDate,
+    end_date: null,
     due_time: null,
     priority,
     status: 'open',
@@ -54,6 +55,52 @@ describe('buildTodoWeekCalendar', () => {
     const week = buildTodoWeekCalendar(TODAY, [], pl, TODAY)[0]!;
     expect(week.days.filter((d) => d.isToday).map((d) => d.date)).toEqual([
       '2026-08-08',
+    ]);
+  });
+});
+
+describe('zadanie od–do', () => {
+  function ranged(uid: string, from: string, to: string): Todo {
+    return { ...todo(uid, from), end_date: to };
+  }
+
+  it('fills every day between start and end', () => {
+    const [week] = [
+      buildTodoWeekCalendar(TODAY, [ranged('a', '2026-08-04', '2026-08-06')], pl, TODAY)[0]!,
+    ];
+    const withTask = week.days
+      .filter((d) => d.todos.some((x) => x.uid === 'a'))
+      .map((d) => d.date);
+    expect(withTask).toEqual(['2026-08-04', '2026-08-05', '2026-08-06']);
+  });
+
+  it('treats an end date equal to the start as a single day', () => {
+    const week = buildTodoWeekCalendar(
+      TODAY,
+      [ranged('a', '2026-08-04', '2026-08-04')],
+      pl,
+      TODAY,
+    )[0]!;
+    const withTask = week.days.filter((d) => d.todos.length > 0).map((d) => d.date);
+    expect(withTask).toEqual(['2026-08-04']);
+  });
+
+  it('spans across a month boundary', () => {
+    const weeks = buildTodoMonthCalendar(
+      TODAY,
+      [ranged('a', '2026-07-30', '2026-08-02')],
+      pl,
+      TODAY,
+    );
+    const withTask = weeks
+      .flatMap((w) => w.days)
+      .filter((d) => d.todos.length > 0)
+      .map((d) => d.date);
+    expect(withTask).toEqual([
+      '2026-07-30',
+      '2026-07-31',
+      '2026-08-01',
+      '2026-08-02',
     ]);
   });
 });

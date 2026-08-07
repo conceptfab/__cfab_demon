@@ -31,6 +31,7 @@ const EMPTY_FORM: TodoInput = {
   title: '',
   notes: null,
   dueDate: null,
+  endDate: null,
   dueTime: null,
   priority: 1,
 };
@@ -141,6 +142,7 @@ export function useTodoPageController() {
       title: todo.title,
       notes: todo.notes,
       dueDate: todo.due_date,
+      endDate: todo.end_date,
       dueTime: todo.due_time,
       priority: todo.priority,
     });
@@ -165,6 +167,10 @@ export function useTodoPageController() {
     }
     if (form.scope === 'client' && !form.clientName) {
       setDialogError(t('todo.invalid_scope_client'));
+      return;
+    }
+    if (form.endDate && form.dueDate && form.endDate < form.dueDate) {
+      setDialogError(t('todo.invalid_range'));
       return;
     }
     setSaving(true);

@@ -695,6 +695,8 @@ pub fn merge_todos(
         let client_name = json_str_opt(todo, "client_name");
         let notes = json_str_opt(todo, "notes");
         let due_date = json_str_opt(todo, "due_date");
+        // m27: koniec zakresu; brak klucza (peer sprzed m27) = zadanie jednodniowe.
+        let end_date = json_str_opt(todo, "end_date");
         let due_time = json_str_opt(todo, "due_time");
         // Brak klucza → 1 (normalny), a nie 0 (niski): rekord ze starszego peera
         // nie powinien cicho tracić priorytetu.
@@ -717,12 +719,12 @@ pub fn merge_todos(
                 log_merge_conflict(tx, "todos", uid, &lt, updated_at, "remote");
                 tx.execute(
                     "UPDATE todos SET scope = ?1, project_name = ?2, client_name = ?3, \
-                     title = ?4, notes = ?5, due_date = ?6, due_time = ?7, priority = ?8, \
-                     status = ?9, completed_at = ?10, sort_order = ?11, updated_at = ?12 \
-                     WHERE uid = ?13",
+                     title = ?4, notes = ?5, due_date = ?6, end_date = ?7, due_time = ?8, \
+                     priority = ?9, status = ?10, completed_at = ?11, sort_order = ?12, \
+                     updated_at = ?13 WHERE uid = ?14",
                     rusqlite::params![
-                        scope, project_name, client_name, title, notes, due_date, due_time,
-                        priority, status, completed_at, sort_order, updated_at, uid
+                        scope, project_name, client_name, title, notes, due_date, end_date,
+                        due_time, priority, status, completed_at, sort_order, updated_at, uid
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -730,12 +732,12 @@ pub fn merge_todos(
             None => {
                 tx.execute(
                     "INSERT INTO todos (uid, scope, project_name, client_name, title, notes, \
-                     due_date, due_time, priority, status, completed_at, sort_order, \
+                     due_date, end_date, due_time, priority, status, completed_at, sort_order, \
                      created_at, updated_at) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                     rusqlite::params![
-                        uid, scope, project_name, client_name, title, notes, due_date, due_time,
-                        priority, status, completed_at, sort_order,
+                        uid, scope, project_name, client_name, title, notes, due_date, end_date,
+                        due_time, priority, status, completed_at, sort_order,
                         json_str_opt(todo, "created_at"), updated_at
                     ],
                 )
@@ -1407,6 +1409,7 @@ mod todos_merge_tests {
                  title TEXT NOT NULL,
                  notes TEXT,
                  due_date TEXT,
+                 end_date TEXT,
                  due_time TEXT,
                  priority INTEGER NOT NULL DEFAULT 1,
                  status TEXT NOT NULL DEFAULT 'open',

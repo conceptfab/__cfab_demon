@@ -1685,7 +1685,7 @@ fn build_delta_for_pull(
 
     // Zadania (m26 encja — zawsze pełny zbiór, tabela mała). `gcal_*` pomijane:
     // są per-maszyna i nie mogą trafić do peera.
-    let todos = fetch_all_rows(conn, "SELECT id, uid, scope, project_name, client_name, title, notes, due_date, due_time, priority, status, completed_at, sort_order, created_at, updated_at FROM todos ORDER BY uid")?;
+    let todos = fetch_all_rows(conn, "SELECT id, uid, scope, project_name, client_name, title, notes, due_date, end_date, due_time, priority, status, completed_at, sort_order, created_at, updated_at FROM todos ORDER BY uid")?;
 
     // Fetch applications (always full)
     let apps = fetch_all_rows(conn, "SELECT id, executable_name, display_name, project_id, color, updated_at FROM applications ORDER BY executable_name")?;

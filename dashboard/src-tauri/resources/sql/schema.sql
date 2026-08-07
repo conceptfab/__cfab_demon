@@ -510,6 +510,7 @@ CREATE TABLE IF NOT EXISTS todos (
     title TEXT NOT NULL,
     notes TEXT,
     due_date TEXT,
+    end_date TEXT,
     due_time TEXT,
     priority INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'open',

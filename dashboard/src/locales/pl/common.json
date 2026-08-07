@@ -891,7 +891,9 @@
     "help_what": "Lista zadań z terminem i priorytetem, w trzech zakresach: globalnym, przypisanym do klienta i przypisanym do projektu.",
     "help_when": "Gdy chcesz trzymać rzeczy do zrobienia obok czasu pracy, zamiast w osobnym narzędziu.",
     "help_limits": "Zadania nie są powiązane z sesjami i nie liczą czasu — to czysta lista. Usunięcie projektu lub klienta kasuje przypisane do nich zadania. Zadanie projektowe wymaga projektu, klienckie wymaga klienta.",
-    "upcoming_for_project": "Zadania w tym projekcie: {{count}}"
+    "upcoming_for_project": "Zadania w tym projekcie: {{count}}",
+    "field_end_date": "Termin do",
+    "invalid_range": "Data „do” nie może być wcześniejsza niż „od”"
   },
   "data_page": {
     "sections": {

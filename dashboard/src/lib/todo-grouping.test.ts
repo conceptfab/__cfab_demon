@@ -12,6 +12,7 @@ function todo(uid: string, dueDate: string | null, priority = 1): Todo {
     title: uid,
     notes: null,
     due_date: dueDate,
+    end_date: null,
     due_time: null,
     priority,
     status: 'open',

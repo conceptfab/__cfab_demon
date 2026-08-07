@@ -188,8 +188,8 @@ fn build_export_archive(
             let mut stmt = conn
                 .prepare(
                     "SELECT uid, scope, project_name, client_name, title, notes, due_date, \
-                     due_time, priority, status, completed_at, sort_order, created_at, updated_at \
-                     FROM todos",
+                     end_date, due_time, priority, status, completed_at, sort_order, created_at, \
+                     updated_at FROM todos",
                 )
                 .map_err(|e| e.to_string())?;
             let rows = stmt
@@ -202,13 +202,14 @@ fn build_export_archive(
                         title: row.get(4)?,
                         notes: row.get(5)?,
                         due_date: row.get(6)?,
-                        due_time: row.get(7)?,
-                        priority: row.get(8)?,
-                        status: row.get(9)?,
-                        completed_at: row.get(10)?,
-                        sort_order: row.get(11)?,
-                        created_at: row.get(12)?,
-                        updated_at: row.get(13)?,
+                        end_date: row.get(7)?,
+                        due_time: row.get(8)?,
+                        priority: row.get(9)?,
+                        status: row.get(10)?,
+                        completed_at: row.get(11)?,
+                        sort_order: row.get(12)?,
+                        created_at: row.get(13)?,
+                        updated_at: row.get(14)?,
                     })
                 })
                 .map_err(|e| e.to_string())?

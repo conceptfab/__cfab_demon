@@ -124,12 +124,36 @@ export function TodoCalendar({
                   const entity = todo.project_name ?? todo.client_name ?? null;
                   const dotColor = entity ? colorByName.get(entity) : undefined;
                   const done = todo.status === 'done';
+                  // Zadanie od–do: dzień początkowy niesie pełny opis, kolejne
+                  // dni zakresu to kontynuacja — bez powtarzania przycisków,
+                  // żeby pasek czytał się jak jedna ciągła belka.
+                  const ranged = Boolean(
+                    todo.end_date && todo.end_date > (todo.due_date ?? ''),
+                  );
+                  const isStart = !ranged || todo.due_date === day.date;
+                  if (ranged && !isStart) {
+                    return (
+                      <span
+                        key={todo.uid}
+                        title={todo.title}
+                        className="flex h-[18px] w-full items-center bg-background/50 px-1"
+                      >
+                        <span
+                          className="h-1 flex-1 rounded-full bg-muted-foreground/40"
+                          style={
+                            dotColor ? { backgroundColor: dotColor } : undefined
+                          }
+                        />
+                      </span>
+                    );
+                  }
                   return (
                     <span
                       key={todo.uid}
                       className={cn(
-                        'flex w-full items-center gap-1 rounded border-l-2 bg-background/50 pl-1 pr-0.5 text-[10px] leading-tight',
+                        'flex w-full items-center gap-1 border-l-2 bg-background/50 pl-1 pr-0.5 text-[10px] leading-tight',
                         PRIORITY_EDGE[todo.priority] ?? PRIORITY_EDGE[1],
+                        ranged ? 'rounded-l' : 'rounded',
                       )}
                     >
                       <button

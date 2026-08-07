@@ -1703,6 +1703,7 @@ mod tests {
             title: "Zadzwonic do klienta".into(),
             notes: None,
             due_date: Some("2026-06-01".into()),
+            end_date: None,
             due_time: None,
             priority: 2,
             status: "open".into(),

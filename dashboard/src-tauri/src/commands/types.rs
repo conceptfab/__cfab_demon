@@ -84,6 +84,9 @@ pub struct TodoRow {
     pub notes: Option<String>,
     #[serde(default)]
     pub due_date: Option<String>,
+    /// m27: koniec zakresu. `None` = zadanie jednodniowe.
+    #[serde(default)]
+    pub end_date: Option<String>,
     #[serde(default)]
     pub due_time: Option<String>,
     #[serde(default)]

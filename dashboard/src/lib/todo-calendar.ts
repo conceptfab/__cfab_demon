@@ -7,6 +7,7 @@ import {
   getWeek,
   isAfter,
   isBefore,
+  parseISO,
   startOfMonth,
 } from 'date-fns';
 import type { Locale } from 'date-fns';
@@ -137,13 +138,31 @@ export function undatedTodos(todos: readonly Todo[]): Todo[] {
   return todos.filter((todo) => !todo.due_date);
 }
 
+/** Ile dni zakresu najwyżej rozwijamy — zabezpieczenie przed literówką w dacie
+ *  (np. rok 2226), która wygenerowałaby setki tysięcy wpisów w mapie. */
+const MAX_RANGE_DAYS = 366;
+
 function groupByDueDate(todos: readonly Todo[]): Map<string, Todo[]> {
   const map = new Map<string, Todo[]>();
+  const push = (key: string, todo: Todo) => {
+    const bucket = map.get(key);
+    if (bucket) bucket.push(todo);
+    else map.set(key, [todo]);
+  };
   for (const todo of todos) {
     if (!todo.due_date) continue;
-    const bucket = map.get(todo.due_date);
-    if (bucket) bucket.push(todo);
-    else map.set(todo.due_date, [todo]);
+    // Zadanie od–do trafia do KAŻDEJ komórki zakresu — kalendarz wypełnia lukę,
+    // zamiast pokazywać tylko dzień początkowy.
+    if (todo.end_date && todo.end_date > todo.due_date) {
+      let cursor = parseISO(todo.due_date);
+      const last = parseISO(todo.end_date);
+      for (let i = 0; i <= MAX_RANGE_DAYS && cursor <= last; i += 1) {
+        push(format(cursor, 'yyyy-MM-dd'), todo);
+        cursor = addDays(cursor, 1);
+      }
+      continue;
+    }
+    push(todo.due_date, todo);
   }
   // W obrębie dnia: priorytet malejąco, potem godzina, na końcu uid (determinizm).
   for (const bucket of map.values()) {

@@ -16,8 +16,10 @@ export interface Todo {
   client_name: string | null;
   title: string;
   notes: string | null;
-  /** YYYY-MM-DD */
+  /** Początek zakresu, YYYY-MM-DD */
   due_date: string | null;
+  /** Koniec zakresu, YYYY-MM-DD. `null` = zadanie jednodniowe. */
+  end_date: string | null;
   /** HH:MM */
   due_time: string | null;
   /** 0 niski, 1 normalny, 2 wysoki */
@@ -36,6 +38,7 @@ export interface TodoInput {
   title: string;
   notes?: string | null;
   dueDate?: string | null;
+  endDate?: string | null;
   dueTime?: string | null;
   priority: number;
 }
