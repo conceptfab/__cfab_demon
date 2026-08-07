@@ -292,6 +292,55 @@ pub(crate) fn ensure_project_client_columns(conn: &rusqlite::Connection) -> Resu
     Ok(())
 }
 
+/// Tabele encji z m26. Tworzone awaryjnie, bo demon ma własny schemat i NIE
+/// uruchamia migracji dashboardu. Wołane przed odtworzeniem triggerów tombstone —
+/// `CREATE TRIGGER ... ON <tabela>` wymaga istniejącej tabeli, a błąd przerwałby
+/// CAŁY merge, nie tylko część kosztową.
+///
+/// `todos` jest tworzona razem z `project_costs`, bo jej trigger też jest już
+/// w `CREATE_ALL_TOMBSTONE_TRIGGERS_SQL` (kod zadań dochodzi dopiero w fazie 2).
+pub fn ensure_m26_entity_tables(conn: &rusqlite::Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS project_costs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT NOT NULL UNIQUE,
+            project_name TEXT NOT NULL,
+            cost_date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            comment TEXT,
+            created_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_costs_project_date
+            ON project_costs(project_name, cost_date);
+        CREATE INDEX IF NOT EXISTS idx_project_costs_updated_at
+            ON project_costs(updated_at);
+
+        CREATE TABLE IF NOT EXISTS todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT NOT NULL UNIQUE,
+            scope TEXT NOT NULL,
+            project_name TEXT,
+            client_name TEXT,
+            title TEXT NOT NULL,
+            notes TEXT,
+            due_date TEXT,
+            due_time TEXT,
+            priority INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'open',
+            completed_at TEXT,
+            sort_order REAL,
+            gcal_event_id TEXT,
+            gcal_synced_at TEXT,
+            created_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+        );
+        CREATE INDEX IF NOT EXISTS idx_todos_status_due ON todos(status, due_date);
+        CREATE INDEX IF NOT EXISTS idx_todos_updated_at ON todos(updated_at);",
+    )
+    .map_err(|e| format!("ensure_m26_entity_tables: {e}"))
+}
+
 // ── Merge ──
 
 pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) -> Result<(), String> {
@@ -300,6 +349,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
         .map_err(|_| "merge mutex poisoned".to_string())?;
     ensure_project_merge_columns(conn)?;
     ensure_project_client_columns(conn)?;
+    ensure_m26_entity_tables(conn)?;
     const MAX_PAYLOAD_SIZE: usize = 200 * 1024 * 1024; // 200 MB
     if slave_data.len() > MAX_PAYLOAD_SIZE {
         return Err(format!(
@@ -1016,6 +1066,27 @@ pub(crate) fn merge_incoming_nonblocking_with_hook(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Rozszerzenie tablicy triggerów o m26 wywracało CAŁY merge na demonie,
+    /// bo demon nie uruchamia migracji dashboardu i nie ma tych tabel.
+    #[test]
+    fn ensure_m26_entity_tables_is_idempotent() {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory");
+        ensure_m26_entity_tables(&conn).expect("pierwsze wywolanie");
+        ensure_m26_entity_tables(&conn).expect("drugie wywolanie musi byc no-op");
+        conn.execute(
+            "INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u1', 'Acme', '2026-05-10', 10.0, '2026-05-10 10:00:00')",
+            [],
+        )
+        .expect("insert po ensure");
+        conn.execute(
+            "INSERT INTO todos (uid, scope, title, updated_at)
+             VALUES ('t1', 'global', 'zadanie', '2026-05-10 10:00:00')",
+            [],
+        )
+        .expect("insert todo po ensure");
+    }
 
     #[test]
     fn test_normalize_ts_iso_format() {
