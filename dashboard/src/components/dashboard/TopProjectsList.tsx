@@ -68,14 +68,19 @@ export function TopProjectsList({
           p.project_id == null
             ? null
             : (allProjectsList.find((x) => x.id === p.project_id) ?? null);
+        const upcomingTodos =
+          upcomingTodosByProject?.get(linkedProject?.name ?? p.name) ?? 0;
         return (
+          // Plakietka zadań jest RODZEŃSTWEM wiersza, nie jego dzieckiem — wiersz
+          // sam jest przyciskiem, a zagnieżdżanie kontrolek psuje klawiaturę
+          // i czytniki ekranu.
+          <div key={projectKey} className="-mx-1.5 flex items-start gap-1">
           <button
             type="button"
-            key={projectKey}
             data-project-id={linkedProject?.id}
             data-project-name={linkedProject?.name}
             aria-label={t('components.top_projects.click_to_view', { name: projectLabel })}
-            className="w-full space-y-1 rounded-md p-1.5 -mx-1.5 cursor-pointer text-left transition-colors hover:bg-muted/40"
+            className="min-w-0 flex-1 space-y-1 rounded-md p-1.5 cursor-pointer text-left transition-colors hover:bg-muted/40"
             onClick={() => openProjectSessions(p.project_id ?? null)}
           >
             <div className="flex items-start justify-between gap-2">
@@ -83,33 +88,6 @@ export function TopProjectsList({
                 <div className="flex items-center gap-2">
                   <FolderOpen className="size-3 shrink-0 text-muted-foreground" />
                   <span className="truncate text-xs font-medium">{projectLabel}</span>
-                  {(() => {
-                    const upcoming =
-                      upcomingTodosByProject?.get(linkedProject?.name ?? p.name) ?? 0;
-                    if (upcoming === 0) return null;
-                    return (
-                      <AppTooltip
-                        content={t('todo.upcoming_for_project', { count: upcoming })}
-                      >
-                        <button
-                          type="button"
-                          // Klik przenosi na ekran Zadania — znacznik ma być
-                          // skrótem do zadań projektu, nie samą etykietą.
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCurrentPage('todo');
-                          }}
-                          aria-label={t('todo.upcoming_for_project', {
-                            count: upcoming,
-                          })}
-                          className="flex shrink-0 cursor-pointer items-center gap-0.5 rounded px-1 text-[10px] text-sky-400 transition-colors hover:bg-sky-400/10 hover:text-sky-300"
-                        >
-                          <ListTodo className="size-3" />
-                          {upcoming}
-                        </button>
-                      </AppTooltip>
-                    );
-                  })()}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 ml-5.5">
                   <span className="text-[10px] text-muted-foreground">
@@ -172,6 +150,25 @@ export function TopProjectsList({
               />
             </div>
           </button>
+
+          {upcomingTodos > 0 && (
+            <AppTooltip
+              content={t('todo.upcoming_for_project', { count: upcomingTodos })}
+            >
+              <button
+                type="button"
+                onClick={() => setCurrentPage('todo')}
+                aria-label={t('todo.upcoming_for_project', {
+                  count: upcomingTodos,
+                })}
+                className="mt-1.5 flex shrink-0 cursor-pointer items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-sky-400 transition-colors hover:bg-sky-400/10 hover:text-sky-300"
+              >
+                <ListTodo className="size-3" />
+                {upcomingTodos}
+              </button>
+            </AppTooltip>
+          )}
+          </div>
         );
       })}
     </div>

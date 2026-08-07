@@ -85,17 +85,14 @@ export function useTodoPageController() {
       if (!showDone && todo.status === 'done') return false;
       if (scopeFilter !== 'all' && todo.scope !== scopeFilter) return false;
       if (needle && !todo.title.toLowerCase().includes(needle)) return false;
-      // Filtr okresu po terminie. Zadania BEZ terminu przechodzą zawsze — nie mają
-      // daty, po której można je odsiać, a ukrycie ich czyniłoby je nieosiągalnymi
-      // w każdym zakresie poza „wszystko".
-      if (timePreset !== 'all' && todo.due_date) {
-        if (todo.due_date < dateRange.start || todo.due_date > dateRange.end) {
-          return false;
-        }
-      }
       return true;
     });
-  }, [todos, search, scopeFilter, showDone, timePreset, dateRange]);
+    // ŚWIADOMIE bez filtra po zakresie dat: to SIATKA decyduje, co widać —
+    // zadanie trafia do komórki swojego dnia, a dni spoza widoku po prostu się
+    // nie renderują. Wcześniejszy filtr powodował, że przy presecie „Dziś"
+    // rysowany był cały miesiąc, ale przepuszczany jeden dzień, więc kalendarz
+    // wyglądał na pusty mimo istniejących zadań.
+  }, [todos, search, scopeFilter, showDone]);
 
   const groups = useMemo(() => groupTodosByDue(filtered), [filtered]);
 
@@ -109,6 +106,11 @@ export function useTodoPageController() {
     if (timePreset === 'week') return buildTodoWeekCalendar(anchor, filtered, locale);
     return buildTodoMonthCalendar(anchor, filtered, locale);
   }, [dateRange.start, timePreset, filtered, locale]);
+
+  // „Cały Okres" kotwiczy się na 2020-01-01, więc siatka pokazywałaby styczeń 2020.
+  // Dla tego presetu przełączamy na listę pogrupowaną po terminie — wtedy żadne
+  // zadanie nie może zniknąć z widoku.
+  const viewMode: 'calendar' | 'list' = timePreset === 'all' ? 'list' : 'calendar';
 
   const withoutDate = useMemo(() => undatedTodos(filtered), [filtered]);
 
@@ -217,6 +219,7 @@ export function useTodoPageController() {
     todos,
     groups,
     calendarWeeks,
+    viewMode,
     withoutDate,
     openCreateForDate,
     hasAnyTodo: todos.length > 0,

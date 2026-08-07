@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useUIStore } from '@/store/ui-store';
 import { logger } from '@/lib/logger';
 import { todosList, type Todo, type TodoScope } from '@/lib/tauri/todos';
 
@@ -14,8 +15,8 @@ interface ContextTodosSectionProps {
 
 /**
  * Zadania przypięte do konkretnego projektu albo klienta, pokazywane na jego
- * karcie. Tylko odczyt — dodawanie i edycja żyją na ekranie Zadania, żeby nie
- * dublować logiki formularza w trzech miejscach.
+ * karcie. Klik przenosi na ekran Zadania — formularz edycji żyje tam, żeby nie
+ * dublować jego logiki w trzech miejscach.
  */
 export function ContextTodosSection({
   scope,
@@ -23,6 +24,7 @@ export function ContextTodosSection({
   titleKey,
 }: ContextTodosSectionProps) {
   const { t } = useTranslation();
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
   const [todos, setTodos] = useState<Todo[]>([]);
 
   useEffect(() => {
@@ -59,16 +61,20 @@ export function ContextTodosSection({
       <CardContent>
         <ul className="space-y-1">
           {mine.map((todo) => (
-            <li
-              key={todo.uid}
-              className="flex items-baseline justify-between gap-2 text-sm"
-            >
-              <span className="min-w-0 truncate">{todo.title}</span>
-              {todo.due_date ? (
-                <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
-                  {todo.due_date}
-                </span>
-              ) : null}
+            <li key={todo.uid}>
+              <button
+                type="button"
+                onClick={() => setCurrentPage('todo')}
+                aria-label={`${t('todo.edit')}: ${todo.title}`}
+                className="flex w-full cursor-pointer items-baseline justify-between gap-2 rounded px-1 py-0.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <span className="min-w-0 truncate">{todo.title}</span>
+                {todo.due_date ? (
+                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                    {todo.due_date}
+                  </span>
+                ) : null}
+              </button>
             </li>
           ))}
         </ul>

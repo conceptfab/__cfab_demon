@@ -75,6 +75,16 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
         </p>
       ) : controller.error ? (
         <p className="py-6 text-sm text-destructive">{controller.error}</p>
+      ) : controller.viewMode === 'list' ? (
+        <TodoGroupList
+          groups={controller.groups}
+          hasAnyTodo={controller.hasAnyTodo}
+          loading={false}
+          error={null}
+          onToggle={(todo) => void controller.toggleStatus(todo)}
+          onEdit={controller.openEdit}
+          onDelete={(todo) => void controller.remove(todo)}
+        />
       ) : (
         <div className="overflow-x-auto">
           <TodoCalendar
@@ -85,7 +95,7 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
         </div>
       )}
 
-      {controller.withoutDate.length > 0 && (
+      {controller.viewMode === 'calendar' && controller.withoutDate.length > 0 && (
         <TodoGroupList
           groups={{
             overdue: [],

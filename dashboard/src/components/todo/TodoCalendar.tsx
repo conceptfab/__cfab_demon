@@ -74,17 +74,29 @@ export function TodoCalendar({
                   day.isToday && 'ring-1 ring-sky-400/60',
                 )}
               >
-                <div className="flex items-center justify-between">
-                  <span
-                    className={cn(
-                      'text-xs font-medium',
-                      day.inMonth
-                        ? 'text-foreground/90'
-                        : 'text-muted-foreground/40',
-                      day.isToday && 'text-sky-300',
+                <div className="flex items-center justify-between gap-1">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {/* Dzisiejszy dzień: wypełniona plakietka + podpis. Sama
+                        ramka nie mówi nic — trzeba nazwać, co oznacza. */}
+                    <span
+                      className={cn(
+                        'text-xs font-medium',
+                        day.isToday &&
+                          'flex size-5 items-center justify-center rounded-full bg-sky-500 text-background',
+                        !day.isToday && day.inMonth
+                          ? 'text-foreground/90'
+                          : !day.isToday
+                            ? 'text-muted-foreground/40'
+                            : '',
+                      )}
+                    >
+                      {format(parseISO(day.date), 'd', { locale })}
+                    </span>
+                    {day.isToday && (
+                      <span className="truncate text-[10px] font-medium uppercase tracking-wide text-sky-300">
+                        {t('ui.date_presets.today')}
+                      </span>
                     )}
-                  >
-                    {format(parseISO(day.date), 'd', { locale })}
                   </span>
                   <button
                     type="button"
