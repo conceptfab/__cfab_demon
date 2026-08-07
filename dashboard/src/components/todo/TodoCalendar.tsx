@@ -48,15 +48,26 @@ export function TodoCalendar({
     t('time_analysis_page.weekdays_short.sun'),
   ];
 
+  // Widok dnia ma jedną kolumnę — nagłówek z siedmioma nazwami dni byłby wtedy
+  // kłamstwem. Im mniej kolumn, tym wyższa komórka: przy jednym dniu jest miejsce
+  // na pełną listę zadań, przy miesiącu liczy się zwartość siatki.
+  const columns = weeks[0]?.days.length ?? 7;
+  const cellHeight =
+    columns === 1 ? 'min-h-[320px]' : columns <= 7 && weeks.length === 1
+      ? 'min-h-[220px]'
+      : 'min-h-[96px]';
+
   return (
     <div className="min-w-[400px]">
-      <div className="mb-1 flex pl-16 text-xs text-muted-foreground">
-        {weekDays.map((d) => (
-          <div key={d} className="flex-1 text-center">
-            {d}
-          </div>
-        ))}
-      </div>
+      {columns === 7 && (
+        <div className="mb-1 flex pl-16 text-xs text-muted-foreground">
+          {weekDays.map((d) => (
+            <div key={d} className="flex-1 text-center">
+              {d}
+            </div>
+          ))}
+        </div>
+      )}
 
       {weeks.map((week) => (
         <div key={week.label + week.subLabel} className="mb-1 flex items-stretch gap-1">
@@ -77,7 +88,8 @@ export function TodoCalendar({
               <div
                 key={day.date}
                 className={cn(
-                  'group relative flex min-h-[84px] flex-1 flex-col gap-1 overflow-hidden rounded-md p-1.5',
+                  'group relative flex flex-1 flex-col gap-1 overflow-hidden rounded-md p-1.5',
+                  cellHeight,
                   day.inMonth
                     ? 'bg-[rgba(41,46,66,0.45)]'
                     : 'bg-[rgba(41,46,66,0.2)]',

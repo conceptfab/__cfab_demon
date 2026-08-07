@@ -37,3 +37,25 @@ export function useUpcomingTodosByProject(): Map<string, number> {
     return map;
   }, [todos]);
 }
+
+/**
+ * Liczba OTWARTYCH zadań — do plakietki w nawigacji. Bez filtra terminu:
+ * plakietka ma mówić „tyle masz do zrobienia", a nie „tyle na dziś".
+ */
+export function useUpcomingTodosCount(): number {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount
+    void (async () => {
+      try {
+        const todos = await todosList();
+        setCount(todos.filter((todo) => todo.status === 'open').length);
+      } catch (e) {
+        logger.error('[todos] sidebar count load failed:', e);
+      }
+    })();
+  }, []);
+
+  return count;
+}

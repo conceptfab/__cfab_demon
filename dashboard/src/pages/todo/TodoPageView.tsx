@@ -33,6 +33,10 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
         ]);
         setProjectOptions(
           projects
+            // Tylko AKTYWNE — menu przypisania sesji filtruje tak samo
+            // (`!frozen_at`), więc zamrożone, wykluczone i zarchiwizowane
+            // projekty nie zaśmiecają listy dziesiątkami pozycji.
+            .filter((p) => p.status === 'active')
             .map((p) => ({ name: p.name, color: p.color }))
             .sort((a, b) => a.name.localeCompare(b.name)),
         );
@@ -58,7 +62,7 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
   }, [projectOptions, clientOptions]);
 
   return (
-    <div className={`${mobileLayout.pageContainer} max-w-5xl`}>
+    <div className={mobileLayout.pageContainer}>
       <h1 className="text-lg font-semibold">{t('todo.page_title')}</h1>
 
       <DateRangeToolbar

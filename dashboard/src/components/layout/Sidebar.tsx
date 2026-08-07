@@ -117,6 +117,8 @@ export function Sidebar({
         </div>
 
         <SidebarNav
+          openTodos={controller.openTodos}
+          todosBadge={controller.todosBadge}
           collapsed={collapsed}
           currentPage={controller.currentPage}
           goToPage={controller.goToPage}
