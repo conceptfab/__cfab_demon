@@ -451,6 +451,10 @@ W `merge_incoming_data`, zaraz po `ensure_project_client_columns(conn)?;` (czyli
     ensure_m26_entity_tables(conn)?;
 ```
 
+**Znana kruchość (świadomie nienaprawiana).** `verify_merge_integrity` ma WŁASNĄ, wewnętrzną pętlę DROP/CREATE wszystkich triggerów, odpalaną warunkowo przy `!fk_errors.is_empty()` (`src/sync_common.rs:~856`). Nie dostaje `ensure_m26_entity_tables`, bo wszystkie cztery produkcyjne wywołania (`lan_server.rs:1030`, `lan_sync_orchestrator.rs:663`, `online_store_forward.rs:382`, `online_async_delta.rs:371`) lecą bezpośrednio po `merge_incoming_data` na tej samej bazie — tabele zawsze już istnieją. Skutek uboczny: test wołający `verify_merge_integrity` w izolacji, na ręcznie zbudowanym schemacie, musi sam utworzyć tabele m26. Jeśli kiedyś pojawi się wywołanie `verify_merge_integrity` BEZ poprzedzającego merge, trzeba tam dodać `ensure_m26_entity_tables`.
+
+Fixture'y testowe budujące schemat ręcznie i instalujące `CREATE_ALL_TOMBSTONE_TRIGGERS_SQL` (np. `orphan_cleanup_in_verify_does_not_mint_tombstones`) muszą dostać minimalne `project_costs` i `todos` — tak jak wcześniej dostały `clients`.
+
 Dodaj też test regresji w `mod tests`:
 
 ```rust
