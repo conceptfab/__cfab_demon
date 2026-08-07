@@ -1,3 +1,4 @@
+import { Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
@@ -60,48 +61,50 @@ export function TodoCalendar({
 
           <div className="flex flex-1 gap-1">
             {week.days.map((day) => (
-              <button
-                type="button"
+              // Komórka jest kontenerem, NIE przyciskiem — w środku są przyciski
+              // (zadania + „dodaj"), a zagnieżdżanie kontrolek interaktywnych
+              // psuje nawigację klawiaturą i czytniki ekranu.
+              <div
                 key={day.date}
-                onClick={() => onDayClick(day.date)}
-                aria-label={format(parseISO(day.date), 'EEE, MMM d', { locale })}
                 className={cn(
-                  'relative flex min-h-[120px] flex-1 flex-col gap-1 overflow-hidden rounded-md p-1.5 text-left transition-colors',
+                  'group relative flex min-h-[120px] flex-1 flex-col gap-1 overflow-hidden rounded-md p-1.5',
                   day.inMonth
-                    ? 'bg-[rgba(41,46,66,0.45)] hover:bg-[rgba(41,46,66,0.7)]'
-                    : 'bg-[rgba(41,46,66,0.2)] hover:bg-[rgba(41,46,66,0.35)]',
+                    ? 'bg-[rgba(41,46,66,0.45)]'
+                    : 'bg-[rgba(41,46,66,0.2)]',
                   day.isToday && 'ring-1 ring-sky-400/60',
                 )}
               >
-                <span
-                  className={cn(
-                    'text-xs font-medium',
-                    day.inMonth
-                      ? 'text-foreground/90'
-                      : 'text-muted-foreground/40',
-                    day.isToday && 'text-sky-300',
-                  )}
-                >
-                  {format(parseISO(day.date), 'd', { locale })}
-                </span>
+                <div className="flex items-center justify-between">
+                  <span
+                    className={cn(
+                      'text-xs font-medium',
+                      day.inMonth
+                        ? 'text-foreground/90'
+                        : 'text-muted-foreground/40',
+                      day.isToday && 'text-sky-300',
+                    )}
+                  >
+                    {format(parseISO(day.date), 'd', { locale })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onDayClick(day.date)}
+                    aria-label={`${t('todo.add')} — ${format(parseISO(day.date), 'EEE, MMM d', { locale })}`}
+                    // Widoczny przy hoverze i zawsze przy fokusie klawiatury,
+                    // żeby nie był nieosiągalny bez myszy.
+                    className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-background/60 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                </div>
 
                 {day.todos.map((todo) => (
-                  <span
+                  <button
+                    type="button"
                     key={todo.uid}
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTodoClick(todo);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.stopPropagation();
-                        onTodoClick(todo);
-                      }
-                    }}
+                    onClick={() => onTodoClick(todo)}
                     className={cn(
-                      'flex w-full items-center gap-1 rounded px-1 py-0.5 text-[10px] leading-tight',
+                      'flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[10px] leading-tight',
                       'bg-background/50 hover:bg-background/80',
                       todo.status === 'done' &&
                         'text-muted-foreground line-through',
@@ -114,9 +117,9 @@ export function TodoCalendar({
                       )}
                     />
                     <span className="min-w-0 truncate">{todo.title}</span>
-                  </span>
+                  </button>
                 ))}
-              </button>
+              </div>
             ))}
           </div>
         </div>
