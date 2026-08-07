@@ -397,6 +397,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     timeflow_shared::sync::merge::apply_tombstones(&tx, &archive, &hooks)?;
     timeflow_shared::sync::merge::merge_projects(&tx, &archive, &hooks)?;
     timeflow_shared::sync::merge::merge_clients(&tx, &archive, &hooks)?;
+    timeflow_shared::sync::merge::merge_project_costs(&tx, &archive, &hooks)?;
     let mut id_maps = timeflow_shared::sync::merge::build_id_maps(&tx, &archive)?;
     timeflow_shared::sync::merge::merge_applications(&tx, &archive, &hooks, &mut id_maps)?;
 
@@ -1938,6 +1939,49 @@ mod tests {
             .unwrap();
         assert_eq!(client2.as_deref(), Some("METRO"), "nowszy peer nadpisuje client_name (UPDATE)");
         assert_eq!(status2, "done", "nowszy peer nadpisuje status (UPDATE)");
+    }
+
+    #[test]
+    fn merge_roundtrip_project_costs_via_daemon_export() {
+        // Dowod end-to-end, ze koszt faktycznie opuszcza eksport demona
+        // (build_delta_for_pull, przez build_full_export -> build_full_snapshot_public)
+        // i wraca przez merge_incoming_data. Bez tego testu klasa bledu jak przy m24
+        // (encja dopisana do merge, ale nigdy nie podpieta pod eksport) przeszlaby niezauwazona.
+        let master = open_test_db();
+        ensure_m26_entity_tables(&master).expect("m26 tables on master");
+        master
+            .execute(
+                "INSERT INTO projects (name, color, updated_at) \
+                 VALUES ('11_26_Metro', '#111111', '2026-06-20 10:00:00')",
+                [],
+            )
+            .unwrap();
+        master
+            .execute(
+                "INSERT INTO project_costs (uid, project_name, cost_date, amount, comment, created_at, updated_at) \
+                 VALUES ('cost-uid-1', '11_26_Metro', '2026-06-15', 123.45, 'materialy budowlane', \
+                 '2026-06-15 09:00:00', '2026-06-15 09:00:00')",
+                [],
+            )
+            .unwrap();
+
+        let export = build_full_export(&master).expect("export master");
+
+        let mut slave = open_test_db();
+        merge_incoming_data(&mut slave, &export).expect("merge into slave");
+
+        let (uid, project_name, cost_date, amount, comment): (String, String, String, f64, Option<String>) = slave
+            .query_row(
+                "SELECT uid, project_name, cost_date, amount, comment FROM project_costs WHERE uid = 'cost-uid-1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .expect("koszt musi dojechac przez sync demona");
+        assert_eq!(uid, "cost-uid-1");
+        assert_eq!(project_name, "11_26_Metro");
+        assert_eq!(cost_date, "2026-06-15");
+        assert_eq!(amount, 123.45);
+        assert_eq!(comment.as_deref(), Some("materialy budowlane"));
     }
 
     #[test]

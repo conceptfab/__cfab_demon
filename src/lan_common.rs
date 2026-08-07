@@ -204,7 +204,7 @@ pub fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
 pub fn compute_tables_hash_string(conn: &rusqlite::Connection) -> String {
     let tables = [
         "projects", "clients", "applications", "sessions", "manual_sessions",
-        "assignment_feedback", "assignment_auto_runs",
+        "assignment_feedback", "assignment_auto_runs", "project_costs",
     ];
     let mut combined = String::new();
     for table in &tables {
