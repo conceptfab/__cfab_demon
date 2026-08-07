@@ -3,7 +3,8 @@
 > Stan: 2026-06-11. Wartości zastosowane na maszynie macOS (micz) bezpośrednio w `assignment_model_state`.
 > Kontekst: audyt precyzji z 2026-06-10 wykazał, że pamięć modelu (wyuczone wagi) przegłosowuje fakty
 > (ścieżki plików w folderach projektów). Plan naprawy architektury:
-> [`docs/superpowers/plans/2026-06-10-ai-assignment-precision.md`](./superpowers/plans/2026-06-10-ai-assignment-precision.md).
+> planu naprawy architektury (`2026-06-10-ai-assignment-precision.md`) nie ma w repo —
+> link istniał, ale plik nigdy nie został dodany.
 
 ## Zalecane wartości
 
