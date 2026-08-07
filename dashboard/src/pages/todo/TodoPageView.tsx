@@ -14,6 +14,9 @@ import { logger } from '@/lib/logger';
 import { mobileLayout } from '@/lib/mobile-layout';
 import type { TodoPageController } from '@/hooks/useTodoPageController';
 
+const byPickerName = (a: PickerOption, b: PickerOption) =>
+  a.name.localeCompare(b.name);
+
 interface TodoPageViewProps {
   controller: TodoPageController;
 }
@@ -33,19 +36,19 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
           projectsWithClient(),
           clientsList(),
         ]);
-        setProjectOptions(
-          projects
-            // Tylko AKTYWNE — menu przypisania sesji filtruje tak samo
-            // (`!frozen_at`), więc zamrożone, wykluczone i zarchiwizowane
-            // projekty nie zaśmiecają listy dziesiątkami pozycji.
-            .filter((p) => p.status === 'active')
-            .map((p) => ({ name: p.name, color: p.color }))
-            .sort((a, b) => a.name.localeCompare(b.name)),
-        );
+        // Tylko AKTYWNE projekty — menu przypisania sesji filtruje tak samo
+        // (`!frozen_at`), więc zamrożone, wykluczone i zarchiwizowane nie
+        // zaśmiecają listy dziesiątkami pozycji.
+        const activeProjects: PickerOption[] = [];
+        for (const project of projects) {
+          if (project.status !== 'active') continue;
+          activeProjects.push({ name: project.name, color: project.color });
+        }
+        setProjectOptions(activeProjects.toSorted(byPickerName));
         setClientOptions(
           clients
             .map((c) => ({ name: c.name, color: c.color }))
-            .sort((a, b) => a.name.localeCompare(b.name)),
+            .toSorted(byPickerName),
         );
       } catch (e) {
         logger.error('[todos] reference lists failed:', e);
