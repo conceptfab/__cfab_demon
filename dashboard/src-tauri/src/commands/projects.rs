@@ -1181,14 +1181,24 @@ pub async fn restore_project(app: AppHandle, id: i64) -> Result<(), CommandError
         .map_err(CommandError::Other)
 }
 
-/// Kasuje koszty dodatkowe (m26) skasowanego projektu. Link idzie po NAZWIE, nie
-/// po `id`, więc SQLite nie ma tu kaskady FK — bez tego zostają sieroty, które
-/// nadal liczyłyby się w raporcie klienta. DELETE (nie UPDATE), żeby trigger
-/// `trg_project_costs_tombstone` odnotował usunięcie i sync rozniósł je dalej.
-fn delete_costs_of_project(tx: &rusqlite::Transaction<'_>, id: i64) -> Result<(), String> {
+/// Kasuje encje m26 (koszty, zadania) skasowanego projektu. Link idzie po NAZWIE,
+/// nie po `id`, więc SQLite nie ma tu kaskady FK — bez tego zostają sieroty, które
+/// nadal liczyłyby się w raporcie klienta. DELETE (nie UPDATE), żeby triggery
+/// tombstone odnotowały usunięcie i sync rozniósł je dalej.
+fn delete_m26_entities_of_project(
+    tx: &rusqlite::Transaction<'_>,
+    id: i64,
+) -> Result<(), String> {
     tx.execute(
         "DELETE FROM project_costs \
          WHERE project_name = (SELECT name FROM projects WHERE id = ?1)",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM todos \
+         WHERE scope = 'project' \
+           AND project_name = (SELECT name FROM projects WHERE id = ?1)",
         [id],
     )
     .map_err(|e| e.to_string())?;
@@ -1224,7 +1234,7 @@ pub(crate) fn delete_project_in_conn(
         [id],
     )
     .map_err(|e| e.to_string())?;
-    delete_costs_of_project(&tx, id)?;
+    delete_m26_entities_of_project(&tx, id)?;
     tx.execute("DELETE FROM projects WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
@@ -1297,7 +1307,7 @@ pub(crate) fn delete_all_excluded_projects_in_conn(
             [id],
         )
         .map_err(|e| e.to_string())?;
-        delete_costs_of_project(&tx, *id)?;
+        delete_m26_entities_of_project(&tx, *id)?;
         tx.execute("DELETE FROM projects WHERE id = ?1", [id])
             .map_err(|e| e.to_string())?;
     }
@@ -2150,6 +2160,37 @@ mod tests {
             )
             .unwrap();
         assert_eq!(tombstones, 1);
+    }
+
+    /// Kasowanie projektu musi usunąć też jego zadania — link idzie po nazwie,
+    /// więc SQLite nie ma tu kaskady FK.
+    #[test]
+    fn deleting_project_removes_its_todos() {
+        let mut conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, created_at) VALUES (1, 'Acme', datetime('now'));
+             INSERT INTO todos (uid, scope, project_name, title, updated_at)
+             VALUES ('t1', 'project', 'Acme', 'zadanie', '2026-05-10 10:00:00');
+             INSERT INTO todos (uid, scope, title, updated_at)
+             VALUES ('g1', 'global', 'globalne', '2026-05-10 10:00:00');",
+        )
+        .unwrap();
+
+        delete_project_in_conn(&mut conn, 1).expect("delete");
+
+        let remaining: String = conn
+            .query_row("SELECT uid FROM todos", [], |r| r.get(0))
+            .expect("zadanie globalne musi przetrwac");
+        assert_eq!(remaining, "g1");
+
+        let tombstones: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tombstones WHERE table_name = 'todos' AND sync_key = 't1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tombstones, 1, "usuniecie musi zostac odnotowane dla sync");
     }
 
     /// Koszty innego projektu nie mogą zniknąć przy okazji.
