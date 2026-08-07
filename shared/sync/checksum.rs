@@ -84,6 +84,14 @@ pub fn table_hash_sql(table: &str) -> Option<&'static str> {
                 COALESCE(error,'') || '|' || COALESCE(rolled_back_at,'') || '|' || \
                 COALESCE(rollback_reverted,'') || '|' || COALESCE(rollback_skipped,''), ';'), '') \
              FROM (SELECT * FROM assignment_auto_runs ORDER BY started_at)",
+        "todos" =>
+            "SELECT COALESCE(group_concat( \
+                uid || '|' || scope || '|' || COALESCE(project_name,'') || '|' || \
+                COALESCE(client_name,'') || '|' || title || '|' || COALESCE(notes,'') || '|' || \
+                COALESCE(due_date,'') || '|' || COALESCE(due_time,'') || '|' || priority || '|' || \
+                status || '|' || COALESCE(completed_at,'') || '|' || COALESCE(sort_order,'') || '|' || \
+                updated_at, ';'), '') \
+             FROM (SELECT * FROM todos ORDER BY uid)",
         "project_costs" =>
             "SELECT COALESCE(group_concat( \
                 uid || '|' || project_name || '|' || cost_date || '|' || amount || '|' || \
@@ -120,11 +128,68 @@ mod table_hash_sql_tests {
     fn known_tables_have_sql_unknown_none() {
         for t in [
             "projects", "clients", "applications", "sessions", "manual_sessions",
-            "assignment_feedback", "assignment_auto_runs", "project_costs",
+            "assignment_feedback", "assignment_auto_runs", "project_costs", "todos",
         ] {
             assert!(table_hash_sql(t).is_some(), "brak SQL dla {t}");
         }
         assert!(table_hash_sql("nonexistent").is_none());
+    }
+
+    const TODOS_SCHEMA: &str = "CREATE TABLE todos (
+        id INTEGER PRIMARY KEY, uid TEXT NOT NULL UNIQUE, scope TEXT NOT NULL,
+        project_name TEXT, client_name TEXT, title TEXT NOT NULL, notes TEXT,
+        due_date TEXT, due_time TEXT, priority INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'open', completed_at TEXT, sort_order REAL,
+        gcal_event_id TEXT, gcal_synced_at TEXT, created_at TEXT,
+        updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00');";
+
+    fn todos_conn(insert: &str) -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(TODOS_SCHEMA).unwrap();
+        conn.execute(insert, []).unwrap();
+        conn
+    }
+
+    /// Checksum musi reagować na zmianę STATUSU — to najczęstsza edycja zadania.
+    /// Gdyby jej nie wykrywał, „zrobione" u jednego peera nigdy nie dotarłoby do drugiego.
+    #[test]
+    fn todos_hash_detects_status_drift() {
+        let conn_a = todos_conn(
+            "INSERT INTO todos (uid, scope, title, status, updated_at)
+             VALUES ('t1', 'global', 'zadanie', 'open', '2026-05-10 10:00:00')",
+        );
+        let conn_b = todos_conn(
+            "INSERT INTO todos (uid, scope, title, status, updated_at)
+             VALUES ('t1', 'global', 'zadanie', 'done', '2026-05-10 10:00:00')",
+        );
+
+        let sql = table_hash_sql("todos").unwrap();
+        let raw_a: String = conn_a.query_row(sql, [], |r| r.get(0)).unwrap();
+        let raw_b: String = conn_b.query_row(sql, [], |r| r.get(0)).unwrap();
+        assert_ne!(content_hash(&raw_a), content_hash(&raw_b));
+    }
+
+    /// `gcal_event_id` jest per-maszyna — NIE może wchodzić do hasha, bo dwa
+    /// zbieżne peery z różnymi id wydarzeń raportowałyby wieczny rozjazd.
+    #[test]
+    fn todos_hash_ignores_gcal_fields() {
+        let conn_a = todos_conn(
+            "INSERT INTO todos (uid, scope, title, gcal_event_id, updated_at)
+             VALUES ('t1', 'global', 'zadanie', 'EVT_A', '2026-05-10 10:00:00')",
+        );
+        let conn_b = todos_conn(
+            "INSERT INTO todos (uid, scope, title, gcal_event_id, updated_at)
+             VALUES ('t1', 'global', 'zadanie', 'EVT_B', '2026-05-10 10:00:00')",
+        );
+
+        let sql = table_hash_sql("todos").unwrap();
+        let raw_a: String = conn_a.query_row(sql, [], |r| r.get(0)).unwrap();
+        let raw_b: String = conn_b.query_row(sql, [], |r| r.get(0)).unwrap();
+        assert_eq!(
+            content_hash(&raw_a),
+            content_hash(&raw_b),
+            "rozne gcal_event_id nie moga dawac roznego hasha"
+        );
     }
 
     /// Checksum musi reagować na zmianę KWOTY, nie tylko na uid/updated_at —
