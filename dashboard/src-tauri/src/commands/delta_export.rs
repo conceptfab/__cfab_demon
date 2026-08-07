@@ -1,7 +1,7 @@
 use super::helpers::build_table_hashes;
 use super::types::{
-    ApplicationRow, AssignmentAutoRunRow, AssignmentFeedbackRow, ClientRow, ManualSession, Project,
-    SessionRow, Tombstone,
+    ApplicationRow, AssignmentAutoRunRow, AssignmentFeedbackRow, ClientRow, CostRow, ManualSession,
+    Project, SessionRow, Tombstone,
 };
 use crate::commands::error::CommandError;
 use crate::db;
@@ -23,6 +23,8 @@ pub struct TableHashes {
     pub assignment_auto_runs: String,
     #[serde(default)]
     pub clients: String,
+    #[serde(default)]
+    pub project_costs: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -31,6 +33,8 @@ pub struct DeltaData {
     pub projects: Vec<Project>,
     #[serde(default)]
     pub clients: Vec<ClientRow>,
+    #[serde(default)]
+    pub project_costs: Vec<CostRow>,
     #[serde(default)]
     pub applications: Vec<ApplicationRow>,
     #[serde(default)]
@@ -60,6 +64,35 @@ pub struct DeltaArchive {
     #[serde(default)]
     pub table_hashes: TableHashes,
     pub data: DeltaData,
+}
+
+/// Koszty dodatkowe (m26) — zawsze pełny zbiór, tabela jest mała, a pełny snapshot
+/// upraszcza konwergencję (tak samo jak dla `clients`).
+pub(crate) fn query_project_costs(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<CostRow>, CommandError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT uid, project_name, cost_date, amount, comment, created_at, updated_at \
+             FROM project_costs",
+        )
+        .map_err(|e| CommandError::Other(e.to_string()))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(CostRow {
+                uid: row.get(0)?,
+                project_name: row.get(1)?,
+                cost_date: row.get(2)?,
+                amount: row.get(3)?,
+                comment: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| CommandError::Other(e.to_string()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| CommandError::Other(e.to_string()))?;
+    Ok(rows)
 }
 
 #[tauri::command]
@@ -136,6 +169,9 @@ pub fn build_delta_archive(
         .map_err(|e| CommandError::Other(e.to_string()))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| CommandError::Other(e.to_string()))?;
+
+    // Koszty dodatkowe (m26 — zawsze pełny zbiór, patrz query_project_costs)
+    let project_costs = query_project_costs(&conn)?;
 
     // Applications (all — needed as lookup table for app_id resolution)
     let mut stmt = conn
@@ -288,8 +324,9 @@ pub fn build_delta_archive(
         .map_err(|e| CommandError::Other(e.to_string()))?;
 
     log::info!(
-        "Delta export (since={}): projects={}, clients={}, apps={}, sessions={}, manual={}, tombstones={}, feedback={}, auto_runs={}",
-        since, projects.len(), clients.len(), applications.len(), sessions.len(), manual_sessions.len(), tombstones.len(),
+        "Delta export (since={}): projects={}, clients={}, costs={}, apps={}, sessions={}, manual={}, tombstones={}, feedback={}, auto_runs={}",
+        since, projects.len(), clients.len(), project_costs.len(), applications.len(),
+        sessions.len(), manual_sessions.len(), tombstones.len(),
         assignment_feedback.len(), assignment_auto_runs.len()
     );
 
@@ -308,6 +345,7 @@ pub fn build_delta_archive(
         data: DeltaData {
             projects,
             clients,
+            project_costs,
             applications,
             sessions,
             manual_sessions,
@@ -490,5 +528,34 @@ mod tests {
 
         assert_eq!(rows.len(), 1, "powinien zwrócić dokładnie 1 wiersz");
         assert_eq!(rows[0].sessions_suggested, 2i64);
+    }
+
+    /// Eksport delty musi nieść koszty — bez tego sync ich nie rozniesie
+    /// (dokładnie ta luka wywołała regresję m24 dla `clients`).
+    #[test]
+    fn delta_archive_carries_project_costs() {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory");
+        conn.execute_batch(
+            "CREATE TABLE project_costs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid TEXT NOT NULL UNIQUE,
+                project_name TEXT NOT NULL,
+                cost_date TEXT NOT NULL,
+                amount REAL NOT NULL,
+                comment TEXT,
+                created_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+            );
+            INSERT INTO project_costs (uid, project_name, cost_date, amount, comment, updated_at)
+            VALUES ('u1', 'Acme', '2026-05-10', 250.5, 'licencja', '2026-05-10 10:00:00');",
+        )
+        .expect("schema");
+
+        let rows = query_project_costs(&conn).expect("query");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].uid, "u1");
+        assert_eq!(rows[0].project_name, "Acme");
+        assert_eq!(rows[0].amount, 250.5);
+        assert_eq!(rows[0].comment.as_deref(), Some("licencja"));
     }
 }

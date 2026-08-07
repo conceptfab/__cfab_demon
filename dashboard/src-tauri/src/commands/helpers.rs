@@ -122,6 +122,7 @@ pub(crate) fn build_table_hashes(conn: &rusqlite::Connection) -> super::delta_ex
     super::delta_export::TableHashes {
         projects: compute_table_hash(conn, "projects"),
         clients: compute_table_hash(conn, "clients"),
+        project_costs: compute_table_hash(conn, "project_costs"),
         applications: compute_table_hash(conn, "applications"),
         sessions: compute_table_hash(conn, "sessions"),
         manual_sessions: compute_table_hash(conn, "manual_sessions"),

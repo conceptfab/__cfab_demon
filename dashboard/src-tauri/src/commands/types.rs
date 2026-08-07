@@ -47,6 +47,26 @@ pub struct Project {
 
 /// m24 client entity carried by delta archives (online sync). Mirrors the
 /// `clients` table; identified by NAME (portable across machines, like projects).
+/// Wiersz kosztu dodatkowego (m26). Serializowany do sync i do UI.
+/// `uid` jest kluczem synchronizacji; `project_name` linkuje projekt po NAZWIE.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CostRow {
+    #[serde(default)]
+    pub uid: String,
+    #[serde(default)]
+    pub project_name: String,
+    #[serde(default)]
+    pub cost_date: String,
+    #[serde(default)]
+    pub amount: f64,
+    #[serde(default)]
+    pub comment: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct ClientRow {
     #[serde(default)]
