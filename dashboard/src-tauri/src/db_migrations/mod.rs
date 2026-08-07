@@ -23,9 +23,10 @@ mod m22_updated_at_indexes;
 mod m23_project_merge;
 mod m24_clients;
 mod m25_clients_tombstone;
+mod m26_costs_and_todos;
 pub(crate) mod tombstone_triggers;
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 25;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 26;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -129,6 +130,9 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     }
     if current_version < 25 {
         m25_clients_tombstone::run(&tx)?;
+    }
+    if current_version < 26 {
+        m26_costs_and_todos::run(&tx)?;
     }
 
     tx.execute(
