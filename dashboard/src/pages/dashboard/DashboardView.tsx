@@ -15,6 +15,7 @@ import { ProjectDayTimeline } from '@/components/dashboard/ProjectDayTimeline';
 import { TimelineChart } from '@/components/dashboard/TimelineChart';
 import { TopAppsChart } from '@/components/dashboard/TopAppsChart';
 import { TopProjectsList } from '@/components/dashboard/TopProjectsList';
+import { UpcomingTodosCard } from '@/components/dashboard/UpcomingTodosCard';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -270,6 +271,8 @@ export function DashboardView({ controller }: DashboardViewProps) {
               </Card>
 
               <TopAppsChart apps={stats?.top_apps ?? []} />
+
+              <UpcomingTodosCard />
             </div>
 
             <AllProjectsChart projects={allProjects} />

@@ -4,6 +4,7 @@ import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useUIStore } from '@/store/ui-store';
+import { ContextTodosSection } from '@/components/todo/ContextTodosSection';
 import { useSettingsStore } from '@/store/settings-store';
 import { useDataStore } from '@/store/data-store';
 import { formatMoney, getErrorMessage, cn } from '@/lib/utils';
@@ -170,6 +171,14 @@ export function ClientPage() {
           )}
         </CardContent>
       </Card>
+
+      {clientName && (
+        <ContextTodosSection
+          scope="client"
+          name={clientName}
+          titleKey="todo.client_section_title"
+        />
+      )}
     </div>
   );
 }

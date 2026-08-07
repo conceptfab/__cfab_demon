@@ -11,6 +11,7 @@ import { ProjectOverview } from '@/components/project-page/ProjectOverview';
 import { ProjectEstimatesSection } from '@/components/project-page/ProjectEstimatesSection';
 import { ProjectCostsSection } from '@/components/project-page/ProjectCostsSection';
 import { CostDialog } from '@/components/project-page/CostDialog';
+import { ContextTodosSection } from '@/components/todo/ContextTodosSection';
 import { ProjectTimelineSection } from '@/components/project-page/ProjectTimelineSection';
 import { ProjectSessionsList } from '@/components/project-page/ProjectSessionsList';
 import type { ProjectSessionRow } from '@/components/project-page/ProjectSessionsList';
@@ -144,6 +145,12 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
       />
 
       <CostDialog controller={costs} />
+
+      <ContextTodosSection
+        scope="project"
+        name={project.name}
+        titleKey="todo.project_section_title"
+      />
 
       {mergedChildren.length > 0 && (
         <Card>
