@@ -1,8 +1,8 @@
 use super::daily_store_bridge;
 use super::helpers::{run_app_blocking, timeflow_data_dir};
 use super::types::{
-    AppDailyData, ApplicationRow, ClientRow, DailyData, DateRange, ExportArchive, ExportData,
-    ExportMetadata, FileActivityExportRow, ManualSession, Project, SessionRow,
+    AppDailyData, ApplicationRow, ClientRow, CostRow, DailyData, DateRange, ExportArchive,
+    ExportData, ExportMetadata, FileActivityExportRow, ManualSession, Project, SessionRow,
 };
 use crate::commands::error::CommandError;
 use crate::db;
@@ -148,6 +148,33 @@ fn build_export_archive(
                         archived_at: row.get(7)?,
                         created_at: row.get(8)?,
                         updated_at: row.get(9)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            rows
+        };
+
+        // Koszty dodatkowe (m26 entity) — full table. Bez tego przywrócenie backupu
+        // gubiłoby całą historię kosztów projektu; link po NAZWIE, więc `id` pomijamy.
+        let project_costs: Vec<CostRow> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT uid, project_name, cost_date, amount, comment, created_at, updated_at \
+                     FROM project_costs",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(CostRow {
+                        uid: row.get(0)?,
+                        project_name: row.get(1)?,
+                        cost_date: row.get(2)?,
+                        amount: row.get(3)?,
+                        comment: row.get(4)?,
+                        created_at: row.get(5)?,
+                        updated_at: row.get(6)?,
                     })
                 })
                 .map_err(|e| e.to_string())?
@@ -447,6 +474,7 @@ fn build_export_archive(
             data: ExportData {
                 projects,
                 clients,
+                project_costs,
                 applications,
                 sessions,
                 manual_sessions,

@@ -549,6 +549,10 @@ pub struct ExportData {
     // (absent → empty). Carried by both full exports and delta archives.
     #[serde(default)]
     pub clients: Vec<ClientRow>,
+    // m26 koszty dodatkowe. `#[serde(default)]` utrzymuje importowalność archiwów
+    // sprzed m26 (brak klucza → pusta lista, nie błąd).
+    #[serde(default)]
+    pub project_costs: Vec<CostRow>,
     pub applications: Vec<ApplicationRow>,
     pub sessions: Vec<SessionRow>,
     pub manual_sessions: Vec<ManualSession>,
