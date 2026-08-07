@@ -893,7 +893,11 @@
     "help_limits": "Zadania nie są powiązane z sesjami i nie liczą czasu — to czysta lista. Usunięcie projektu lub klienta kasuje przypisane do nich zadania. Zadanie projektowe wymaga projektu, klienckie wymaga klienta.",
     "upcoming_for_project": "Zadania w tym projekcie: {{count}}",
     "field_end_date": "Termin do",
-    "invalid_range": "Data „do” nie może być wcześniejsza niż „od”"
+    "invalid_range": "Data „do” nie może być wcześniejsza niż „od”",
+    "search_results": "Wyniki wyszukiwania",
+    "results_count": "{{shown}} z {{total}}",
+    "clear_search": "Wyczyść wyszukiwanie",
+    "filtered_note": "Lista jest zawężona filtrami — licznik w menu pokazuje wszystkie otwarte zadania."
   },
   "data_page": {
     "sections": {

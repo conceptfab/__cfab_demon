@@ -298,6 +298,11 @@ export function useTodoPageController() {
     withoutDate,
     openCreateForDate,
     hasAnyTodo: todos.length > 0,
+    searching,
+    shownCount: filtered.length,
+    // Licznik odniesienia: otwarte zadania, tak jak plakietka w nawigacji —
+    // żeby „1 z 2" znaczyło to samo w obu miejscach.
+    totalCount: todos.filter((todo) => todo.status === 'open').length,
     loading,
     error,
     search,

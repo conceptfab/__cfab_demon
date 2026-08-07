@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Button } from '@/components/ui/button';
 import { TodoDialog } from '@/components/todo/TodoDialog';
 import { TodoCalendar } from '@/components/todo/TodoCalendar';
 import { TodoDayView } from '@/components/todo/TodoDayView';
@@ -83,6 +84,34 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
         setShowDone={controller.setShowDone}
         onAdd={controller.openCreate}
       />
+
+      {(controller.searching ||
+        controller.scopeFilter !== 'all' ||
+        controller.showDone) && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-secondary/10 px-3 py-2 text-xs">
+          <span className="font-medium">
+            {controller.searching
+              ? t('todo.search_results')
+              : t('todo.filtered_note')}
+          </span>
+          <span className="text-muted-foreground">
+            {t('todo.results_count', {
+              shown: controller.shownCount,
+              total: controller.totalCount,
+            })}
+          </span>
+          {controller.searching && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto h-6"
+              onClick={() => controller.setSearch('')}
+            >
+              {t('todo.clear_search')}
+            </Button>
+          )}
+        </div>
+      )}
 
       {controller.loading ? (
         <p className="py-6 text-sm text-muted-foreground">

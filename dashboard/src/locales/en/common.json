@@ -893,7 +893,11 @@
     "help_limits": "Tasks are not linked to sessions and do not track time — this is a plain list. Deleting a project or client deletes the tasks assigned to it. A project task requires a project; a client task requires a client.",
     "upcoming_for_project": "Tasks in this project: {{count}}",
     "field_end_date": "Due until",
-    "invalid_range": "The end date cannot precede the start date"
+    "invalid_range": "The end date cannot precede the start date",
+    "search_results": "Search results",
+    "results_count": "{{shown}} of {{total}}",
+    "clear_search": "Clear search",
+    "filtered_note": "The list is narrowed by filters — the nav counter shows all open tasks."
   },
   "data_page": {
     "sections": {
