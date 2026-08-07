@@ -1210,4 +1210,78 @@ mod project_costs_merge_tests {
             .unwrap();
         assert_eq!(count, 0);
     }
+
+    /// Najczęstsza ścieżka po wpięciu w sync: koszt od peera, którego lokalnie nie ma.
+    #[test]
+    fn merge_costs_inserts_new_row() {
+        let mut conn = make_db();
+        let archive = serde_json::json!({
+            "data": { "project_costs": [{
+                "uid": "new1", "project_name": "Acme", "cost_date": "2026-05-10",
+                "amount": 320.5, "comment": "podwykonawca",
+                "created_at": "2026-05-10 09:00:00", "updated_at": "2026-05-10 10:00:00"
+            }]}
+        });
+        let tx = conn.transaction().unwrap();
+        merge_project_costs(&tx, &archive, &hooks()).unwrap();
+        tx.commit().unwrap();
+
+        let (project_name, cost_date, amount, comment, created_at, updated_at):
+            (String, String, f64, String, String, String) = conn
+            .query_row(
+                "SELECT project_name, cost_date, amount, comment, created_at, updated_at
+                 FROM project_costs WHERE uid = 'new1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+            )
+            .expect("nowy koszt musi zostac wstawiony");
+        assert_eq!(project_name, "Acme");
+        assert_eq!(cost_date, "2026-05-10");
+        assert_eq!(amount, 320.5);
+        assert_eq!(comment, "podwykonawca");
+        assert_eq!(created_at, "2026-05-10 09:00:00");
+        assert_eq!(updated_at, "2026-05-10 10:00:00");
+    }
+
+    /// Koszt 0.00 jest legalny — `json_f64_opt` odfiltrowałby go jako <= 0,
+    /// dlatego `amount` idzie przez `json_f64`. Test pilnuje tej decyzji.
+    #[test]
+    fn merge_costs_accepts_zero_amount() {
+        let mut conn = make_db();
+        let archive = serde_json::json!({
+            "data": { "project_costs": [{
+                "uid": "zero", "project_name": "Acme", "cost_date": "2026-05-10",
+                "amount": 0.0, "updated_at": "2026-05-10 10:00:00"
+            }]}
+        });
+        let tx = conn.transaction().unwrap();
+        merge_project_costs(&tx, &archive, &hooks()).unwrap();
+        tx.commit().unwrap();
+
+        let amount: f64 = conn
+            .query_row("SELECT amount FROM project_costs WHERE uid = 'zero'", [], |r| r.get(0))
+            .expect("koszt 0.0 musi zostac zapisany, nie odfiltrowany");
+        assert_eq!(amount, 0.0);
+    }
+
+    /// `project_name` jest jedynym linkiem do projektu (brak FK) — pusty czyni
+    /// rekord bezużytecznym, więc jest pomijany zamiast zapisywany jako sierota.
+    #[test]
+    fn merge_costs_skips_row_without_project_name() {
+        let mut conn = make_db();
+        let archive = serde_json::json!({
+            "data": { "project_costs": [{
+                "uid": "orphan", "cost_date": "2026-05-10",
+                "amount": 10.0, "updated_at": "2026-05-10 10:00:00"
+            }]}
+        });
+        let tx = conn.transaction().unwrap();
+        merge_project_costs(&tx, &archive, &hooks()).expect("brak project_name nie moze byc bledem");
+        tx.commit().unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM project_costs", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
 }
