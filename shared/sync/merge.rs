@@ -208,6 +208,20 @@ pub fn apply_tombstones(
                             local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
                         } else { false }
                     }
+                    "project_costs" => {
+                        // sync_key = uid
+                        let local_updated: Option<String> = tx
+                            .query_row(
+                                "SELECT updated_at FROM project_costs WHERE uid = ?1",
+                                [sync_key],
+                                |row| row.get(0),
+                            )
+                            .ok();
+                        local_updated
+                            .as_deref()
+                            .map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str))
+                            .unwrap_or(false)
+                    }
                     _ => false,
                 };
                 if skip_tombstone {
@@ -302,6 +316,10 @@ pub fn apply_tombstones(
                             [sync_key],
                         ) { log::warn!("tombstone FK cleanup projects for client '{}': {}", sync_key, e); }
                         let _ = tx.execute("DELETE FROM clients WHERE name = ?1", [sync_key]);
+                    }
+                    "project_costs" => {
+                        // Brak FK — koszt nie ma zależnych rekordów do posprzątania.
+                        let _ = tx.execute("DELETE FROM project_costs WHERE uid = ?1", [sync_key]);
                     }
                     _ => { log::warn!("Tombstone for unknown table: {}", table_name); }
                 }
@@ -545,6 +563,79 @@ pub fn merge_clients(
                         ],
                     ).map_err(|e| e.to_string())?;
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+// ── Project costs merge (m26) ──
+
+/// Merge kosztów dodatkowych (m26). Identyfikacja po `uid` — koszt nie ma klucza
+/// naturalnego (dwa koszty tego samego dnia o tej samej kwocie są legalne).
+/// Last-writer-wins po `updated_at`; lokalny tombstone nowszy niż rekord peera
+/// blokuje wskrzeszenie. `project_name` jedzie jako nazwa, bo `id` jest lokalne.
+pub fn merge_project_costs(
+    tx: &rusqlite::Transaction<'_>,
+    archive: &serde_json::Value,
+    _hooks: &MergeHooks<'_>,
+) -> Result<(), String> {
+    let Some(costs) = archive.pointer("/data/project_costs").and_then(|v| v.as_array()) else {
+        return Ok(());
+    };
+    for c in costs {
+        let uid = c.get("uid").and_then(|v| v.as_str()).unwrap_or("");
+        if uid.is_empty() {
+            continue;
+        }
+        let updated_at = c.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
+        if local_tombstone_covers(tx, "project_costs", uid, updated_at) {
+            continue;
+        }
+        let project_name = json_str_opt(c, "project_name").unwrap_or_default();
+        if project_name.is_empty() {
+            continue;
+        }
+        let cost_date = json_str_opt(c, "cost_date").unwrap_or_default();
+        // json_f64 (nie json_f64_opt) — koszt 0.0 jest legalny, a json_f64_opt
+        // odfiltrowuje wartości <= 0.
+        let amount = json_f64(c, "amount");
+        let comment = json_str_opt(c, "comment");
+
+        let local_ts: Option<String> = tx
+            .query_row(
+                "SELECT updated_at FROM project_costs WHERE uid = ?1",
+                [uid],
+                |row| row.get(0),
+            )
+            .ok();
+
+        match local_ts {
+            Some(lt) if normalize_ts(&lt) >= normalize_ts(updated_at) => { /* local wins */ }
+            Some(lt) => {
+                log_merge_conflict(tx, "project_costs", uid, &lt, updated_at, "remote");
+                tx.execute(
+                    "UPDATE project_costs SET project_name = ?1, cost_date = ?2, amount = ?3, \
+                     comment = ?4, updated_at = ?5 WHERE uid = ?6",
+                    rusqlite::params![project_name, cost_date, amount, comment, updated_at, uid],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            None => {
+                tx.execute(
+                    "INSERT INTO project_costs (uid, project_name, cost_date, amount, comment, \
+                     created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![
+                        uid,
+                        project_name,
+                        cost_date,
+                        amount,
+                        comment,
+                        json_str_opt(c, "created_at"),
+                        updated_at,
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
             }
         }
     }
@@ -925,5 +1016,198 @@ mod tests {
             .query_row("SELECT count(*) FROM projects WHERE name = 'remote-new'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(new_exists, 1, "fresh peer project should be inserted");
+    }
+}
+
+#[cfg(test)]
+mod project_costs_merge_tests {
+    use super::*;
+
+    fn make_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory");
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             CREATE TABLE project_costs (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 uid TEXT NOT NULL UNIQUE,
+                 project_name TEXT NOT NULL,
+                 cost_date TEXT NOT NULL,
+                 amount REAL NOT NULL,
+                 comment TEXT,
+                 created_at TEXT,
+                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+             );
+             CREATE TABLE tombstones (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 table_name TEXT NOT NULL,
+                 record_id INTEGER,
+                 record_uuid TEXT,
+                 deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                 sync_key TEXT
+             );
+             CREATE TABLE sync_merge_log (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 table_name TEXT, record_key TEXT, resolution TEXT,
+                 local_updated_at TEXT, remote_updated_at TEXT, winner TEXT
+             );",
+        )
+        .expect("schema");
+        conn
+    }
+
+    fn hooks() -> MergeHooks<'static> {
+        MergeHooks { log: &|_: &str| {}, diag: false }
+    }
+
+    /// Nowszy rekord peera nadpisuje lokalny; starszy jest ignorowany.
+    #[test]
+    fn merge_costs_last_writer_wins() {
+        let mut conn = make_db();
+        conn.execute(
+            "INSERT INTO project_costs (uid, project_name, cost_date, amount, comment, updated_at)
+             VALUES ('u1', 'Acme', '2026-05-10', 100.0, 'stary', '2026-05-10 10:00:00')",
+            [],
+        )
+        .unwrap();
+
+        // Peer ma NOWSZĄ wersję → wygrywa
+        let newer = serde_json::json!({
+            "data": { "project_costs": [{
+                "uid": "u1", "project_name": "Acme", "cost_date": "2026-05-11",
+                "amount": 250.0, "comment": "nowy", "created_at": "2026-05-10 10:00:00",
+                "updated_at": "2026-05-12 09:00:00"
+            }]}
+        });
+        let tx = conn.transaction().unwrap();
+        merge_project_costs(&tx, &newer, &hooks()).unwrap();
+        tx.commit().unwrap();
+
+        let (amount, comment): (f64, String) = conn
+            .query_row(
+                "SELECT amount, comment FROM project_costs WHERE uid = 'u1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(amount, 250.0);
+        assert_eq!(comment, "nowy");
+
+        // Peer ma STARSZĄ wersję → lokalne zostaje
+        let older = serde_json::json!({
+            "data": { "project_costs": [{
+                "uid": "u1", "project_name": "Acme", "cost_date": "2026-05-01",
+                "amount": 5.0, "comment": "przestarzale",
+                "updated_at": "2026-05-01 08:00:00"
+            }]}
+        });
+        let tx = conn.transaction().unwrap();
+        merge_project_costs(&tx, &older, &hooks()).unwrap();
+        tx.commit().unwrap();
+
+        let amount: f64 = conn
+            .query_row("SELECT amount FROM project_costs WHERE uid = 'u1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(amount, 250.0, "starszy rekord peera nie moze nadpisac lokalnego");
+    }
+
+    /// Rekord peera nie może wskrzesić kosztu skasowanego lokalnie później.
+    #[test]
+    fn merge_costs_respects_local_tombstone() {
+        let mut conn = make_db();
+        conn.execute(
+            "INSERT INTO tombstones (table_name, sync_key, deleted_at)
+             VALUES ('project_costs', 'u2', '2026-06-01 12:00:00')",
+            [],
+        )
+        .unwrap();
+
+        let archive = serde_json::json!({
+            "data": { "project_costs": [{
+                "uid": "u2", "project_name": "Acme", "cost_date": "2026-05-20",
+                "amount": 99.0, "updated_at": "2026-05-20 10:00:00"
+            }]}
+        });
+        let tx = conn.transaction().unwrap();
+        merge_project_costs(&tx, &archive, &hooks()).unwrap();
+        tx.commit().unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM project_costs WHERE uid = 'u2'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "tombstone nowszy niz rekord peera blokuje wskrzeszenie");
+    }
+
+    /// Tombstone peera kasuje lokalny koszt.
+    #[test]
+    fn apply_tombstone_deletes_cost() {
+        let mut conn = make_db();
+        conn.execute(
+            "INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u3', 'Acme', '2026-05-10', 100.0, '2026-05-10 10:00:00')",
+            [],
+        )
+        .unwrap();
+
+        let archive = serde_json::json!({
+            "data": { "tombstones": [{
+                "table_name": "project_costs", "record_id": 1,
+                "sync_key": "u3", "deleted_at": "2026-06-01 12:00:00"
+            }]}
+        });
+        let tx = conn.transaction().unwrap();
+        apply_tombstones(&tx, &archive, &hooks()).unwrap();
+        tx.commit().unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM project_costs WHERE uid = 'u3'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    /// Rekord odtworzony PO tombstonie nie może zostać skasowany starym tombstonem.
+    #[test]
+    fn apply_tombstone_skips_cost_updated_after_delete() {
+        let mut conn = make_db();
+        conn.execute(
+            "INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u4', 'Acme', '2026-05-10', 100.0, '2026-06-05 10:00:00')",
+            [],
+        )
+        .unwrap();
+
+        let archive = serde_json::json!({
+            "data": { "tombstones": [{
+                "table_name": "project_costs", "record_id": 1,
+                "sync_key": "u4", "deleted_at": "2026-06-01 12:00:00"
+            }]}
+        });
+        let tx = conn.transaction().unwrap();
+        apply_tombstones(&tx, &archive, &hooks()).unwrap();
+        tx.commit().unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM project_costs WHERE uid = 'u4'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "rekord nowszy niz tombstone musi przetrwac");
+    }
+
+    /// Rekord bez `uid` nie może wywrócić transakcji merge.
+    #[test]
+    fn merge_costs_skips_row_without_uid() {
+        let mut conn = make_db();
+        let archive = serde_json::json!({
+            "data": { "project_costs": [{
+                "project_name": "Acme", "cost_date": "2026-05-10",
+                "amount": 10.0, "updated_at": "2026-05-10 10:00:00"
+            }]}
+        });
+        let tx = conn.transaction().unwrap();
+        merge_project_costs(&tx, &archive, &hooks()).expect("brak uid nie moze byc bledem");
+        tx.commit().unwrap();
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM project_costs", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 }
