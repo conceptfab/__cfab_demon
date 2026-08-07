@@ -1,6 +1,7 @@
 export const HELP_TAB_IDS = [
   "quickstart",
   "dashboard",
+  "todo",
   "sessions",
   "projects",
   "estimates",
@@ -30,6 +31,7 @@ export const DEFAULT_HELP_TAB: HelpTabId = "quickstart";
 const HELP_TAB_TO_PAGE: Record<HelpTabId, string> = {
   quickstart: "quickstart",
   dashboard: "dashboard",
+  todo: "todo",
   sessions: "sessions",
   projects: "projects",
   estimates: "estimates",
@@ -53,6 +55,7 @@ const HELP_TAB_TO_PAGE: Record<HelpTabId, string> = {
 const PAGE_TO_HELP_TAB: Record<string, HelpTabId> = {
   quickstart: "quickstart",
   dashboard: "dashboard",
+  todo: "todo",
   sessions: "sessions",
   projects: "projects",
   "project-card": "projects",
