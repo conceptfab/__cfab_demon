@@ -1681,6 +1681,26 @@ pub async fn costs_delete(app: AppHandle, uid: String) -> Result<(), CommandErro
 }
 ```
 
+- [ ] **Step 3a: Zregeneruj warstwę RPC webui — OBOWIĄZKOWE po dodaniu komend**
+
+> **Trzecie miejsce rejestracji komend, którego spec nie przewidział.** Poza `mod.rs`
+> i `invoke_handler` w `lib.rs` istnieje `dashboard/src-tauri/src/webui/rpc_generated.rs`
+> — plik GENEROWANY, przez który webui (wersja mobilna serwowana po HTTP) dispatchuje
+> komendy. Bez regeneracji komendy działają w aplikacji desktop, ale **cicho nie działają
+> na telefonie**. `build.rs` sygnalizuje rozjazd tylko ostrzeżeniem (nie błędem), więc
+> łatwo to przeoczyć.
+
+```bash
+cd dashboard/src-tauri && node scripts/gen_webrpc.cjs
+node scripts/gen_webrpc.cjs --check   # exit 0 = zgodne
+```
+
+Zweryfikuj, że wszystkie cztery komendy wylądowały w pliku:
+
+```bash
+grep -c "costs_" dashboard/src-tauri/src/webui/rpc_generated.rs   # oczekiwane: 4
+```
+
 - [ ] **Step 4: Zarejestruj moduł i komendy**
 
 W `dashboard/src-tauri/src/commands/mod.rs` dopisz (zachowując alfabetyczne sąsiedztwo z `mod clients;`):
