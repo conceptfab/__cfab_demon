@@ -121,6 +121,23 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
         </div>
       )}
 
+      {controller.secondary && (
+        <div className="space-y-2 border-t border-border/40 pt-4">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {controller.secondary.label}
+          </h2>
+          <div className="overflow-x-auto opacity-80">
+            <TodoCalendar
+              weeks={controller.secondary.weeks}
+              colorByName={colorByName}
+              onDayClick={controller.openCreateForDate}
+              onTodoClick={controller.openEdit}
+              onToggleStatus={(todo) => void controller.toggleStatus(todo)}
+            />
+          </div>
+        </div>
+      )}
+
       {controller.viewMode === 'calendar' && controller.withoutDate.length > 0 && (
         <TodoGroupList
           groups={{

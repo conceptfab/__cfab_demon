@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useDataStore } from '@/store/data-store';
+import { addMonths, format } from 'date-fns';
+
+import { todoPresetToRange, shiftTodoAnchor } from '@/lib/todo-period';
+import type { TimePreset } from '@/store/data-store';
 
 import { useTranslation } from 'react-i18next';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
@@ -38,14 +41,28 @@ const EMPTY_FORM: TodoInput = {
 
 export function useTodoPageController() {
   const { t, i18n } = useTranslation();
-  // Ten sam zakres dat co reszta aplikacji (Dashboard, Sesje, Wyceny) — zadania
-  // muszą dać się przeglądać na tej samej osi czasu, a nie tylko względem dziś.
-  const dateRange = useDataStore((s) => s.dateRange);
-  const timePreset = useDataStore((s) => s.timePreset);
-  const setTimePreset = useDataStore((s) => s.setTimePreset);
-  const setDateRange = useDataStore((s) => s.setDateRange);
-  const shiftDateRange = useDataStore((s) => s.shiftDateRange);
-  const canShiftForward = useDataStore((s) => s.canShiftForward);
+  // Okres LOKALNY, nie ze wspólnego store'a: tamten liczy zakresy wstecz i blokuje
+  // ruch w przyszłość, a to jest kalendarz do planowania. Pasek i słownik presetów
+  // zostają wspólne — różni się tylko arytmetyka i brak blokady „do przodu".
+  const [timePreset, setTimePresetState] = useState<TimePreset>('month');
+  const [anchor, setAnchor] = useState<Date>(() => new Date());
+  const dateRange = useMemo(
+    () => todoPresetToRange(timePreset, anchor),
+    [timePreset, anchor],
+  );
+  const setTimePreset = useCallback((preset: TimePreset) => {
+    setTimePresetState(preset);
+    // Zmiana presetu wraca do „teraz" — inaczej po cofnięciu o 3 miesiące
+    // kliknięcie „Dziś" pokazywałoby dzień sprzed kwartału.
+    setAnchor(new Date());
+  }, []);
+  const shiftDateRange = useCallback(
+    (direction: -1 | 1) =>
+      setAnchor((current) => shiftTodoAnchor(timePreset, current, direction)),
+    [timePreset],
+  );
+  // Planowanie wymaga ruchu w przód; ograniczenie ma sens tylko dla czasu pracy.
+  const canShiftForward = timePreset !== 'all';
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,8 +135,45 @@ export function useTodoPageController() {
   //  • 'day'      — dla jednego dnia siatka degeneruje się do wielkiego pustego
   //                 prostokąta; zwykła lista czyta się lepiej.
   //  • 'calendar' — tydzień i miesiąc.
-  const viewMode: 'calendar' | 'list' | 'day' =
-    timePreset === 'all' ? 'list' : timePreset === 'today' ? 'day' : 'calendar';
+  //  • wpisana fraza — wyniki muszą być widoczne niezależnie od okresu, inaczej
+  //    trafienie w innym miesiącu jest niewidoczne i szukajka wygląda na zepsutą.
+  const searching = search.trim().length > 0;
+  const viewMode: 'calendar' | 'list' | 'day' = searching
+    ? 'list'
+    : timePreset === 'all'
+      ? 'list'
+      : timePreset === 'today'
+        ? 'day'
+        : 'calendar';
+
+  // Podgląd szerszego kontekstu pod widokiem głównym: pod dniem tydzień,
+  // pod tygodniem miesiąc, pod miesiącem miesiąc następny. Kalendarz do
+  // planowania musi pokazywać, co jest tuż obok wybranego okresu.
+  const secondary = useMemo(() => {
+    if (searching || timePreset === 'all') return null;
+    if (timePreset === 'today') {
+      const weekEnd = todoPresetToRange('week', anchor).end;
+      return {
+        weeks: buildTodoWeekCalendar(anchor, filtered, locale),
+        label: `${format(anchor, 'MMM d', { locale })} – ${format(
+          new Date(`${weekEnd}T12:00:00`),
+          'MMM d',
+          { locale },
+        )}`,
+      };
+    }
+    if (timePreset === 'week') {
+      return {
+        weeks: buildTodoMonthCalendar(anchor, filtered, locale),
+        label: format(anchor, 'LLLL yyyy', { locale }),
+      };
+    }
+    const next = addMonths(anchor, 1);
+    return {
+      weeks: buildTodoMonthCalendar(next, filtered, locale),
+      label: format(next, 'LLLL yyyy', { locale }),
+    };
+  }, [searching, timePreset, anchor, filtered, locale]);
 
   /** Zadania wybranego dnia — wejście dla widoku 'day'. */
   const dayTodos = useMemo(
@@ -233,13 +287,13 @@ export function useTodoPageController() {
     dateRange,
     timePreset,
     setTimePreset,
-    setDateRange,
     shiftDateRange,
     canShiftForward,
     todos,
     groups,
     calendarWeeks,
     viewMode,
+    secondary,
     dayTodos,
     withoutDate,
     openCreateForDate,
