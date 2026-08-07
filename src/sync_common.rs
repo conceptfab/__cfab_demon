@@ -398,6 +398,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     timeflow_shared::sync::merge::merge_projects(&tx, &archive, &hooks)?;
     timeflow_shared::sync::merge::merge_clients(&tx, &archive, &hooks)?;
     timeflow_shared::sync::merge::merge_project_costs(&tx, &archive, &hooks)?;
+    timeflow_shared::sync::merge::merge_todos(&tx, &archive, &hooks)?;
     let mut id_maps = timeflow_shared::sync::merge::build_id_maps(&tx, &archive)?;
     timeflow_shared::sync::merge::merge_applications(&tx, &archive, &hooks, &mut id_maps)?;
 
@@ -1982,6 +1983,42 @@ mod tests {
         assert_eq!(cost_date, "2026-06-15");
         assert_eq!(amount, 123.45);
         assert_eq!(comment.as_deref(), Some("materialy budowlane"));
+    }
+
+    #[test]
+    fn merge_roundtrip_todos_via_daemon_export() {
+        // Dowod end-to-end, ze zadanie faktycznie opuszcza eksport demona
+        // (build_delta_for_pull, przez build_full_export -> build_full_snapshot_public)
+        // i wraca przez merge_incoming_data.
+        let master = open_test_db();
+        ensure_m26_entity_tables(&master).expect("m26 tables on master");
+        master
+            .execute(
+                "INSERT INTO todos (uid, scope, project_name, title, notes, due_date, due_time, \
+                 priority, status, sort_order, created_at, updated_at) \
+                 VALUES ('todo-uid-1', 'project', '11_26_Metro', 'Wyslac kosztorys', 'po akceptacji', \
+                 '2026-06-15', '09:30', 2, 'open', 1000.0, '2026-06-10 09:00:00', '2026-06-10 09:00:00')",
+                [],
+            )
+            .unwrap();
+
+        let export = build_full_export(&master).expect("export master");
+
+        let mut slave = open_test_db();
+        merge_incoming_data(&mut slave, &export).expect("merge into slave");
+
+        let (scope, project, title, due, prio): (String, Option<String>, String, Option<String>, i64) = slave
+            .query_row(
+                "SELECT scope, project_name, title, due_date, priority FROM todos WHERE uid = 'todo-uid-1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .expect("zadanie musi dojechac przez sync demona");
+        assert_eq!(scope, "project");
+        assert_eq!(project.as_deref(), Some("11_26_Metro"));
+        assert_eq!(title, "Wyslac kosztorys");
+        assert_eq!(due.as_deref(), Some("2026-06-15"));
+        assert_eq!(prio, 2);
     }
 
     #[test]
