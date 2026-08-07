@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { TFunction } from 'i18next';
-import { setSecureToken, triggerDaemonOnlineSync } from '@/lib/tauri';
+import {
+  buildDaemonSettingsPayload,
+  deriveGroupEncryptionKey,
+  getDaemonOnlineSyncResult,
+  getDaemonOnlineSyncSettings,
+  saveDaemonOnlineSyncSettings,
+  setSecureToken,
+  triggerDaemonOnlineSync,
+} from '@/lib/tauri';
+import { saveOnlineSyncLastResult } from '@/lib/sync/sync-state';
 import {
   activateLicense,
   clearLicenseInfo,
@@ -72,11 +81,6 @@ export function useSyncSettings({
     if (!groupId) return;
     void (async () => {
       try {
-        const {
-          getDaemonOnlineSyncSettings,
-          saveDaemonOnlineSyncSettings,
-          deriveGroupEncryptionKey,
-        } = await import('@/lib/tauri/online-sync');
         const current = await getDaemonOnlineSyncSettings();
         if (current.encryption_key && current.encryption_key.length > 0) return;
         const encryption_key = await deriveGroupEncryptionKey(groupId);
@@ -134,8 +138,6 @@ export function useSyncSettings({
 
   const persistDaemonOnlineSyncSettings = useCallback(
     async (savedOnlineSync: OnlineSyncSettings, authToken: string) => {
-      const { saveDaemonOnlineSyncSettings, buildDaemonSettingsPayload } =
-        await import('@/lib/tauri/online-sync');
       // E2E: encryption_key (creds) zawsze v1 z grupy; data_encryption_key/key_scheme
       // z passphrase (model B) gdy ustawiony. sync_mode=async gdy licencja aktywna.
       const daemonSettings = await buildDaemonSettingsPayload({
@@ -191,10 +193,6 @@ export function useSyncSettings({
 
         await triggerDaemonOnlineSync({ force: true });
 
-        const [{ getDaemonOnlineSyncResult }, { saveOnlineSyncLastResult }] = await Promise.all([
-          import('@/lib/tauri/online-sync'),
-          import('@/lib/sync/sync-state'),
-        ]);
         const startedAt = Math.floor(Date.now() / 1000);
         let outcome: Awaited<ReturnType<typeof getDaemonOnlineSyncResult>> | null = null;
         for (let i = 0; i < 40; i++) {
@@ -263,10 +261,6 @@ export function useSyncSettings({
 
         await triggerDaemonOnlineSync({ force: true });
 
-        const [{ getDaemonOnlineSyncResult }, { saveOnlineSyncLastResult }] = await Promise.all([
-          import('@/lib/tauri/online-sync'),
-          import('@/lib/sync/sync-state'),
-        ]);
         const startedAt = Math.floor(Date.now() / 1000);
         let outcome: Awaited<ReturnType<typeof getDaemonOnlineSyncResult>> | null = null;
         for (let i = 0; i < 40; i++) {

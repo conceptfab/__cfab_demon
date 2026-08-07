@@ -58,14 +58,18 @@ export function ProjectCostsSection({
             <table className="hidden w-full text-sm md:table">
               <thead>
                 <tr className="text-left text-muted-foreground">
-                  <th className="py-2 font-medium">{t('costs.column_date')}</th>
-                  <th className="py-2 text-right font-medium">
+                  {/* Szerokości kolumn: data i akcje wąskie i stałe, komentarz
+                      zabiera resztę — inaczej długi komentarz spycha kwotę. */}
+                  <th className="w-28 py-2 pr-4 font-medium">
+                    {t('costs.column_date')}
+                  </th>
+                  <th className="w-32 py-2 pr-6 text-right font-medium">
                     {t('costs.column_amount')}
                   </th>
-                  <th className="py-2 font-medium">
+                  <th className="py-2 pr-4 font-medium">
                     {t('costs.column_comment')}
                   </th>
-                  <th className="py-2 text-right font-medium">
+                  <th className="w-24 py-2 text-right font-medium">
                     {t('costs.column_actions')}
                   </th>
                 </tr>
@@ -73,14 +77,14 @@ export function ProjectCostsSection({
               <tbody>
                 {costs.map((cost) => (
                   <tr key={cost.uid} className="border-t">
-                    <td className="py-2">{cost.cost_date}</td>
-                    <td className="py-2 text-right tabular-nums">
+                    <td className="py-2 pr-4 tabular-nums">{cost.cost_date}</td>
+                    <td className="py-2 pr-6 text-right tabular-nums">
                       {formatMoney(cost.amount, currencyCode)}
                     </td>
-                    <td className="py-2 text-muted-foreground">
+                    <td className="break-words py-2 pr-4 text-muted-foreground">
                       {cost.comment ?? t('ui.common.not_available')}
                     </td>
-                    <td className="py-2 text-right">
+                    <td className="py-2 text-right whitespace-nowrap">
                       <Button
                         size="sm"
                         variant="ghost"

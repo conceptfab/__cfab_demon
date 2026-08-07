@@ -1,6 +1,10 @@
 import { useCallback, useState } from 'react';
 import type { TFunction } from 'i18next';
-import { settingsApi } from '@/lib/tauri';
+import {
+  buildDaemonSettingsPayload,
+  saveDaemonOnlineSyncSettings,
+  settingsApi,
+} from '@/lib/tauri';
 import { loadLicenseInfo, saveOnlineSyncSettings } from '@/lib/online-sync';
 import { logTauriWarn } from '@/lib/utils';
 import {
@@ -110,20 +114,19 @@ export function useSettingsFormState({
       syncSettings.onlineSyncSettings,
     );
 
-    void import('@/lib/tauri/online-sync')
-      .then(async ({ saveDaemonOnlineSyncSettings, buildDaemonSettingsPayload }) => {
-        const daemonSettings = await buildDaemonSettingsPayload({
-          enabled: savedOnlineSync.enabled,
-          serverUrl: savedOnlineSync.serverUrl,
-          authToken: uiApiToken,
-          deviceId: savedOnlineSync.deviceId,
-          autoSyncIntervalMinutes: savedOnlineSync.autoSyncIntervalMinutes,
-          autoSyncOnStartup: savedOnlineSync.autoSyncOnStartup,
-          groupId: loadLicenseInfo()?.groupId,
-          passphrase: savedOnlineSync.groupPassphrase,
-        });
-        await saveDaemonOnlineSyncSettings(daemonSettings);
-      })
+    void (async () => {
+      const daemonSettings = await buildDaemonSettingsPayload({
+        enabled: savedOnlineSync.enabled,
+        serverUrl: savedOnlineSync.serverUrl,
+        authToken: uiApiToken,
+        deviceId: savedOnlineSync.deviceId,
+        autoSyncIntervalMinutes: savedOnlineSync.autoSyncIntervalMinutes,
+        autoSyncOnStartup: savedOnlineSync.autoSyncOnStartup,
+        groupId: loadLicenseInfo()?.groupId,
+        passphrase: savedOnlineSync.groupPassphrase,
+      });
+      await saveDaemonOnlineSyncSettings(daemonSettings);
+    })()
       .catch((err) => {
         logTauriWarn('Failed to persist online sync settings to daemon:', err);
         // Bez tego użytkownik nie wie, że demon NIE przyjął zmian (np. „Sync on

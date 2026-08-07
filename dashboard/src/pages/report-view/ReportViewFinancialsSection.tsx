@@ -64,11 +64,13 @@ export function ReportViewFinancialsSection({
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-muted-foreground/50 print:text-gray-500">
-                <th className="pb-1 font-medium">{t('costs.column_date')}</th>
-                <th className="pb-1 font-medium">
+                <th className="w-24 pb-1 pr-4 font-medium">
+                  {t('costs.column_date')}
+                </th>
+                <th className="pb-1 pr-4 font-medium">
                   {t('costs.column_comment')}
                 </th>
-                <th className="pb-1 text-right font-medium">
+                <th className="w-28 pb-1 text-right font-medium">
                   {t('costs.column_amount')}
                 </th>
               </tr>
@@ -76,8 +78,10 @@ export function ReportViewFinancialsSection({
             <tbody>
               {costs.map((cost) => (
                 <tr key={cost.uid}>
-                  <td className="py-0.5 print:text-black">{cost.cost_date}</td>
-                  <td className="py-0.5 text-muted-foreground print:text-gray-600">
+                  <td className="py-0.5 pr-4 tabular-nums print:text-black">
+                    {cost.cost_date}
+                  </td>
+                  <td className="break-words py-0.5 pr-4 text-muted-foreground print:text-gray-600">
                     {cost.comment ?? t('ui.common.not_available')}
                   </td>
                   <td className="py-0.5 text-right font-mono print:text-black">
