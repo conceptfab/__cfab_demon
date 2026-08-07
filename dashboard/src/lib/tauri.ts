@@ -14,5 +14,6 @@ export * from './tauri/online-sync';
 export * from './tauri/log-management';
 export * from './tauri/pm';
 export * from './tauri/clients';
+export * from './tauri/costs';
 export * from './tauri/webserver';
 export * from './tauri/mcp';

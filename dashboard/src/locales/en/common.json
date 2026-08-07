@@ -811,6 +811,36 @@
       "apps": "apps"
     }
   },
+  "costs": {
+    "section_title": "Additional costs",
+    "add": "Add cost",
+    "edit": "Edit cost",
+    "delete": "Delete cost",
+    "empty": "No costs in the selected period",
+    "loading": "Loading costs…",
+    "error": "Failed to load costs",
+    "column_date": "Date",
+    "column_amount": "Amount",
+    "column_comment": "Comment",
+    "column_actions": "Actions",
+    "field_date": "Cost date",
+    "field_amount": "Amount",
+    "field_comment": "Comment",
+    "invalid_amount": "Enter an amount greater than or equal to 0",
+    "invalid_date": "Enter a date in YYYY-MM-DD format",
+    "delete_confirm": "Delete this cost? This cannot be undone.",
+    "total": "Costs total",
+    "estimates_column": "Costs",
+    "summary_time": "Time",
+    "summary_costs": "Costs",
+    "summary_grand_total": "Total",
+    "report_section_title": "Additional costs in period",
+    "help_title": "Additional costs",
+    "help_what": "Amounts unrelated to tracked time — licences, subcontractors, materials — added to a project with a specific date and comment.",
+    "help_when": "When a client invoice needs an expense that cannot be expressed in hours.",
+    "help_limits": "A cost always belongs to exactly one project; the client follows from the project assignment. The amount is always added to the billed value — there is no “own cost” mode. Deleting a project deletes its costs permanently.",
+    "help_reports": "The Estimates panel and the project report show costs as a separate line next to the time value. The selected period filters costs by their date, exactly like sessions. The summary breaks the amount into Time, Costs and Total."
+  },
   "data_page": {
     "sections": {
       "data_exchange": "Data Exchange",

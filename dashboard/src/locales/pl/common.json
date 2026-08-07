@@ -811,6 +811,36 @@
       "apps": "aplikacje"
     }
   },
+  "costs": {
+    "section_title": "Koszty dodatkowe",
+    "add": "Dodaj koszt",
+    "edit": "Edytuj koszt",
+    "delete": "Usuń koszt",
+    "empty": "Brak kosztów w wybranym okresie",
+    "loading": "Wczytywanie kosztów…",
+    "error": "Nie udało się wczytać kosztów",
+    "column_date": "Data",
+    "column_amount": "Kwota",
+    "column_comment": "Komentarz",
+    "column_actions": "Akcje",
+    "field_date": "Data kosztu",
+    "field_amount": "Kwota",
+    "field_comment": "Komentarz",
+    "invalid_amount": "Podaj kwotę większą lub równą 0",
+    "invalid_date": "Podaj datę w formacie RRRR-MM-DD",
+    "delete_confirm": "Usunąć ten koszt? Operacja jest nieodwracalna.",
+    "total": "Koszty razem",
+    "estimates_column": "Koszty",
+    "summary_time": "Czas",
+    "summary_costs": "Koszty",
+    "summary_grand_total": "Razem",
+    "report_section_title": "Koszty dodatkowe w okresie",
+    "help_title": "Koszty dodatkowe",
+    "help_what": "Kwoty niezwiązane z czasem pracy — licencje, podwykonawca, materiały — dopisywane do projektu z konkretną datą i komentarzem.",
+    "help_when": "Gdy do rozliczenia z klientem trzeba doliczyć wydatek, którego nie da się wyrazić godzinami.",
+    "help_limits": "Koszt zawsze należy do jednego projektu; klient wynika z przypisania projektu. Kwota jest zawsze doliczana do wartości rozliczenia — nie ma trybu „koszt własny”. Usunięcie projektu kasuje jego koszty bezpowrotnie.",
+    "help_reports": "Panel Estymacje i raport projektu pokazują koszty jako osobną pozycję obok wartości czasu. Wybrany okres filtruje koszty po ich dacie — tak samo jak sesje. Podsumowanie rozbija kwotę na Czas, Koszty i Razem."
+  },
   "data_page": {
     "sections": {
       "data_exchange": "Wymiana danych",
