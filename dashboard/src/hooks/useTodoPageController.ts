@@ -101,11 +101,14 @@ export function useTodoPageController() {
   // kalendarz; preset 'week' daje jeden tydzień, pozostałe pełny miesiąc.
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language);
   const calendarWeeks = useMemo(() => {
-    const anchor = new Date(`${dateRange.start}T12:00:00`);
+    // Kotwica na END, nie START: zakresy w `data-store` liczą się WSTECZ
+    // (tydzień = dziś − 6 dni), więc `start` wpadał w poprzedni tydzień
+    // kalendarzowy. `end` zawsze wskazuje ostatni dzień wybranego okresu.
+    const anchor = new Date(`${dateRange.end}T12:00:00`);
     if (timePreset === 'today') return buildTodoDayCalendar(anchor, filtered, locale);
     if (timePreset === 'week') return buildTodoWeekCalendar(anchor, filtered, locale);
     return buildTodoMonthCalendar(anchor, filtered, locale);
-  }, [dateRange.start, timePreset, filtered, locale]);
+  }, [dateRange.end, timePreset, filtered, locale]);
 
   // „Cały Okres" kotwiczy się na 2020-01-01, więc siatka pokazywałaby styczeń 2020.
   // Dla tego presetu przełączamy na listę pogrupowaną po terminie — wtedy żadne
