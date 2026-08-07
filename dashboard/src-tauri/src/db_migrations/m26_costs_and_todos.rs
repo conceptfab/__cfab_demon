@@ -79,8 +79,8 @@ pub fn run(tx: &Connection) -> Result<(), rusqlite::Error> {
 
     // Triggery tombstone — kanoniczne definicje żyją w shared/sync/triggers.rs,
     // bo `merge_incoming_data` DROP-uje i CREATE-uje je przy każdym merge.
-    tx.execute_batch(timeflow_shared::sync::triggers::PROJECT_COSTS_TOMBSTONE_TRIGGER_SQL)?;
-    tx.execute_batch(timeflow_shared::sync::triggers::TODOS_TOMBSTONE_TRIGGER_SQL)?;
+    tx.execute_batch(super::tombstone_triggers::PROJECT_COSTS_TOMBSTONE_TRIGGER_SQL)?;
+    tx.execute_batch(super::tombstone_triggers::TODOS_TOMBSTONE_TRIGGER_SQL)?;
 
     Ok(())
 }

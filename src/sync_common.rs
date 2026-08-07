@@ -299,7 +299,7 @@ pub(crate) fn ensure_project_client_columns(conn: &rusqlite::Connection) -> Resu
 ///
 /// `todos` jest tworzona razem z `project_costs`, bo jej trigger też jest już
 /// w `CREATE_ALL_TOMBSTONE_TRIGGERS_SQL` (kod zadań dochodzi dopiero w fazie 2).
-pub fn ensure_m26_entity_tables(conn: &rusqlite::Connection) -> Result<(), String> {
+pub(crate) fn ensure_m26_entity_tables(conn: &rusqlite::Connection) -> Result<(), String> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS project_costs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
