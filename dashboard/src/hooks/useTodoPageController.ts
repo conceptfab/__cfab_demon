@@ -111,10 +111,21 @@ export function useTodoPageController() {
     return buildTodoMonthCalendar(anchor, filtered, locale);
   }, [dateRange.end, timePreset, filtered, locale]);
 
-  // „Cały Okres" kotwiczy się na 2020-01-01, więc siatka pokazywałaby styczeń 2020.
-  // Dla tego presetu przełączamy na listę pogrupowaną po terminie — wtedy żadne
-  // zadanie nie może zniknąć z widoku.
-  const viewMode: 'calendar' | 'list' = timePreset === 'all' ? 'list' : 'calendar';
+  // Trzy tryby widoku:
+  //  • 'list'     — „Cały Okres" kotwiczy się na 2020-01-01, więc siatka
+  //                 pokazywałaby styczeń 2020; lista gwarantuje, że żadne
+  //                 zadanie nie zniknie z widoku.
+  //  • 'day'      — dla jednego dnia siatka degeneruje się do wielkiego pustego
+  //                 prostokąta; zwykła lista czyta się lepiej.
+  //  • 'calendar' — tydzień i miesiąc.
+  const viewMode: 'calendar' | 'list' | 'day' =
+    timePreset === 'all' ? 'list' : timePreset === 'today' ? 'day' : 'calendar';
+
+  /** Zadania wybranego dnia — wejście dla widoku 'day'. */
+  const dayTodos = useMemo(
+    () => calendarWeeks[0]?.days[0]?.todos ?? [],
+    [calendarWeeks],
+  );
 
   const withoutDate = useMemo(() => undatedTodos(filtered), [filtered]);
 
@@ -229,6 +240,7 @@ export function useTodoPageController() {
     groups,
     calendarWeeks,
     viewMode,
+    dayTodos,
     withoutDate,
     openCreateForDate,
     hasAnyTodo: todos.length > 0,

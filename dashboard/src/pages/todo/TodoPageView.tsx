@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { TodoDialog } from '@/components/todo/TodoDialog';
 import { TodoCalendar } from '@/components/todo/TodoCalendar';
+import { TodoDayView } from '@/components/todo/TodoDayView';
 import { TodoGroupList } from '@/components/todo/TodoGroupList';
 import { TodoToolbar } from '@/components/todo/TodoToolbar';
 import type { PickerOption } from '@/components/todo/TodoEntityPicker';
@@ -89,6 +90,15 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
         </p>
       ) : controller.error ? (
         <p className="py-6 text-sm text-destructive">{controller.error}</p>
+      ) : controller.viewMode === 'day' ? (
+        <TodoDayView
+          date={controller.dateRange.end}
+          todos={controller.dayTodos}
+          onAdd={controller.openCreateForDate}
+          onToggle={(todo) => void controller.toggleStatus(todo)}
+          onEdit={controller.openEdit}
+          onDelete={(todo) => void controller.remove(todo)}
+        />
       ) : controller.viewMode === 'list' ? (
         <TodoGroupList
           groups={controller.groups}
