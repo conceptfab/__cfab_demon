@@ -11,10 +11,13 @@ import {
   Briefcase,
   Cpu,
   Users,
+  ListTodo,
 } from 'lucide-react';
 
 export const sidebarNavItems = [
   { id: 'dashboard', labelKey: 'layout.nav.dashboard', icon: LayoutDashboard },
+  // Drugi pod względem ważności ekran — patrz spec §7.
+  { id: 'todo', labelKey: 'layout.nav.todo', icon: ListTodo },
   { id: 'sessions', labelKey: 'layout.nav.sessions', icon: List },
   { id: 'projects', labelKey: 'layout.nav.projects', icon: FolderKanban },
   { id: 'estimates', labelKey: 'layout.nav.estimates', icon: CircleDollarSign },
