@@ -839,7 +839,8 @@
     "help_what": "Amounts unrelated to tracked time — licences, subcontractors, materials — added to a project with a specific date and comment.",
     "help_when": "When a client invoice needs an expense that cannot be expressed in hours.",
     "help_limits": "A cost always belongs to exactly one project; the client follows from the project assignment. The amount is always added to the billed value — there is no “own cost” mode. Deleting a project deletes its costs permanently.",
-    "help_reports": "The Estimates panel and the project report show costs as a separate line next to the time value. The selected period filters costs by their date, exactly like sessions. The summary breaks the amount into Time, Costs and Total."
+    "help_reports": "The Estimates panel and the project report show costs as a separate line next to the time value. The selected period filters costs by their date, exactly like sessions. The summary breaks the amount into Time, Costs and Total.",
+    "help_feature": "Additional costs — dated amounts with a comment added to a project, counted into billing in Estimates and reports for the selected period."
   },
   "data_page": {
     "sections": {

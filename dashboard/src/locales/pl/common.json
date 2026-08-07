@@ -839,7 +839,8 @@
     "help_what": "Kwoty niezwiązane z czasem pracy — licencje, podwykonawca, materiały — dopisywane do projektu z konkretną datą i komentarzem.",
     "help_when": "Gdy do rozliczenia z klientem trzeba doliczyć wydatek, którego nie da się wyrazić godzinami.",
     "help_limits": "Koszt zawsze należy do jednego projektu; klient wynika z przypisania projektu. Kwota jest zawsze doliczana do wartości rozliczenia — nie ma trybu „koszt własny”. Usunięcie projektu kasuje jego koszty bezpowrotnie.",
-    "help_reports": "Panel Estymacje i raport projektu pokazują koszty jako osobną pozycję obok wartości czasu. Wybrany okres filtruje koszty po ich dacie — tak samo jak sesje. Podsumowanie rozbija kwotę na Czas, Koszty i Razem."
+    "help_reports": "Panel Estymacje i raport projektu pokazują koszty jako osobną pozycję obok wartości czasu. Wybrany okres filtruje koszty po ich dacie — tak samo jak sesje. Podsumowanie rozbija kwotę na Czas, Koszty i Razem.",
+    "help_feature": "Koszty dodatkowe — kwoty z datą i komentarzem dopisywane do projektu, doliczane do rozliczenia w Estymacjach i raportach z uwzględnieniem wybranego okresu."
   },
   "data_page": {
     "sections": {
