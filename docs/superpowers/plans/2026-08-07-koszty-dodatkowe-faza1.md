@@ -3101,6 +3101,12 @@ W `PARITY.md`, w sekcji „Parity wersji (LAN sync)", dopisz:
   idzie po nazwie i SQLite nie ma tu kaskady FK.
 - **Tabela `todos` (m26):** utworzona razem z `project_costs`, ale w tej wersji
   pusta i NIEwpięta w sync — wpięcie należy do fazy 2 (TODO).
+- **Profil wzrostu `project_costs` a pełny snapshot:** koszty jadą w eksporcie jako
+  PEŁNY zbiór (bez filtra `since`), wzorem `clients`. Różnica: `clients` jest z natury
+  skończoną tabelą referencyjną, a `project_costs` rośnie liniowo z czasem — każdy
+  wydatek to nowy wiersz, przez lata. Przy dzisiejszej skali (dziesiątki/setki wpisów)
+  to nieistotne, ale gdyby tabela urosła do tysięcy rekordów, każda delta zaczęłaby
+  przenosić cały zbiór. Wtedy przejść na filtr `since`, jak `sessions`/`manual_sessions`.
 ```
 
 - [ ] **Step 2: Pełna weryfikacja**
