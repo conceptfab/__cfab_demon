@@ -300,6 +300,14 @@ pub struct EstimateProjectRow {
     /// Rozbicie czasu na dni z ETYKIETAMI DAT (YYYY-MM-DD), chronologicznie. Dla raportu
     /// estymacji w wariancie „plus" (projekt → dni z godzinami). Pomija dni z 0 s.
     pub days: Vec<EstimateDay>,
+    /// Suma kosztów dodatkowych projektu w wybranym okresie. ŚWIADOMIE osobne pole:
+    /// `estimated_value` zostaje „czas × stawka", więc zaokrąglanie per_day i wykresy
+    /// pozostają nietknięte, a stare archiwa dają tu 0.
+    #[serde(default)]
+    pub costs_value: f64,
+    /// Liczba pozycji kosztowych w okresie — do badge'a w UI.
+    #[serde(default)]
+    pub costs_count: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -309,6 +317,12 @@ pub struct EstimateSummary {
     pub total_value: f64,
     pub projects_count: i64,
     pub overrides_count: i64,
+    /// Suma kosztów dodatkowych w okresie (osobno od wartości czasu).
+    #[serde(default)]
+    pub total_costs: f64,
+    /// `total_value + total_costs` — kwota faktycznie do rozliczenia.
+    #[serde(default)]
+    pub grand_total: f64,
 }
 
 #[derive(Serialize)]

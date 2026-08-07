@@ -234,6 +234,7 @@ pub(crate) fn build_estimate_rows(
     let session_counts = query_project_session_counts(conn, date_range)?;
     let multiplier_extra_seconds_by_project =
         query_project_multiplier_extra_seconds(conn, date_range)?;
+    let costs_by_project = super::costs::costs_totals_by_project(conn, date_range)?;
 
     let mut rows: Vec<EstimateProjectRow> = Vec::new();
     for (series_key, seconds_f64) in totals {
@@ -265,6 +266,11 @@ pub(crate) fn build_estimate_rows(
         let estimated_value = weighted_hours * effective_hourly_rate;
         let session_count = session_counts.get(&series_key).copied().unwrap_or(0);
         let multiplied_session_count = mult_info.map(|m| m.session_count).unwrap_or(0);
+        // Koszty linkują się NAZWĄ projektu, nie `id` — stąd lookup po `mapped_name`.
+        let costs = costs_by_project
+            .get(mapped_name.as_str())
+            .copied()
+            .unwrap_or_default();
 
         rows.push(EstimateProjectRow {
             project_id: *project_id,
@@ -287,6 +293,8 @@ pub(crate) fn build_estimate_rows(
                 .into_iter()
                 .map(|(date, seconds)| EstimateDay { date, seconds })
                 .collect(),
+            costs_value: costs.value,
+            costs_count: costs.count,
         });
     }
 
@@ -379,6 +387,7 @@ pub async fn get_estimates_summary(
         let total_seconds = rows.iter().map(|r| r.seconds).sum::<i64>();
         let total_hours = total_seconds as f64 / 3600.0;
         let total_value = rows.iter().map(|r| r.estimated_value).sum::<f64>();
+        let total_costs = rows.iter().map(|r| r.costs_value).sum::<f64>();
         let projects_count = rows.len() as i64;
         let overrides_count = rows
             .iter()
@@ -391,6 +400,8 @@ pub async fn get_estimates_summary(
             total_value,
             projects_count,
             overrides_count,
+            total_costs,
+            grand_total: total_value + total_costs,
         })
     })
     .await
@@ -465,10 +476,106 @@ mod tests {
             CREATE TABLE session_project_cache_dirty (
                 date TEXT PRIMARY KEY,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE project_costs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid TEXT NOT NULL UNIQUE,
+                project_name TEXT NOT NULL,
+                cost_date TEXT NOT NULL,
+                amount REAL NOT NULL,
+                comment TEXT,
+                created_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
             );",
         )
         .expect("schema");
         conn
+    }
+
+    /// Projekt „Acme" z jedną godzinną sesją 10.05.2026 — minimalne wejście
+    /// dla `build_estimate_rows`.
+    fn seed_acme_with_one_hour(conn: &rusqlite::Connection) {
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params!["global_hourly_rate", "100"],
+        )
+        .expect("insert setting");
+        conn.execute(
+            "INSERT INTO projects (id, name, color, hourly_rate) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![1i64, "Acme", "#111111", Option::<f64>::None],
+        )
+        .expect("insert project");
+        conn.execute(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+            rusqlite::params![
+                1i64,
+                "2026-05-10T10:00:00",
+                "2026-05-10T11:00:00",
+                3600i64,
+                "2026-05-10",
+                1i64
+            ],
+        )
+        .expect("insert session");
+    }
+
+    /// Koszt z okresu wchodzi do `costs_value`, ale NIE zmienia `estimated_value` —
+    /// rozdzielenie jest celowe, żeby zaokrąglanie czasu i wykresy zostały nietknięte.
+    #[test]
+    fn estimate_row_carries_costs_without_touching_time_value() {
+        let conn = setup_conn();
+        seed_acme_with_one_hour(&conn);
+        conn.execute(
+            "INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u1', 'Acme', '2026-05-10', 200.0, '2026-05-10 10:00:00')",
+            [],
+        )
+        .expect("insert cost");
+
+        let range = DateRange {
+            start: "2026-05-01".into(),
+            end: "2026-05-31".into(),
+        };
+        let rows = build_estimate_rows(&conn, &range).expect("rows");
+        let row = rows
+            .iter()
+            .find(|r| r.project_name == "Acme")
+            .expect("wiersz Acme");
+
+        assert_eq!(row.costs_value, 200.0);
+        assert_eq!(row.costs_count, 1);
+        assert_eq!(
+            row.estimated_value,
+            row.weighted_hours * row.effective_hourly_rate,
+            "estimated_value musi pozostac czystym iloczynem czasu i stawki"
+        );
+    }
+
+    /// Koszt spoza okresu nie może wpaść do wiersza.
+    #[test]
+    fn estimate_row_excludes_costs_outside_period() {
+        let conn = setup_conn();
+        seed_acme_with_one_hour(&conn);
+        conn.execute(
+            "INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u1', 'Acme', '2026-07-15', 200.0, '2026-07-15 10:00:00')",
+            [],
+        )
+        .expect("insert cost");
+
+        let range = DateRange {
+            start: "2026-05-01".into(),
+            end: "2026-05-31".into(),
+        };
+        let rows = build_estimate_rows(&conn, &range).expect("rows");
+        let row = rows
+            .iter()
+            .find(|r| r.project_name == "Acme")
+            .expect("wiersz Acme");
+
+        assert_eq!(row.costs_value, 0.0);
+        assert_eq!(row.costs_count, 0);
     }
 
     #[test]
