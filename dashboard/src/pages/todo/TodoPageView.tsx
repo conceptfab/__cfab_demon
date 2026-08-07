@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { TodoDialog } from '@/components/todo/TodoDialog';
@@ -47,6 +47,16 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
     })();
   }, []);
 
+  // Jedna mapa NAZWA → kolor dla projektów i klientów: kafelek kalendarza
+  // oznacza zadanie kolorem jego encji, tak jak reszta aplikacji.
+  const colorByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const option of [...projectOptions, ...clientOptions]) {
+      map.set(option.name, option.color);
+    }
+    return map;
+  }, [projectOptions, clientOptions]);
+
   return (
     <div className={`${mobileLayout.pageContainer} max-w-5xl`}>
       <h1 className="text-lg font-semibold">{t('todo.page_title')}</h1>
@@ -89,8 +99,10 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
         <div className="overflow-x-auto">
           <TodoCalendar
             weeks={controller.calendarWeeks}
+            colorByName={colorByName}
             onDayClick={controller.openCreateForDate}
             onTodoClick={controller.openEdit}
+            onToggleStatus={(todo) => void controller.toggleStatus(todo)}
           />
         </div>
       )}

@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Check, Plus, RotateCcw } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
@@ -7,12 +7,20 @@ import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import type { TodoCalendarWeek } from '@/lib/todo-calendar';
 import type { Todo } from '@/lib/tauri/todos';
 
-const PRIORITY_DOT = ['bg-muted-foreground/50', 'bg-sky-400', 'bg-rose-400'];
+/** Priorytet na lewej krawędzi kafelka — kropka jest zajęta przez kolor encji. */
+const PRIORITY_EDGE = [
+  'border-l-transparent',
+  'border-l-sky-400/70',
+  'border-l-rose-400',
+];
 
 interface TodoCalendarProps {
   weeks: TodoCalendarWeek[];
+  /** NAZWA projektu/klienta → kolor, do oznaczenia zakresu zadania na kafelku. */
+  colorByName: Map<string, string>;
   onDayClick: (date: string) => void;
   onTodoClick: (todo: Todo) => void;
+  onToggleStatus: (todo: Todo) => void;
 }
 
 /**
@@ -23,8 +31,10 @@ interface TodoCalendarProps {
  */
 export function TodoCalendar({
   weeks,
+  colorByName,
   onDayClick,
   onTodoClick,
+  onToggleStatus,
 }: TodoCalendarProps) {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language);
@@ -110,27 +120,50 @@ export function TodoCalendar({
                   </button>
                 </div>
 
-                {day.todos.map((todo) => (
-                  <button
-                    type="button"
-                    key={todo.uid}
-                    onClick={() => onTodoClick(todo)}
-                    className={cn(
-                      'flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[10px] leading-tight',
-                      'bg-background/50 hover:bg-background/80',
-                      todo.status === 'done' &&
-                        'text-muted-foreground line-through',
-                    )}
-                  >
+                {day.todos.map((todo) => {
+                  const entity = todo.project_name ?? todo.client_name ?? null;
+                  const dotColor = entity ? colorByName.get(entity) : undefined;
+                  const done = todo.status === 'done';
+                  return (
                     <span
+                      key={todo.uid}
                       className={cn(
-                        'size-1.5 shrink-0 rounded-full',
-                        PRIORITY_DOT[todo.priority] ?? PRIORITY_DOT[1],
+                        'flex w-full items-center gap-1 rounded border-l-2 bg-background/50 pl-1 pr-0.5 text-[10px] leading-tight',
+                        PRIORITY_EDGE[todo.priority] ?? PRIORITY_EDGE[1],
                       )}
-                    />
-                    <span className="min-w-0 truncate">{todo.title}</span>
-                  </button>
-                ))}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onToggleStatus(todo)}
+                        aria-label={done ? t('todo.mark_open') : t('todo.mark_done')}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                      >
+                        {done ? (
+                          <RotateCcw className="size-2.5" />
+                        ) : (
+                          <Check className="size-2.5" />
+                        )}
+                      </button>
+                      {/* Kropka = kolor projektu/klienta, tak jak wszędzie
+                          w aplikacji. Szara = zadanie globalne. */}
+                      <span
+                        className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50"
+                        style={dotColor ? { backgroundColor: dotColor } : undefined}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => onTodoClick(todo)}
+                        title={entity ?? t('todo.scope_global')}
+                        className={cn(
+                          'min-w-0 flex-1 truncate rounded px-0.5 text-left hover:bg-background/80',
+                          done && 'text-muted-foreground line-through',
+                        )}
+                      >
+                        {todo.title}
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             ))}
           </div>

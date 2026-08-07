@@ -219,7 +219,20 @@ export function TodoDialog({
           ) : null}
         </div>
 
-        <div className="flex justify-end gap-2">
+        <div className="flex items-center justify-end gap-2">
+          {/* Zakończenie zadania z poziomu dialogu — w kalendarzu kafelek ma
+              własny przycisk, ale po otwarciu edycji też musi być osiągalne. */}
+          {editing && (
+            <Button
+              variant="secondary"
+              className="mr-auto"
+              onClick={() => void controller.toggleStatus(editing)}
+            >
+              {editing.status === 'done'
+                ? t('todo.mark_open')
+                : t('todo.mark_done')}
+            </Button>
+          )}
           <Button variant="secondary" onClick={closeDialog}>
             {t('ui.buttons.cancel')}
           </Button>
