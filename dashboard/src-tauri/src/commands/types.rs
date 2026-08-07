@@ -65,6 +65,41 @@ pub struct CostRow {
     pub updated_at: String,
 }
 
+/// Wiersz zadania (m26). Serializowany do sync i do UI.
+/// `uid` jest kluczem synchronizacji; projekt i klient linkowane po NAZWIE.
+/// `gcal_*` ŚWIADOMIE poza strukturą — są per-maszyna i nie jadą w sync.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TodoRow {
+    #[serde(default)]
+    pub uid: String,
+    #[serde(default)]
+    pub scope: String,
+    #[serde(default)]
+    pub project_name: Option<String>,
+    #[serde(default)]
+    pub client_name: Option<String>,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub due_date: Option<String>,
+    #[serde(default)]
+    pub due_time: Option<String>,
+    #[serde(default)]
+    pub priority: i64,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub completed_at: Option<String>,
+    #[serde(default)]
+    pub sort_order: Option<f64>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
 /// m24 client entity carried by delta archives (online sync). Mirrors the
 /// `clients` table; identified by NAME (portable across machines, like projects).
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -573,6 +608,10 @@ pub struct ExportData {
     // sprzed m26 (brak klucza → pusta lista, nie błąd).
     #[serde(default)]
     pub project_costs: Vec<CostRow>,
+    // m26 zadania. `#[serde(default)]` utrzymuje importowalność archiwów sprzed
+    // fazy 2 (brak klucza → pusta lista, nie błąd).
+    #[serde(default)]
+    pub todos: Vec<TodoRow>,
     pub applications: Vec<ApplicationRow>,
     pub sessions: Vec<SessionRow>,
     pub manual_sessions: Vec<ManualSession>,
