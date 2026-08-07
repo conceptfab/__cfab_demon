@@ -5,6 +5,7 @@ import { TodoDialog } from '@/components/todo/TodoDialog';
 import { TodoCalendar } from '@/components/todo/TodoCalendar';
 import { TodoGroupList } from '@/components/todo/TodoGroupList';
 import { TodoToolbar } from '@/components/todo/TodoToolbar';
+import type { PickerOption } from '@/components/todo/TodoEntityPicker';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
 import { clientsList, projectsWithClient } from '@/lib/tauri/clients';
 import { logger } from '@/lib/logger';
@@ -17,8 +18,8 @@ interface TodoPageViewProps {
 
 export function TodoPageView({ controller }: TodoPageViewProps) {
   const { t } = useTranslation();
-  const [projectNames, setProjectNames] = useState<string[]>([]);
-  const [clientNames, setClientNames] = useState<string[]>([]);
+  const [projectOptions, setProjectOptions] = useState<PickerOption[]>([]);
+  const [clientOptions, setClientOptions] = useState<PickerOption[]>([]);
 
   useEffect(() => {
     // Listy do selectów w dialogu. Ładowane raz — nie zmieniają się w trakcie
@@ -30,11 +31,15 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
           projectsWithClient(),
           clientsList(),
         ]);
-        setProjectNames(
-          projects.map((p) => p.name).sort((a, b) => a.localeCompare(b)),
+        setProjectOptions(
+          projects
+            .map((p) => ({ name: p.name, color: p.color }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
         );
-        setClientNames(
-          clients.map((c) => c.name).sort((a, b) => a.localeCompare(b)),
+        setClientOptions(
+          clients
+            .map((c) => ({ name: c.name, color: c.color }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
         );
       } catch (e) {
         logger.error('[todos] reference lists failed:', e);
@@ -100,8 +105,8 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
 
       <TodoDialog
         controller={controller}
-        projectNames={projectNames}
-        clientNames={clientNames}
+        projectOptions={projectOptions}
+        clientOptions={clientOptions}
       />
     </div>
   );

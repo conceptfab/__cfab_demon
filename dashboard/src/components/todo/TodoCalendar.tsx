@@ -67,7 +67,7 @@ export function TodoCalendar({
               <div
                 key={day.date}
                 className={cn(
-                  'group relative flex min-h-[120px] flex-1 flex-col gap-1 overflow-hidden rounded-md p-1.5',
+                  'group relative flex min-h-[84px] flex-1 flex-col gap-1 overflow-hidden rounded-md p-1.5',
                   day.inMonth
                     ? 'bg-[rgba(41,46,66,0.45)]'
                     : 'bg-[rgba(41,46,66,0.2)]',
@@ -92,7 +92,7 @@ export function TodoCalendar({
                     aria-label={`${t('todo.add')} — ${format(parseISO(day.date), 'EEE, MMM d', { locale })}`}
                     // Widoczny przy hoverze i zawsze przy fokusie klawiatury,
                     // żeby nie był nieosiągalny bez myszy.
-                    className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-background/60 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                    className="rounded p-0.5 text-muted-foreground/40 transition-colors hover:bg-background/60 hover:text-foreground focus-visible:text-foreground group-hover:text-muted-foreground"
                   >
                     <Plus className="size-3.5" />
                   </button>

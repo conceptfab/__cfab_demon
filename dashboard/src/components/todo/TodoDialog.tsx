@@ -7,21 +7,66 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { TodoEntityPicker, type PickerOption } from '@/components/todo/TodoEntityPicker';
+import { cn } from '@/lib/utils';
 import type { TodoPageController } from '@/hooks/useTodoPageController';
 import type { TodoScope } from '@/lib/tauri/todos';
 
+const SCOPES: { id: TodoScope; labelKey: string }[] = [
+  { id: 'global', labelKey: 'todo.scope_global' },
+  { id: 'client', labelKey: 'todo.field_client' },
+  { id: 'project', labelKey: 'todo.field_project' },
+];
+
+const PRIORITIES = [
+  { value: 0, labelKey: 'todo.priority_low' },
+  { value: 1, labelKey: 'todo.priority_normal' },
+  { value: 2, labelKey: 'todo.priority_high' },
+];
+
+/** Przełącznik segmentowy w stylu menu sesji (`SessionContextMenu`). */
+function Segmented<T extends string | number>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { id: T; label: string }[];
+  onChange: (next: T) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-sm border border-border/70 bg-secondary/20 p-0.5">
+      {options.map((option) => (
+        <button
+          type="button"
+          key={String(option.id)}
+          onClick={() => onChange(option.id)}
+          className={cn(
+            'cursor-pointer rounded-sm px-2.5 py-1 text-xs transition-colors',
+            value === option.id
+              ? 'bg-background text-sky-200 shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface TodoDialogProps {
   controller: TodoPageController;
-  /** Nazwy projektów do wyboru przy zakresie „projekt". */
-  projectNames: string[];
-  /** Nazwy klientów do wyboru przy zakresie „klient". */
-  clientNames: string[];
+  /** Projekty do wyboru przy zakresie „projekt" (nazwa + kolor). */
+  projectOptions: PickerOption[];
+  /** Klienci do wyboru przy zakresie „klient" (nazwa + kolor). */
+  clientOptions: PickerOption[];
 }
 
 export function TodoDialog({
   controller,
-  projectNames,
-  clientNames,
+  projectOptions,
+  clientOptions,
 }: TodoDialogProps) {
   const { t } = useTranslation();
   const {
@@ -75,15 +120,11 @@ export function TodoDialog({
             <span className="text-sm text-muted-foreground">
               {t('todo.field_scope')}
             </span>
-            <select
+            <Segmented
               value={form.scope}
-              onChange={(e) => setScope(e.target.value as TodoScope)}
-              className="w-full rounded border bg-background px-3 py-2 text-sm"
-            >
-              <option value="global">{t('todo.scope_global')}</option>
-              <option value="client">{t('todo.field_client')}</option>
-              <option value="project">{t('todo.field_project')}</option>
-            </select>
+              options={SCOPES.map((sc) => ({ id: sc.id, label: t(sc.labelKey) }))}
+              onChange={setScope}
+            />
           </label>
 
           {form.scope === 'project' && (
@@ -91,20 +132,13 @@ export function TodoDialog({
               <span className="text-sm text-muted-foreground">
                 {t('todo.field_project')}
               </span>
-              <select
-                value={form.projectName ?? ''}
-                onChange={(e) =>
-                  setForm({ ...form, projectName: e.target.value || null })
-                }
-                className="w-full rounded border bg-background px-3 py-2 text-sm"
-              >
-                <option value="">—</option>
-                {projectNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+              <TodoEntityPicker
+                options={projectOptions}
+                value={form.projectName ?? null}
+                onChange={(name) => setForm({ ...form, projectName: name })}
+                emptyLabel={t('ui.common.unassigned')}
+                emptyText={t('sessions.menu.no_projects')}
+              />
             </label>
           )}
 
@@ -113,20 +147,13 @@ export function TodoDialog({
               <span className="text-sm text-muted-foreground">
                 {t('todo.field_client')}
               </span>
-              <select
-                value={form.clientName ?? ''}
-                onChange={(e) =>
-                  setForm({ ...form, clientName: e.target.value || null })
-                }
-                className="w-full rounded border bg-background px-3 py-2 text-sm"
-              >
-                <option value="">—</option>
-                {clientNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+              <TodoEntityPicker
+                options={clientOptions}
+                value={form.clientName ?? null}
+                onChange={(name) => setForm({ ...form, clientName: name })}
+                emptyLabel={t('ui.common.unassigned')}
+                emptyText={t('sessions.menu.no_projects')}
+              />
             </label>
           )}
 
@@ -163,17 +190,14 @@ export function TodoDialog({
             <span className="text-sm text-muted-foreground">
               {t('todo.field_priority')}
             </span>
-            <select
-              value={String(form.priority)}
-              onChange={(e) =>
-                setForm({ ...form, priority: Number(e.target.value) })
-              }
-              className="w-full rounded border bg-background px-3 py-2 text-sm"
-            >
-              <option value="0">{t('todo.priority_low')}</option>
-              <option value="1">{t('todo.priority_normal')}</option>
-              <option value="2">{t('todo.priority_high')}</option>
-            </select>
+            <Segmented
+              value={form.priority}
+              options={PRIORITIES.map((pr) => ({
+                id: pr.value,
+                label: t(pr.labelKey),
+              }))}
+              onChange={(priority) => setForm({ ...form, priority })}
+            />
           </label>
 
           <label className="block space-y-1">

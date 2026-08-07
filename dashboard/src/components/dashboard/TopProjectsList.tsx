@@ -91,10 +91,22 @@ export function TopProjectsList({
                       <AppTooltip
                         content={t('todo.upcoming_for_project', { count: upcoming })}
                       >
-                        <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-sky-400">
+                        <button
+                          type="button"
+                          // Klik przenosi na ekran Zadania — znacznik ma być
+                          // skrótem do zadań projektu, nie samą etykietą.
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCurrentPage('todo');
+                          }}
+                          aria-label={t('todo.upcoming_for_project', {
+                            count: upcoming,
+                          })}
+                          className="flex shrink-0 cursor-pointer items-center gap-0.5 rounded px-1 text-[10px] text-sky-400 transition-colors hover:bg-sky-400/10 hover:text-sky-300"
+                        >
                           <ListTodo className="size-3" />
                           {upcoming}
-                        </span>
+                        </button>
                       </AppTooltip>
                     );
                   })()}

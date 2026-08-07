@@ -107,6 +107,31 @@ export function buildTodoWeekCalendar(
   ];
 }
 
+/** Jeden dzień — preset „Dziś". Bez tego preset zmieniałby tylko etykietę zakresu. */
+export function buildTodoDayCalendar(
+  anchor: Date,
+  todos: readonly Todo[],
+  locale: Locale,
+  today: Date = new Date(),
+): TodoCalendarWeek[] {
+  const key = format(anchor, 'yyyy-MM-dd');
+  const byDate = groupByDueDate(todos);
+  return [
+    {
+      label: `W${getWeek(anchor, { weekStartsOn: 1 })}`,
+      subLabel: format(anchor, 'MMM d', { locale }),
+      days: [
+        {
+          date: key,
+          inMonth: true,
+          isToday: key === format(today, 'yyyy-MM-dd'),
+          todos: byDate.get(key) ?? [],
+        },
+      ],
+    },
+  ];
+}
+
 /** Zadania bez terminu nie mają miejsca w siatce — widok pokazuje je pod kalendarzem. */
 export function undatedTodos(todos: readonly Todo[]): Todo[] {
   return todos.filter((todo) => !todo.due_date);

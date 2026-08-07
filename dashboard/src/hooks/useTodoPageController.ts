@@ -4,6 +4,7 @@ import { useDataStore } from '@/store/data-store';
 import { useTranslation } from 'react-i18next';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import {
+  buildTodoDayCalendar,
   buildTodoMonthCalendar,
   buildTodoWeekCalendar,
   undatedTodos,
@@ -104,9 +105,9 @@ export function useTodoPageController() {
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language);
   const calendarWeeks = useMemo(() => {
     const anchor = new Date(`${dateRange.start}T12:00:00`);
-    return timePreset === 'week'
-      ? buildTodoWeekCalendar(anchor, filtered, locale)
-      : buildTodoMonthCalendar(anchor, filtered, locale);
+    if (timePreset === 'today') return buildTodoDayCalendar(anchor, filtered, locale);
+    if (timePreset === 'week') return buildTodoWeekCalendar(anchor, filtered, locale);
+    return buildTodoMonthCalendar(anchor, filtered, locale);
   }, [dateRange.start, timePreset, filtered, locale]);
 
   const withoutDate = useMemo(() => undatedTodos(filtered), [filtered]);
