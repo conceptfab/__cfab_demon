@@ -13,6 +13,50 @@ Tracker znanych różnic w zachowaniu i stubów między platformami.
 - Klikalność akcji sync (`has_target`/`syncable`): `online_ready || peer_present` (i nie trwa już sync).
 
 ## Parity wersji (LAN sync)
+- **Koszty dodatkowe (m26, `project_costs`):** encja synchronizuje się jako osobna
+  tabela (LWW po `updated_at`, klucz sync = `uid`) z tombstonami (trigger
+  `trg_project_costs_tombstone` w schema.sql + migracja **m26** + re-eksport w
+  `db_migrations/tombstone_triggers.rs`). Peer ze starszą wersją TIMEFLOW nie zna
+  tabeli: jego archiwum jej nie zawiera, a nasze klucze ignoruje — koszty NIE
+  propagują się do czasu aktualizacji obu maszyn. Nie ma ryzyka utraty danych
+  (nieznane klucze są pomijane, nie nadpisują lokalnych rekordów). Checksum
+  `project_costs` jest content-hashem po pełnym zestawie kolumn, więc rozjazd
+  kwoty/daty/komentarza jest wykrywalny i sam się leczy.
+- **DWA niezależne eksporty — oba wymagały wpięcia.** Dashboard serializuje archiwum
+  przez serde (`commands/delta_export.rs`, `DeltaData` + `TableHashes`). Demon ma
+  własny, całkowicie odrębny eksport: `build_delta_for_pull` w `src/lan_server.rs`
+  składa JSON ręcznie przez `fetch_all_rows`, ma własną strukturę `TableHashes`,
+  własne `build_table_hashes` ORAZ ręczny `impl PartialEq`. Pominięcie `PartialEq`
+  jest najgroźniejsze: rozjazd nie zostałby wykryty i peery raportowałyby
+  „zsynchronizowane". Test `merge_roundtrip_project_costs_via_daemon_export`
+  w `src/sync_common.rs` pilnuje całej ścieżki end-to-end.
+  Uwaga sprzed m26: `impl PartialEq for TableHashes` nadal pomija
+  `assignment_feedback` i `assignment_auto_runs`, mimo że hashe dla nich powstają.
+- **Tabele m26 a schemat demona.** Demon ma własny, ręcznie pisany schemat i NIE
+  uruchamia migracji dashboardu. Ponieważ `merge_incoming_data` odtwarza WSZYSTKIE
+  triggery tombstone przy każdym merge, brak tabeli `project_costs`/`todos` wywalał
+  cały merge (nie tylko koszty) na `no such table`. Chroni przed tym
+  `ensure_m26_entity_tables` wołane przed pętlą triggerów. `verify_merge_integrity`
+  ma własną pętlę DROP/CREATE i celowo NIE dostaje `ensure_*` — wszystkie cztery
+  produkcyjne wywołania idą bezpośrednio po `merge_incoming_data` na tej samej bazie.
+- **Rename i kasowanie projektu a koszty.** Kaskadę zmiany nazwy realizuje trigger
+  `trg_projects_rename_cascade_costs` (m26), wzorem `trg_projects_rename_cascade_merged`
+  z m23; odświeża `updated_at`, więc zmiana rozchodzi się przez LWW. Kasowanie
+  projektu czyści koszty w kodzie komendy (`delete_costs_of_project` w
+  `commands/projects.rs`, wołane z obu ścieżek kasowania), bo link idzie po nazwie
+  i SQLite nie ma tu kaskady FK.
+- **Komendy a webui.** Komendy Tauri wymagają rejestracji w TRZECH miejscach:
+  `commands/mod.rs`, `invoke_handler` w `lib.rs` oraz wygenerowanym
+  `webui/rpc_generated.rs` (`node scripts/gen_webrpc.cjs`). Bez trzeciego działają
+  na desktopie i cicho NIE działają w webui na telefonie; `build.rs` sygnalizuje
+  rozjazd tylko ostrzeżeniem.
+- **Tabela `todos` (m26):** utworzona razem z `project_costs`, ale w tej wersji pusta
+  i NIEwpięta w merge/eksport/checksum — to należy do fazy 2 (TODO).
+- **Profil wzrostu `project_costs`:** koszty jadą w eksporcie jako PEŁNY zbiór (bez
+  filtra `since`), wzorem `clients`. Różnica: `clients` jest skończoną tabelą
+  referencyjną, a `project_costs` rośnie liniowo z czasem. Przy dzisiejszej skali
+  bez znaczenia; przy tysiącach rekordów przejść na filtr `since`, jak `sessions`.
+
 - **Scalanie projektów (`projects.merged_into`/`merged_at`):** marker w pełni synchronizuje się tylko między urządzeniami z tą samą wersją TIMEFLOW. Starszy peer nie zna kolumn — dostaje tylko `excluded_at` (blokada liczenia czasu działa wszędzie), a jego rekordy NIE wyzerują lokalnego markera (brak klucza w archiwum ⇒ zachowaj lokalną wartość; jawny `null` od nowego peera ⇒ wyczyść, bo to unmerge). Daemon ma defensywne `ALTER TABLE` (`ensure_project_merge_columns`) na wypadek startu przed migracją m23 dashboardu.
 - **Rollup czasu scalonych stadiów — zakres widoków:** serie scalonych dzieci są składane do rodzica u źródła (fold w `time_algorithm`), więc rollup obejmuje listę projektów, kartę projektu (czas, wycena, liczniki sesji/komentarzy/boostów, top aplikacje), Dashboard, Estimates (dziecko nie ma własnego wiersza; godziny/wartość/sesje wliczone do rodzica) i wykresy Time Analysis. Sekcje Merged/Excluded pokazują surowy czas własny (bez rollupu).
 - **Import backupu a marker scalenia:** `import_data` używa `COALESCE` — archiwum bez pól merged_* (stara wersja) nie wyzeruje lokalnego markera. Trade-off: przywrócenie NOWSZEGO backupu zrobionego po unmerge też nie wyczyści lokalnego markera (serde nie odróżnia braku klucza od null) — w razie potrzeby rozłącz scalenie ręcznie; LAN sync z nowym peerem skoryguje stan automatycznie.
