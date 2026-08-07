@@ -29,6 +29,9 @@ export function ProjectCostsSection({
   const { t } = useTranslation();
   const total = sumCosts(costs);
 
+  // Szerokości kolumn w tabeli poniżej: data i akcje wąskie i stałe, komentarz
+  // zabiera resztę — inaczej długi komentarz spycha kwotę poza widok.
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -58,8 +61,6 @@ export function ProjectCostsSection({
             <table className="hidden w-full text-sm md:table">
               <thead>
                 <tr className="text-left text-muted-foreground">
-                  {/* Szerokości kolumn: data i akcje wąskie i stałe, komentarz
-                      zabiera resztę — inaczej długi komentarz spycha kwotę. */}
                   <th className="w-28 py-2 pr-4 font-medium">
                     {t('costs.column_date')}
                   </th>

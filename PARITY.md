@@ -50,8 +50,21 @@ Tracker znanych różnic w zachowaniu i stubów między platformami.
   `webui/rpc_generated.rs` (`node scripts/gen_webrpc.cjs`). Bez trzeciego działają
   na desktopie i cicho NIE działają w webui na telefonie; `build.rs` sygnalizuje
   rozjazd tylko ostrzeżeniem.
-- **Tabela `todos` (m26):** utworzona razem z `project_costs`, ale w tej wersji pusta
-  i NIEwpięta w merge/eksport/checksum — to należy do fazy 2 (TODO).
+- **Zadania (m26, `todos`):** encja synchronizuje się jako osobna tabela (LWW po
+  `updated_at`, klucz sync = `uid`) z tombstonami (`trg_todos_tombstone`). Peer ze
+  starszą wersją nie zna tabeli — zadania NIE propagują się do czasu aktualizacji
+  obu maszyn; brak ryzyka utraty danych (nieznane klucze są pomijane).
+  **`gcal_event_id` i `gcal_synced_at` NIE wchodzą do eksportu, merge ani checksumu**
+  — są per-maszyna. Gdyby się synchronizowały, dwa urządzenia z włączonym Google
+  Calendar (faza 3) biłyby się o to samo wydarzenie. Pilnują tego testy
+  `merge_todos_never_touches_gcal_fields` i `todos_hash_ignores_gcal_fields`.
+- **Kaskady zadań.** Rename projektu obsługuje trigger `trg_projects_rename_cascade_todos`
+  (m26); rename klienta — kod komendy (`rename_client_links` w `commands/clients.rs`),
+  bo dla klientów repo nie używa triggerów. Kasowanie projektu i klienta usuwa ich
+  zadania (`delete_m26_entities_of_project`, `delete_client_links`) — link idzie po
+  nazwie, więc SQLite nie ma tu kaskady FK. Usunięcie klienta ODPINA projekty
+  (historia czasu zostaje), ale KASUJE zadania klienckie — zadanie bez klienta nie
+  ma sensu, projekt bez klienta ma.
 - **Profil wzrostu `project_costs`:** koszty jadą w eksporcie jako PEŁNY zbiór (bez
   filtra `since`), wzorem `clients`. Różnica: `clients` jest skończoną tabelą
   referencyjną, a `project_costs` rośnie liniowo z czasem. Przy dzisiejszej skali
