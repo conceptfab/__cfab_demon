@@ -122,6 +122,11 @@ export function EstimatesProjectsMobileList({
                       ≈{currency.format(altValue)}
                     </span>
                   )}
+                  {row.costs_value > 0 && (
+                    <span className="block text-[10px] text-muted-foreground">
+                      {`+ ${t('costs.estimates_column')} ${currency.format(row.costs_value)}`}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -293,6 +298,11 @@ export function EstimatesProjectsDesktopTable({
                 {altValue !== null && (
                   <span className="block text-[10px] opacity-60">
                     ≈{currency.format(altValue)}
+                  </span>
+                )}
+                {row.costs_value > 0 && (
+                  <span className="block text-[10px] text-muted-foreground">
+                    {`+ ${t('costs.estimates_column')} ${currency.format(row.costs_value)}`}
                   </span>
                 )}
               </span>

@@ -79,9 +79,16 @@ export function useEstimatesPageController() {
   );
   const filteredSummary = useMemo(() => {
     const totalSeconds = filteredRows.reduce((acc, r) => acc + r.seconds, 0);
+    const totalValue = filteredRows.reduce((acc, r) => acc + r.estimated_value, 0);
+    // Koszty sumujemy z przefiltrowanych wierszy, nie z `EstimateSummary` backendu,
+    // bo filtr klientów działa po stronie frontu — inaczej suma kosztów nie
+    // reagowałaby na filtr, a wartość czasu tak.
+    const totalCosts = filteredRows.reduce((acc, r) => acc + r.costs_value, 0);
     return {
       total_hours: totalSeconds / 3600,
-      total_value: filteredRows.reduce((acc, r) => acc + r.estimated_value, 0),
+      total_value: totalValue,
+      total_costs: totalCosts,
+      grand_total: totalValue + totalCosts,
       projects_count: filteredRows.length,
       overrides_count: filteredRows.filter((r) => r.project_hourly_rate != null).length,
     };
