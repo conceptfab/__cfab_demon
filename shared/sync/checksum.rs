@@ -84,6 +84,11 @@ pub fn table_hash_sql(table: &str) -> Option<&'static str> {
                 COALESCE(error,'') || '|' || COALESCE(rolled_back_at,'') || '|' || \
                 COALESCE(rollback_reverted,'') || '|' || COALESCE(rollback_skipped,''), ';'), '') \
              FROM (SELECT * FROM assignment_auto_runs ORDER BY started_at)",
+        "project_costs" =>
+            "SELECT COALESCE(group_concat( \
+                uid || '|' || project_name || '|' || cost_date || '|' || amount || '|' || \
+                COALESCE(comment,'') || '|' || updated_at, ';'), '') \
+             FROM (SELECT * FROM project_costs ORDER BY uid)",
         _ => return None,
     })
 }
@@ -115,11 +120,42 @@ mod table_hash_sql_tests {
     fn known_tables_have_sql_unknown_none() {
         for t in [
             "projects", "clients", "applications", "sessions", "manual_sessions",
-            "assignment_feedback", "assignment_auto_runs",
+            "assignment_feedback", "assignment_auto_runs", "project_costs",
         ] {
             assert!(table_hash_sql(t).is_some(), "brak SQL dla {t}");
         }
         assert!(table_hash_sql("nonexistent").is_none());
+    }
+
+    /// Checksum musi reagować na zmianę KWOTY, nie tylko na uid/updated_at —
+    /// inaczej rozjazd wyglądałby na "zsynchronizowane" i nigdy by się nie wyleczył.
+    #[test]
+    fn project_costs_hash_detects_amount_drift() {
+        let schema = "CREATE TABLE project_costs (
+            id INTEGER PRIMARY KEY, uid TEXT NOT NULL UNIQUE, project_name TEXT NOT NULL,
+            cost_date TEXT NOT NULL, amount REAL NOT NULL, comment TEXT,
+            created_at TEXT, updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00');";
+
+        let conn_a = rusqlite::Connection::open_in_memory().unwrap();
+        conn_a.execute_batch(schema).unwrap();
+        conn_a.execute(
+            "INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u1', 'Acme', '2026-05-10', 100.0, '2026-05-10 10:00:00')",
+            [],
+        ).unwrap();
+
+        let conn_b = rusqlite::Connection::open_in_memory().unwrap();
+        conn_b.execute_batch(schema).unwrap();
+        conn_b.execute(
+            "INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u1', 'Acme', '2026-05-10', 999.0, '2026-05-10 10:00:00')",
+            [],
+        ).unwrap();
+
+        let sql = table_hash_sql("project_costs").unwrap();
+        let raw_a: String = conn_a.query_row(sql, [], |r| r.get(0)).unwrap();
+        let raw_b: String = conn_b.query_row(sql, [], |r| r.get(0)).unwrap();
+        assert_ne!(content_hash(&raw_a), content_hash(&raw_b));
     }
 
     /// Buduje minimalną bazę pasującą do SQL sesji.
