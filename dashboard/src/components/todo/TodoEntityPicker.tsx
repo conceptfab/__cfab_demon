@@ -18,6 +18,9 @@ export interface PickerOption {
 /** Te same tryby i te same nazwy co w menu przypisania sesji. */
 type ListMode = 'alpha_active' | 'new_top_rest' | 'top_new_rest';
 
+const byName = (a: PickerOption, b: PickerOption) =>
+  a.name.localeCompare(b.name);
+
 interface TodoEntityPickerProps {
   options: PickerOption[];
   value: string | null;
@@ -43,8 +46,6 @@ export function TodoEntityPicker({
   const { t } = useTranslation();
   const [mode, setMode] = useState<ListMode>('alpha_active');
 
-  const byName = (a: PickerOption, b: PickerOption) =>
-    a.name.localeCompare(b.name);
   const sorted =
     mode === 'alpha_active'
       ? options.toSorted(byName)

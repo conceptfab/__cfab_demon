@@ -1,3 +1,4 @@
+import { Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
@@ -237,15 +238,31 @@ export function TodoDialog({
           {/* Zakończenie zadania z poziomu dialogu — w kalendarzu kafelek ma
               własny przycisk, ale po otwarciu edycji też musi być osiągalne. */}
           {editing && (
-            <Button
-              variant="secondary"
-              className="mr-auto"
-              onClick={() => void controller.toggleStatus(editing)}
-            >
-              {editing.status === 'done'
-                ? t('todo.mark_open')
-                : t('todo.mark_done')}
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => void controller.toggleStatus(editing)}
+              >
+                {editing.status === 'done'
+                  ? t('todo.mark_open')
+                  : t('todo.mark_done')}
+              </Button>
+              {/* Usuwanie z dialogu edycji — bez tego zadanie da się skasować
+                  wyłącznie z widoku listy („Cały Okres"), a z kalendarza wcale. */}
+              <Button
+                variant="secondary"
+                className="mr-auto text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  if (window.confirm(t('todo.delete_confirm'))) {
+                    void controller.remove(editing);
+                    closeDialog();
+                  }
+                }}
+              >
+                <Trash2 className="mr-1 size-4" />
+                {t('todo.delete')}
+              </Button>
+            </>
           )}
           <Button variant="secondary" onClick={closeDialog}>
             {t('ui.buttons.cancel')}
