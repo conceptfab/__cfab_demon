@@ -45,8 +45,6 @@ pub struct Project {
     pub status: String,
 }
 
-/// m24 client entity carried by delta archives (online sync). Mirrors the
-/// `clients` table; identified by NAME (portable across machines, like projects).
 /// Wiersz kosztu dodatkowego (m26). Serializowany do sync i do UI.
 /// `uid` jest kluczem synchronizacji; `project_name` linkuje projekt po NAZWIE.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -67,6 +65,8 @@ pub struct CostRow {
     pub updated_at: String,
 }
 
+/// m24 client entity carried by delta archives (online sync). Mirrors the
+/// `clients` table; identified by NAME (portable across machines, like projects).
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct ClientRow {
     #[serde(default)]
