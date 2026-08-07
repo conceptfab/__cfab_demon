@@ -245,6 +245,12 @@ pub struct ProjectReportData {
     pub estimate: f64,
     pub sessions: Vec<SessionWithApp>,
     pub manual_sessions: Vec<ManualSessionWithProject>,
+    /// Pozycje kosztowe z okresu raportu, chronologicznie.
+    #[serde(default)]
+    pub costs: Vec<CostRow>,
+    /// Suma powyższych — żeby front nie musiał sumować sam.
+    #[serde(default)]
+    pub costs_total: f64,
 }
 
 #[derive(Serialize)]

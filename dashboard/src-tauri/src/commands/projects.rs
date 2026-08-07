@@ -2118,7 +2118,6 @@ mod tests {
         );
     }
 
-    #[test]
     /// Brak FK (link po nazwie) ⇒ kasowanie projektu musi jawnie usunąć jego koszty,
     /// inaczej zostają sieroty, które nadal liczyłyby się w raporcie klienta.
     #[test]
