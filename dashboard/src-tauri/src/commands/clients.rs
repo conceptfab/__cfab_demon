@@ -317,11 +317,7 @@ pub async fn clients_update(
         .map_err(|e| e.to_string())?;
         if let Some(old) = old_name {
             if old != name {
-                conn.execute(
-                    "UPDATE projects SET client_name=?1, updated_at=datetime('now') WHERE client_name=?2",
-                    rusqlite::params![name, old],
-                )
-                .map_err(|e| e.to_string())?;
+                rename_client_links(conn, &old, &name)?;
             }
         }
         load_client_by_id(conn, id)
@@ -353,6 +349,49 @@ pub async fn clients_archive(
     .map_err(Into::into)
 }
 
+/// Przenosi linki po zmianie nazwy klienta. `projects.client_name` było już
+/// kaskadowane w kodzie tej komendy; `todos.client_name` dochodzi w fazie 2.
+/// `updated_at` MUSI się odświeżyć, inaczej LWW nie rozniesie zmiany.
+pub(crate) fn rename_client_links(
+    conn: &rusqlite::Connection,
+    old_name: &str,
+    new_name: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE projects SET client_name = ?1, updated_at = datetime('now') \
+         WHERE client_name = ?2",
+        rusqlite::params![new_name, old_name],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE todos SET client_name = ?1, updated_at = datetime('now') \
+         WHERE client_name = ?2",
+        rusqlite::params![new_name, old_name],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Odpina projekty i KASUJE zadania usuwanego klienta. Projekt bez klienta ma
+/// sens (historia czasu zostaje), zadanie klienta bez klienta — nie ma.
+pub(crate) fn delete_client_links(
+    conn: &rusqlite::Connection,
+    name: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE projects SET client_name = NULL, updated_at = datetime('now') \
+         WHERE lower(client_name) = lower(?1)",
+        [name],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM todos WHERE scope = 'client' AND lower(client_name) = lower(?1)",
+        [name],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn clients_delete(app: AppHandle, id: i64, name: String) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
@@ -370,12 +409,7 @@ pub async fn clients_delete(app: AppHandle, id: i64, name: String) -> Result<(),
             return Err("Client name is required to delete".to_string());
         }
         // Unlink projects first so history is never orphaned by a hard delete.
-        conn.execute(
-            "UPDATE projects SET client_name=NULL, updated_at=datetime('now')
-             WHERE lower(client_name)=lower(?1)",
-            [&target],
-        )
-        .map_err(|e| e.to_string())?;
+        delete_client_links(conn, &target)?;
         conn.execute("DELETE FROM clients WHERE lower(name)=lower(?1)", [&target])
             .map_err(|e| e.to_string())?;
         Ok(())
@@ -879,8 +913,74 @@ fn empty_summary(client_name: String, color: String) -> ClientSummary {
 
 #[cfg(test)]
 mod tests {
-    use super::{group_of, pm_canonical_map, resolve_overlay_client};
+    use super::{
+        delete_client_links, group_of, pm_canonical_map, rename_client_links,
+        resolve_overlay_client,
+    };
     use std::collections::{HashMap, HashSet};
+
+    /// Pełny realny schemat (schema.sql + migracje) — ta sama ścieżka co
+    /// `initialize_database_file`, więc triggery m26 istnieją.
+    fn test_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(include_str!("../../resources/sql/schema.sql"))
+            .expect("schema");
+        crate::db_migrations::run_migrations(&conn).expect("migrations");
+        conn
+    }
+
+    /// Zmiana nazwy klienta musi przenieść jego zadania — `clients_update`
+    /// kaskaduje to w kodzie komendy (dla klientów repo nie używa triggerów).
+    #[test]
+    fn renaming_client_cascades_to_todos() {
+        let conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO clients (id, name, updated_at) VALUES (1, 'Globex', '2026-05-01 10:00:00');
+             INSERT INTO todos (uid, scope, client_name, title, updated_at)
+             VALUES ('t1', 'client', 'Globex', 'zadanie', '1970-01-01 00:00:00');",
+        )
+        .unwrap();
+
+        rename_client_links(&conn, "Globex", "Globex SA").expect("rename");
+
+        let (name, updated_at): (String, String) = conn
+            .query_row(
+                "SELECT client_name, updated_at FROM todos WHERE uid = 't1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "Globex SA");
+        assert_ne!(
+            updated_at, "1970-01-01 00:00:00",
+            "rename musi odswiezyc updated_at, inaczej LWW nie rozniesie zmiany"
+        );
+    }
+
+    /// Usunięcie klienta kasuje jego zadania, ale zostawia projekty (odpięte).
+    #[test]
+    fn deleting_client_removes_its_todos_but_keeps_projects() {
+        let conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO clients (id, name, updated_at) VALUES (1, 'Globex', '2026-05-01 10:00:00');
+             INSERT INTO projects (id, name, client_name, created_at) VALUES (1, 'Acme', 'Globex', datetime('now'));
+             INSERT INTO todos (uid, scope, client_name, title, updated_at)
+             VALUES ('t1', 'client', 'Globex', 'zadanie', '2026-05-10 10:00:00');",
+        )
+        .unwrap();
+
+        delete_client_links(&conn, "Globex").expect("delete");
+
+        let todos: i64 = conn
+            .query_row("SELECT COUNT(*) FROM todos WHERE uid = 't1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(todos, 0);
+
+        let client: Option<String> = conn
+            .query_row("SELECT client_name FROM projects WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(client, None, "projekt zostaje, tylko odpiety od klienta");
+    }
 
     #[test]
     fn overlay_resolves_client_like_clients_panel() {

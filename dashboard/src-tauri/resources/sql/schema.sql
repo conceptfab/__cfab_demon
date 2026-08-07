@@ -486,3 +486,77 @@ CREATE TABLE IF NOT EXISTS system_settings (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS project_costs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid TEXT NOT NULL UNIQUE,
+    project_name TEXT NOT NULL,
+    cost_date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    comment TEXT,
+    created_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_costs_project_date ON project_costs(project_name, cost_date);
+CREATE INDEX IF NOT EXISTS idx_project_costs_updated_at ON project_costs(updated_at);
+
+CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid TEXT NOT NULL UNIQUE,
+    scope TEXT NOT NULL,
+    project_name TEXT,
+    client_name TEXT,
+    title TEXT NOT NULL,
+    notes TEXT,
+    due_date TEXT,
+    end_date TEXT,
+    due_time TEXT,
+    priority INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'open',
+    completed_at TEXT,
+    sort_order REAL,
+    gcal_event_id TEXT,
+    gcal_synced_at TEXT,
+    created_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+);
+
+CREATE INDEX IF NOT EXISTS idx_todos_status_due ON todos(status, due_date);
+CREATE INDEX IF NOT EXISTS idx_todos_updated_at ON todos(updated_at);
+
+CREATE TRIGGER IF NOT EXISTS trg_project_costs_tombstone
+AFTER DELETE ON project_costs
+FOR EACH ROW
+BEGIN
+    INSERT INTO tombstones (table_name, record_id, sync_key)
+    VALUES ('project_costs', OLD.id, OLD.uid);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_todos_tombstone
+AFTER DELETE ON todos
+FOR EACH ROW
+BEGIN
+    INSERT INTO tombstones (table_name, record_id, sync_key)
+    VALUES ('todos', OLD.id, OLD.uid);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_projects_rename_cascade_costs
+AFTER UPDATE OF name ON projects
+FOR EACH ROW
+WHEN OLD.name <> NEW.name
+BEGIN
+    UPDATE project_costs
+    SET project_name = NEW.name, updated_at = datetime('now')
+    WHERE project_name = OLD.name;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_projects_rename_cascade_todos
+AFTER UPDATE OF name ON projects
+FOR EACH ROW
+WHEN OLD.name <> NEW.name
+BEGIN
+    UPDATE todos
+    SET project_name = NEW.name, updated_at = datetime('now')
+    WHERE project_name = OLD.name;
+END;

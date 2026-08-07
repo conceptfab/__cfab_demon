@@ -412,6 +412,8 @@ fn import_archive_into_tx(
     timeflow_shared::sync::merge::apply_tombstones(tx, &archive_value, &hooks)?;
     timeflow_shared::sync::merge::merge_projects(tx, &archive_value, &hooks)?;
     timeflow_shared::sync::merge::merge_clients(tx, &archive_value, &hooks)?;
+    timeflow_shared::sync::merge::merge_project_costs(tx, &archive_value, &hooks)?;
+    timeflow_shared::sync::merge::merge_todos(tx, &archive_value, &hooks)?;
     let mut id_maps = timeflow_shared::sync::merge::build_id_maps(tx, &archive_value)?;
     timeflow_shared::sync::merge::merge_applications(tx, &archive_value, &hooks, &mut id_maps)?;
 
@@ -1505,6 +1507,8 @@ mod tests {
             data: ExportData {
                 projects: vec![],
                 clients: vec![],
+                project_costs: vec![],
+                todos: vec![],
                 applications: vec![],
                 sessions: vec![],
                 manual_sessions: vec![],
@@ -1682,6 +1686,104 @@ mod tests {
             "explicit-null client_name clears local (newer remote wins)"
         );
         assert_eq!(st, "active", "explicit status from newer remote wins");
+    }
+
+    /// Import backupu musi wnosić zadania.
+    #[test]
+    fn import_merges_todos() {
+        use super::super::types::TodoRow;
+
+        let mut conn = full_schema_conn();
+        let mut archive = base_archive();
+        archive.data.todos.push(TodoRow {
+            uid: "t1".into(),
+            scope: "global".into(),
+            project_name: None,
+            client_name: None,
+            title: "Zadzwonic do klienta".into(),
+            notes: None,
+            due_date: Some("2026-06-01".into()),
+            end_date: None,
+            due_time: None,
+            priority: 2,
+            status: "open".into(),
+            completed_at: None,
+            sort_order: Some(1000.0),
+            created_at: Some("2026-05-20 08:00:00".into()),
+            updated_at: "2026-05-20 08:00:00".into(),
+        });
+
+        run_sync_import(&mut conn, &archive);
+
+        let (title, priority): (String, i64) = conn
+            .query_row(
+                "SELECT title, priority FROM todos WHERE uid = 't1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("zadanie musi byc zaimportowane");
+        assert_eq!(title, "Zadzwonic do klienta");
+        assert_eq!(priority, 2);
+    }
+
+    /// Archiwum sprzed fazy 2 nie zna klucza `todos` — import musi je przyjąć.
+    #[test]
+    fn import_accepts_archive_without_todos_key() {
+        let mut json = serde_json::to_value(base_archive()).expect("serialize");
+        json.pointer_mut("/data")
+            .and_then(|d| d.as_object_mut())
+            .expect("data")
+            .remove("todos");
+
+        let archive: super::super::types::ExportArchive = serde_json::from_value(json)
+            .expect("archiwum bez klucza todos musi sie zdeserializowac");
+        assert!(archive.data.todos.is_empty());
+    }
+
+    /// Import backupu musi wnosić koszty — inaczej przywrócenie archiwum
+    /// gubiłoby całą historię kosztów projektu.
+    #[test]
+    fn import_merges_project_costs() {
+        use super::super::types::CostRow;
+
+        let mut conn = full_schema_conn();
+        let mut archive = base_archive();
+        archive.data.project_costs.push(CostRow {
+            uid: "u1".into(),
+            project_name: "Acme".into(),
+            cost_date: "2026-05-10".into(),
+            amount: 320.0,
+            comment: Some("podwykonawca".into()),
+            created_at: Some("2026-05-10 10:00:00".into()),
+            updated_at: "2026-05-10 10:00:00".into(),
+        });
+
+        run_sync_import(&mut conn, &archive);
+
+        let (amount, comment): (f64, String) = conn
+            .query_row(
+                "SELECT amount, comment FROM project_costs WHERE uid = 'u1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("koszt musi byc zaimportowany");
+        assert_eq!(amount, 320.0);
+        assert_eq!(comment, "podwykonawca");
+    }
+
+    /// Archiwum sprzed m26 nie zna klucza `project_costs` — import musi je przyjąć
+    /// bez błędu (`#[serde(default)]`), a nie wywrócić się na brakującym polu.
+    #[test]
+    fn import_accepts_pre_m26_archive_without_costs_key() {
+        let mut json = serde_json::to_value(base_archive()).expect("serialize");
+        json.pointer_mut("/data")
+            .and_then(|d| d.as_object_mut())
+            .expect("data")
+            .remove("project_costs");
+
+        let archive: super::super::types::ExportArchive = serde_json::from_value(json)
+            .expect("archiwum bez klucza project_costs musi sie zdeserializowac");
+        assert!(archive.data.project_costs.is_empty());
     }
 
     #[test]
@@ -2263,6 +2365,8 @@ mod tests {
         let data = super::super::types::ExportData {
             projects: Vec::new(),
             clients: Vec::new(),
+            project_costs: Vec::new(),
+            todos: Vec::new(),
             applications: Vec::new(),
             sessions: Vec::new(),
             manual_sessions: Vec::new(),

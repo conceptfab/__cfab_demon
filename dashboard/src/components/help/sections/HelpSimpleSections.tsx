@@ -6,8 +6,10 @@ import {
   Cpu,
   Briefcase,
   Users,
+  ListTodo,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { HelpDetailsBlock } from '@/components/help/HelpDetailsBlock';
 import { SectionHelp } from '@/components/help/SectionHelp';
 
 export function HelpDashboardSection() {
@@ -205,5 +207,28 @@ export function HelpPmSection() {
         t18n('help_page.pm_clients_management'),
       ]}
     />
+  );
+}
+
+export function HelpTodoSection() {
+  const { t: t18n } = useTranslation();
+
+  return (
+    <SectionHelp
+      icon={<ListTodo className="size-6" />}
+      title={t18n('todo.help_title')}
+      description={t18n('todo.help_what')}
+      footer={t18n('help_page.key_functionalities')}
+      features={[t18n('todo.help_feature')]}
+    >
+      <HelpDetailsBlock
+        title={t18n('todo.help_title')}
+        items={[
+          t18n('todo.help_what'),
+          t18n('todo.help_when'),
+          t18n('todo.help_limits'),
+        ]}
+      />
+    </SectionHelp>
   );
 }

@@ -5,9 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { projectsApi } from '@/lib/tauri';
 import { formatDurationWithDaily } from '@/lib/utils';
+import { buildTodayDate } from '@/lib/date-helpers';
 import { manualToSessionRow } from '@/lib/session-utils';
 import { ProjectOverview } from '@/components/project-page/ProjectOverview';
 import { ProjectEstimatesSection } from '@/components/project-page/ProjectEstimatesSection';
+import { ProjectCostsSection } from '@/components/project-page/ProjectCostsSection';
+import { CostDialog } from '@/components/project-page/CostDialog';
+import { ContextTodosSection } from '@/components/todo/ContextTodosSection';
 import { ProjectTimelineSection } from '@/components/project-page/ProjectTimelineSection';
 import { ProjectSessionsList } from '@/components/project-page/ProjectSessionsList';
 import type { ProjectSessionRow } from '@/components/project-page/ProjectSessionsList';
@@ -22,6 +26,7 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
   const { t } = useTranslation();
   const {
     busy,
+    costs,
     currencyCode,
     estimate,
     extraInfo,
@@ -127,6 +132,24 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
         }
         onCompact={handleCompact}
         minimal={projectPageMinimal}
+      />
+
+      <ProjectCostsSection
+        costs={costs.costs}
+        currencyCode={currencyCode}
+        loading={costs.loading}
+        error={costs.error}
+        onAdd={() => costs.openCreate(buildTodayDate())}
+        onEdit={costs.openEdit}
+        onDelete={(cost) => void costs.remove(cost)}
+      />
+
+      <CostDialog controller={costs} />
+
+      <ContextTodosSection
+        scope="project"
+        name={project.name}
+        titleKey="todo.project_section_title"
       />
 
       {mergedChildren.length > 0 && (

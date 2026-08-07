@@ -106,6 +106,11 @@ export function EstimatesView({ controller }: EstimatesViewProps) {
                     ≈{currency.format(roundedSummary.value)}
                   </span>
                 )}
+                {filteredSummary.total_costs > 0 && (
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    {`+ ${t('costs.summary_costs')} ${currency.format(filteredSummary.total_costs)} = ${t('costs.summary_grand_total')} ${currency.format(filteredSummary.grand_total)}`}
+                  </span>
+                )}
               </>
             )
           }

@@ -1,8 +1,9 @@
-import { FolderOpen, Flame, MousePointerClick } from 'lucide-react';
+import { FolderOpen, Flame, MousePointerClick, ListTodo } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatDurationWithDaily } from '@/lib/utils';
 import { localizeProjectLabel } from '@/lib/project-labels';
 import { useUIStore } from '@/store/ui-store';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import type {
   ProjectTimeRow,
   ProjectWithStats,
@@ -16,6 +17,8 @@ interface TopProjectsListProps {
   setSessionsFocusDate: (date: string | null) => void;
   boostedByProject?: Map<string, number>;
   manualCountsByProject?: Map<string, number>;
+  /** Nazwa projektu → liczba OTWARTYCH zadań z terminem w przyszłości (lub dziś). */
+  upcomingTodosByProject?: Map<string, number>;
 }
 
 const UNASSIGNED_PROJECT_KEY = 'unassigned';
@@ -27,6 +30,7 @@ export function TopProjectsList({
   setSessionsFocusDate,
   boostedByProject,
   manualCountsByProject,
+  upcomingTodosByProject,
 }: TopProjectsListProps) {
   const { t } = useTranslation();
   const setCurrentPage = useUIStore((s) => s.setCurrentPage);
@@ -64,14 +68,19 @@ export function TopProjectsList({
           p.project_id == null
             ? null
             : (allProjectsList.find((x) => x.id === p.project_id) ?? null);
+        const upcomingTodos =
+          upcomingTodosByProject?.get(linkedProject?.name ?? p.name) ?? 0;
         return (
+          // Plakietka zadań jest RODZEŃSTWEM wiersza, nie jego dzieckiem — wiersz
+          // sam jest przyciskiem, a zagnieżdżanie kontrolek psuje klawiaturę
+          // i czytniki ekranu.
+          <div key={projectKey} className="-mx-1.5 flex items-start gap-1">
           <button
             type="button"
-            key={projectKey}
             data-project-id={linkedProject?.id}
             data-project-name={linkedProject?.name}
             aria-label={t('components.top_projects.click_to_view', { name: projectLabel })}
-            className="w-full space-y-1 rounded-md p-1.5 -mx-1.5 cursor-pointer text-left transition-colors hover:bg-muted/40"
+            className="min-w-0 flex-1 space-y-1 rounded-md p-1.5 cursor-pointer text-left transition-colors hover:bg-muted/40"
             onClick={() => openProjectSessions(p.project_id ?? null)}
           >
             <div className="flex items-start justify-between gap-2">
@@ -141,6 +150,25 @@ export function TopProjectsList({
               />
             </div>
           </button>
+
+          {upcomingTodos > 0 && (
+            <AppTooltip
+              content={t('todo.upcoming_for_project', { count: upcomingTodos })}
+            >
+              <button
+                type="button"
+                onClick={() => setCurrentPage('todo')}
+                aria-label={t('todo.upcoming_for_project', {
+                  count: upcomingTodos,
+                })}
+                className="mt-1.5 flex shrink-0 cursor-pointer items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-sky-400 transition-colors hover:bg-sky-400/10 hover:text-sky-300"
+              >
+                <ListTodo className="size-3" />
+                {upcomingTodos}
+              </button>
+            </AppTooltip>
+          )}
+          </div>
         );
       })}
     </div>

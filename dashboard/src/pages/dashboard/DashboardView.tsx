@@ -15,6 +15,8 @@ import { ProjectDayTimeline } from '@/components/dashboard/ProjectDayTimeline';
 import { TimelineChart } from '@/components/dashboard/TimelineChart';
 import { TopAppsChart } from '@/components/dashboard/TopAppsChart';
 import { TopProjectsList } from '@/components/dashboard/TopProjectsList';
+import { UpcomingTodosCard } from '@/components/dashboard/UpcomingTodosCard';
+import { useUpcomingTodosByProject } from '@/hooks/useUpcomingTodosByProject';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +35,8 @@ interface DashboardViewProps {
 }
 
 export function DashboardView({ controller }: DashboardViewProps) {
+  // Znaczniki „ma nadchodzące zadania" przy projektach na liście Top.
+  const upcomingTodosByProject = useUpcomingTodosByProject();
   const {
     allProjects,
     boostedByProject,
@@ -259,6 +263,7 @@ export function DashboardView({ controller }: DashboardViewProps) {
                 </CardHeader>
                 <CardContent>
                   <TopProjectsList
+                    upcomingTodosByProject={upcomingTodosByProject}
                     projects={topProjects}
                     allProjectsList={projectsList}
                     dateRange={dateRange}
@@ -270,6 +275,8 @@ export function DashboardView({ controller }: DashboardViewProps) {
               </Card>
 
               <TopAppsChart apps={stats?.top_apps ?? []} />
+
+              <UpcomingTodosCard />
             </div>
 
             <AllProjectsChart projects={allProjects} />

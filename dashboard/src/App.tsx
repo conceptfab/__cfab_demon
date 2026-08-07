@@ -14,6 +14,9 @@ const Dashboard = lazy(() =>
   import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })),
 );
 
+const Todo = lazy(() =>
+  import('@/pages/Todo').then((m) => ({ default: m.Todo })),
+);
 const Projects = lazy(() =>
   import('@/pages/Projects').then((m) => ({ default: m.Projects })),
 );
@@ -79,6 +82,8 @@ function PageRouter() {
     switch (currentPage) {
       case 'dashboard':
         return <Dashboard />;
+      case 'todo':
+        return <Todo />;
       case 'projects':
         return <Projects />;
       case 'estimates':

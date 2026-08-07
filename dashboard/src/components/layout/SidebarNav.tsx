@@ -12,6 +12,8 @@ type SidebarNavProps = Pick<
   | 'sessionsAttentionTitle'
   | 'sessionsBadge'
   | 'unassignedSessions'
+  | 'openTodos'
+  | 'todosBadge'
 > & {
   collapsed?: boolean;
 };
@@ -23,6 +25,8 @@ export function SidebarNav({
   sessionsAttentionTitle,
   sessionsBadge,
   unassignedSessions,
+  openTodos,
+  todosBadge,
 }: SidebarNavProps) {
   const { t } = useTranslation();
 
@@ -46,6 +50,7 @@ export function SidebarNav({
           : sessionsTooltip;
         const showSessionsBadge =
           item.id === 'sessions' && unassignedSessions > 0;
+        const showTodosBadge = item.id === 'todo' && openTodos > 0;
 
         return (
           <AppTooltip key={item.id} content={tooltipContent} side="right">
@@ -73,10 +78,18 @@ export function SidebarNav({
                 {collapsed && showSessionsBadge && (
                   <span className="absolute -right-1.5 -top-1.5 size-1.5 rounded-full bg-destructive" />
                 )}
+                {collapsed && showTodosBadge && (
+                  <span className="absolute -right-1.5 -top-1.5 size-1.5 rounded-full bg-sky-400" />
+                )}
               </span>
               {!collapsed && showSessionsBadge && (
                 <span className="rounded-sm border border-destructive/25 bg-destructive/10 px-1.5 py-0 text-[10px] font-medium text-destructive">
                   *{sessionsBadge}
+                </span>
+              )}
+              {!collapsed && showTodosBadge && (
+                <span className="rounded-sm border border-sky-400/25 bg-sky-400/10 px-1.5 py-0 text-[10px] font-medium text-sky-300">
+                  {todosBadge}
                 </span>
               )}
             </button>

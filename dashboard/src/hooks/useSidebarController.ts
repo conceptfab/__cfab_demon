@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useUpcomingTodosCount } from '@/hooks/useUpcomingTodosByProject';
+
 import { useUIStore } from '@/store/ui-store';
 import { useBackgroundStatusStore } from '@/store/background-status-store';
 import { lanSyncApi, triggerDaemonOnlineSync } from '@/lib/tauri';
@@ -211,6 +213,9 @@ export function useSidebarController({ onNavigate }: SidebarControllerOptions = 
     hasPendingAssignmentModelTrainingData(aiStatus);
   const aiModeStatusText = getAiModeLabel(aiStatus?.mode, t);
   const sessionsBadge = unassignedSessions.toLocaleString();
+  // Licznik otwartych zadań w nawigacji — ten sam wzorzec co badge sesji.
+  const openTodos = useUpcomingTodosCount();
+  const todosBadge = openTodos.toLocaleString();
   const sessionsAttentionTitle =
     unassignedSessions > 0
       ? todayUnassigned > 0
@@ -244,6 +249,8 @@ export function useSidebarController({ onNavigate }: SidebarControllerOptions = 
     openContextHelp,
     sessionsAttentionTitle,
     sessionsBadge,
+    openTodos,
+    todosBadge,
     setIsBugHunterOpen,
     status,
     syncIndicator,

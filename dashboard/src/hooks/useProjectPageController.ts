@@ -48,6 +48,7 @@ import type {
 } from '@/components/project-page/ProjectSessionsList';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
+import { useProjectCosts } from '@/hooks/useProjectCosts';
 
 export function useProjectPageController() {
   const { t, i18n } = useTranslation();
@@ -90,6 +91,9 @@ export function useProjectPageController() {
     },
     projectsList,
   } = pageState;
+  // Koszty dodatkowe (m26) — osobny hook, bo są niezależne od sesji i timeline'u.
+  // Linkują się NAZWĄ projektu, nie `id`, więc taki jest klucz przeładowania.
+  const costs = useProjectCosts(project?.name);
   const autoSessionsById = useMemo(
     () => buildAutoSessionsById(recentSessions),
     [recentSessions],
@@ -616,6 +620,7 @@ export function useProjectPageController() {
     busy,
     confirm,
     confirmDialogProps,
+    costs,
     ctxMenu,
     ctxRef,
     currencyCode,

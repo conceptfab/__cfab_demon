@@ -292,6 +292,56 @@ pub(crate) fn ensure_project_client_columns(conn: &rusqlite::Connection) -> Resu
     Ok(())
 }
 
+/// Tabele encji z m26. Tworzone awaryjnie, bo demon ma własny schemat i NIE
+/// uruchamia migracji dashboardu. Wołane przed odtworzeniem triggerów tombstone —
+/// `CREATE TRIGGER ... ON <tabela>` wymaga istniejącej tabeli, a błąd przerwałby
+/// CAŁY merge, nie tylko część kosztową.
+///
+/// `todos` jest tworzona razem z `project_costs`, bo jej trigger też jest już
+/// w `CREATE_ALL_TOMBSTONE_TRIGGERS_SQL` (kod zadań dochodzi dopiero w fazie 2).
+pub(crate) fn ensure_m26_entity_tables(conn: &rusqlite::Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS project_costs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT NOT NULL UNIQUE,
+            project_name TEXT NOT NULL,
+            cost_date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            comment TEXT,
+            created_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_costs_project_date
+            ON project_costs(project_name, cost_date);
+        CREATE INDEX IF NOT EXISTS idx_project_costs_updated_at
+            ON project_costs(updated_at);
+
+        CREATE TABLE IF NOT EXISTS todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT NOT NULL UNIQUE,
+            scope TEXT NOT NULL,
+            project_name TEXT,
+            client_name TEXT,
+            title TEXT NOT NULL,
+            notes TEXT,
+            due_date TEXT,
+            end_date TEXT,
+            due_time TEXT,
+            priority INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'open',
+            completed_at TEXT,
+            sort_order REAL,
+            gcal_event_id TEXT,
+            gcal_synced_at TEXT,
+            created_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+        );
+        CREATE INDEX IF NOT EXISTS idx_todos_status_due ON todos(status, due_date);
+        CREATE INDEX IF NOT EXISTS idx_todos_updated_at ON todos(updated_at);",
+    )
+    .map_err(|e| format!("ensure_m26_entity_tables: {e}"))
+}
+
 // ── Merge ──
 
 pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) -> Result<(), String> {
@@ -300,6 +350,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
         .map_err(|_| "merge mutex poisoned".to_string())?;
     ensure_project_merge_columns(conn)?;
     ensure_project_client_columns(conn)?;
+    ensure_m26_entity_tables(conn)?;
     const MAX_PAYLOAD_SIZE: usize = 200 * 1024 * 1024; // 200 MB
     if slave_data.len() > MAX_PAYLOAD_SIZE {
         return Err(format!(
@@ -347,6 +398,8 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     timeflow_shared::sync::merge::apply_tombstones(&tx, &archive, &hooks)?;
     timeflow_shared::sync::merge::merge_projects(&tx, &archive, &hooks)?;
     timeflow_shared::sync::merge::merge_clients(&tx, &archive, &hooks)?;
+    timeflow_shared::sync::merge::merge_project_costs(&tx, &archive, &hooks)?;
+    timeflow_shared::sync::merge::merge_todos(&tx, &archive, &hooks)?;
     let mut id_maps = timeflow_shared::sync::merge::build_id_maps(&tx, &archive)?;
     timeflow_shared::sync::merge::merge_applications(&tx, &archive, &hooks, &mut id_maps)?;
 
@@ -1016,6 +1069,27 @@ pub(crate) fn merge_incoming_nonblocking_with_hook(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Rozszerzenie tablicy triggerów o m26 wywracało CAŁY merge na demonie,
+    /// bo demon nie uruchamia migracji dashboardu i nie ma tych tabel.
+    #[test]
+    fn ensure_m26_entity_tables_is_idempotent() {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory");
+        ensure_m26_entity_tables(&conn).expect("pierwsze wywolanie");
+        ensure_m26_entity_tables(&conn).expect("drugie wywolanie musi byc no-op");
+        conn.execute(
+            "INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u1', 'Acme', '2026-05-10', 10.0, '2026-05-10 10:00:00')",
+            [],
+        )
+        .expect("insert po ensure");
+        conn.execute(
+            "INSERT INTO todos (uid, scope, title, updated_at)
+             VALUES ('t1', 'global', 'zadanie', '2026-05-10 10:00:00')",
+            [],
+        )
+        .expect("insert todo po ensure");
+    }
 
     #[test]
     fn test_normalize_ts_iso_format() {
@@ -1870,6 +1944,85 @@ mod tests {
     }
 
     #[test]
+    fn merge_roundtrip_project_costs_via_daemon_export() {
+        // Dowod end-to-end, ze koszt faktycznie opuszcza eksport demona
+        // (build_delta_for_pull, przez build_full_export -> build_full_snapshot_public)
+        // i wraca przez merge_incoming_data. Bez tego testu klasa bledu jak przy m24
+        // (encja dopisana do merge, ale nigdy nie podpieta pod eksport) przeszlaby niezauwazona.
+        let master = open_test_db();
+        ensure_m26_entity_tables(&master).expect("m26 tables on master");
+        master
+            .execute(
+                "INSERT INTO projects (name, color, updated_at) \
+                 VALUES ('11_26_Metro', '#111111', '2026-06-20 10:00:00')",
+                [],
+            )
+            .unwrap();
+        master
+            .execute(
+                "INSERT INTO project_costs (uid, project_name, cost_date, amount, comment, created_at, updated_at) \
+                 VALUES ('cost-uid-1', '11_26_Metro', '2026-06-15', 123.45, 'materialy budowlane', \
+                 '2026-06-15 09:00:00', '2026-06-15 09:00:00')",
+                [],
+            )
+            .unwrap();
+
+        let export = build_full_export(&master).expect("export master");
+
+        let mut slave = open_test_db();
+        merge_incoming_data(&mut slave, &export).expect("merge into slave");
+
+        let (uid, project_name, cost_date, amount, comment): (String, String, String, f64, Option<String>) = slave
+            .query_row(
+                "SELECT uid, project_name, cost_date, amount, comment FROM project_costs WHERE uid = 'cost-uid-1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .expect("koszt musi dojechac przez sync demona");
+        assert_eq!(uid, "cost-uid-1");
+        assert_eq!(project_name, "11_26_Metro");
+        assert_eq!(cost_date, "2026-06-15");
+        assert_eq!(amount, 123.45);
+        assert_eq!(comment.as_deref(), Some("materialy budowlane"));
+    }
+
+    #[test]
+    fn merge_roundtrip_todos_via_daemon_export() {
+        // Dowod end-to-end, ze zadanie faktycznie opuszcza eksport demona
+        // (build_delta_for_pull, przez build_full_export -> build_full_snapshot_public)
+        // i wraca przez merge_incoming_data.
+        let master = open_test_db();
+        ensure_m26_entity_tables(&master).expect("m26 tables on master");
+        master
+            .execute(
+                "INSERT INTO todos (uid, scope, project_name, title, notes, due_date, due_time, \
+                 priority, status, sort_order, created_at, updated_at) \
+                 VALUES ('todo-uid-1', 'project', '11_26_Metro', 'Wyslac kosztorys', 'po akceptacji', \
+                 '2026-06-15', '09:30', 2, 'open', 1000.0, '2026-06-10 09:00:00', '2026-06-10 09:00:00')",
+                [],
+            )
+            .unwrap();
+
+        let export = build_full_export(&master).expect("export master");
+
+        let mut slave = open_test_db();
+        merge_incoming_data(&mut slave, &export).expect("merge into slave");
+
+        let (scope, project, title, due, prio): (String, Option<String>, String, Option<String>, i64) = slave
+            .query_row(
+                "SELECT scope, project_name, title, due_date, priority FROM todos WHERE uid = 'todo-uid-1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .expect("zadanie musi dojechac przez sync demona");
+        assert_eq!(scope, "project");
+        assert_eq!(project.as_deref(), Some("11_26_Metro"));
+        assert_eq!(title, "Wyslac kosztorys");
+        assert_eq!(due.as_deref(), Some("2026-06-15"));
+        assert_eq!(prio, 2);
+    }
+
+    #[test]
     fn merge_carries_assignment_feedback_and_auto_runs_via_export_roundtrip() {
         // H-1: feedback AI i historia auto-runów nie propagowały się przez sync.
         // Eksport full → merge → oba wiersze obecne; drugi merge nie duplikuje (dedup).
@@ -2646,6 +2799,23 @@ mod tests {
              CREATE TABLE clients (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
                  name TEXT NOT NULL UNIQUE,
+                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+             );
+             CREATE TABLE project_costs (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 uid TEXT NOT NULL UNIQUE,
+                 project_name TEXT NOT NULL,
+                 cost_date TEXT NOT NULL,
+                 amount REAL NOT NULL,
+                 comment TEXT,
+                 created_at TEXT,
+                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+             );
+             CREATE TABLE todos (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 uid TEXT NOT NULL UNIQUE,
+                 scope TEXT NOT NULL,
+                 title TEXT NOT NULL,
                  updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
              );
              CREATE TABLE tombstones (

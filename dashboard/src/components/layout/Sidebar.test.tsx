@@ -1,4 +1,6 @@
 import { render, screen } from '@testing-library/react';
+
+import { sidebarNavItems } from '@/lib/sidebar-nav-items';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-i18next', async (importOriginal) => {
@@ -46,5 +48,13 @@ describe('Sidebar macOS collapse toggle', () => {
     expect(wrapper?.className).toContain('h-[22px]');
     expect(button.className).toContain('size-[22px]');
     expect(icon?.getAttribute('class')).toContain('size-[13px]');
+  });
+
+  /// Spec §7: Zadania mają być DRUGIM pod względem ważności ekranem, czyli
+  /// zaraz po Dashboardzie. Bez tego testu kolejność łatwo zgubić przy
+  /// dokładaniu kolejnych pozycji nawigacji.
+  it('keeps tasks as the second nav item', () => {
+    expect(sidebarNavItems[0].id).toBe('dashboard');
+    expect(sidebarNavItems[1].id).toBe('todo');
   });
 });

@@ -11,7 +11,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { lanSyncApi } from '@/lib/tauri';
+import { getDaemonOnlineSyncResult, lanSyncApi } from '@/lib/tauri';
+import { saveOnlineSyncLastResult } from '@/lib/sync/sync-state';
+import { refreshIndicatorFromStorage } from '@/lib/sync/sync-indicator';
 import { SyncProgressOverlay } from './SyncProgressOverlay';
 import type { SyncProgress } from '@/lib/lan-sync-types';
 import { useDataStore } from '@/store/data-store';
@@ -118,15 +120,6 @@ export function DaemonSyncOverlay() {
         if (onlineRunningRef.current) {
           onlineRunningRef.current = false;
           try {
-            const [
-              { getDaemonOnlineSyncResult },
-              { saveOnlineSyncLastResult },
-              { refreshIndicatorFromStorage },
-            ] = await Promise.all([
-              import('@/lib/tauri/online-sync'),
-              import('@/lib/sync/sync-state'),
-              import('@/lib/sync/sync-indicator'),
-            ]);
             const res = await getDaemonOnlineSyncResult();
             if (res.phase === 'completed') {
               saveOnlineSyncLastResult({ ok: true, syncedHash: res.syncedHash, finishedAt: res.finishedAt });

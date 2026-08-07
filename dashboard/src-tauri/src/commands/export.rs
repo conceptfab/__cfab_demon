@@ -1,8 +1,8 @@
 use super::daily_store_bridge;
 use super::helpers::{run_app_blocking, timeflow_data_dir};
 use super::types::{
-    AppDailyData, ApplicationRow, ClientRow, DailyData, DateRange, ExportArchive, ExportData,
-    ExportMetadata, FileActivityExportRow, ManualSession, Project, SessionRow,
+    AppDailyData, ApplicationRow, ClientRow, CostRow, DailyData, DateRange, ExportArchive,
+    ExportData, ExportMetadata, FileActivityExportRow, ManualSession, Project, SessionRow, TodoRow,
 };
 use crate::commands::error::CommandError;
 use crate::db;
@@ -148,6 +148,68 @@ fn build_export_archive(
                         archived_at: row.get(7)?,
                         created_at: row.get(8)?,
                         updated_at: row.get(9)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            rows
+        };
+
+        // Koszty dodatkowe (m26 entity) — full table. Bez tego przywrócenie backupu
+        // gubiłoby całą historię kosztów projektu; link po NAZWIE, więc `id` pomijamy.
+        let project_costs: Vec<CostRow> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT uid, project_name, cost_date, amount, comment, created_at, updated_at \
+                     FROM project_costs",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(CostRow {
+                        uid: row.get(0)?,
+                        project_name: row.get(1)?,
+                        cost_date: row.get(2)?,
+                        amount: row.get(3)?,
+                        comment: row.get(4)?,
+                        created_at: row.get(5)?,
+                        updated_at: row.get(6)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            rows
+        };
+
+        // Zadania (m26 entity) — full table. `gcal_*` pomijane (per-maszyna).
+        let todos: Vec<TodoRow> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT uid, scope, project_name, client_name, title, notes, due_date, \
+                     end_date, due_time, priority, status, completed_at, sort_order, created_at, \
+                     updated_at FROM todos",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(TodoRow {
+                        uid: row.get(0)?,
+                        scope: row.get(1)?,
+                        project_name: row.get(2)?,
+                        client_name: row.get(3)?,
+                        title: row.get(4)?,
+                        notes: row.get(5)?,
+                        due_date: row.get(6)?,
+                        end_date: row.get(7)?,
+                        due_time: row.get(8)?,
+                        priority: row.get(9)?,
+                        status: row.get(10)?,
+                        completed_at: row.get(11)?,
+                        sort_order: row.get(12)?,
+                        created_at: row.get(13)?,
+                        updated_at: row.get(14)?,
                     })
                 })
                 .map_err(|e| e.to_string())?
@@ -447,6 +509,8 @@ fn build_export_archive(
             data: ExportData {
                 projects,
                 clients,
+                project_costs,
+                todos,
                 applications,
                 sessions,
                 manual_sessions,

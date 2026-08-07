@@ -48,6 +48,10 @@ export function HelpReportsSection() {
           t18n('help_page.report_period_detail_limitations'),
         ]}
       />
+      <HelpDetailsBlock
+        title={t18n('costs.help_title')}
+        items={[t18n('costs.help_reports'), t18n('costs.help_limits')]}
+      />
     </SectionHelp>
   );
 }

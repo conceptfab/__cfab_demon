@@ -9,9 +9,26 @@ use super::projects::{query_active_project_with_stats_in_range, query_project_ex
 use super::sql_fragments::{ensure_session_project_cache, SESSION_PROJECT_CTE};
 use super::time_algorithm::{compute_project_activity_unique, source_key};
 use super::types::{
-    DateRange, ManualSessionFilters, ManualSessionWithProject, ProjectExtraInfo,
+    CostRow, DateRange, ManualSessionFilters, ManualSessionWithProject, ProjectExtraInfo,
     ProjectReportData, ProjectWithStats, SessionWithApp,
 };
+
+/// Pozycje kosztowe projektu w okresie raportu + ich suma.
+/// Projekt rozwiązywany po `id` → NAZWA, bo koszty linkują się nazwą (brak FK).
+pub(crate) fn load_report_costs(
+    conn: &rusqlite::Connection,
+    project_id: i64,
+    date_range: &DateRange,
+) -> Result<(Vec<CostRow>, f64), String> {
+    let project_name: String = conn
+        .query_row("SELECT name FROM projects WHERE id = ?1", [project_id], |r| {
+            r.get(0)
+        })
+        .map_err(|e| e.to_string())?;
+    let costs = super::costs::list_costs(conn, &project_name, date_range)?;
+    let total = costs.iter().map(|c| c.amount).sum();
+    Ok((costs, total))
+}
 
 /// `date_range` zawęża statystyki projektu do okresu raportu (rozliczenie miesięczne).
 /// Zakres obejmujący całą historię daje ten sam wynik co wcześniej.
@@ -253,6 +270,17 @@ pub async fn get_project_report_data(
         }
     });
 
+    let costs_handle = tauri::async_runtime::spawn({
+        let app = app.clone();
+        let date_range = date_range.clone();
+        async move {
+            run_db_blocking(app, move |conn| {
+                load_report_costs(conn, project_id, &date_range)
+            })
+            .await
+        }
+    });
+
     let project = project_handle
         .await
         .map_err(|e| format!("Project task join failed: {}", e))??;
@@ -279,6 +307,10 @@ pub async fn get_project_report_data(
         .map_err(|e| format!("Effective seconds task join failed: {}", e))??;
     attach_effective_seconds(&mut sessions, &mut manual_sessions, &effective);
     log::info!("[report] effective seconds attached");
+    let (costs, costs_total) = costs_handle
+        .await
+        .map_err(|e| format!("Costs task join failed: {}", e))??;
+    log::info!("[report] costs joined ({} items)", costs.len());
 
     log::info!(
         "[report] DONE project_id={} in {:?}",
@@ -292,7 +324,76 @@ pub async fn get_project_report_data(
         estimate,
         sessions,
         manual_sessions,
+        costs,
+        costs_total,
     })
+}
+
+#[cfg(test)]
+mod costs_tests {
+    use super::*;
+
+    fn setup() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory");
+        conn.execute_batch(
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+            );
+            CREATE TABLE project_costs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid TEXT NOT NULL UNIQUE,
+                project_name TEXT NOT NULL,
+                cost_date TEXT NOT NULL,
+                amount REAL NOT NULL,
+                comment TEXT,
+                created_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+            );
+            INSERT INTO projects (id, name) VALUES (1, 'Acme');
+            INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at) VALUES
+                ('a', 'Acme', '2026-05-05', 100.0, '2026-05-05 10:00:00'),
+                ('b', 'Acme', '2026-05-25', 50.0, '2026-05-25 10:00:00'),
+                ('c', 'Acme', '2026-06-05', 999.0, '2026-06-05 10:00:00');",
+        )
+        .expect("schema");
+        conn
+    }
+
+    /// Raport bierze tylko koszty z okresu i podaje ich sumę.
+    #[test]
+    fn report_costs_are_scoped_to_period() {
+        let conn = setup();
+        let range = DateRange {
+            start: "2026-05-01".into(),
+            end: "2026-05-31".into(),
+        };
+
+        let (costs, total) = load_report_costs(&conn, 1, &range).expect("costs");
+
+        assert_eq!(costs.len(), 2);
+        assert_eq!(costs[0].uid, "a", "pozycje musza byc chronologiczne");
+        assert_eq!(costs[1].uid, "b");
+        assert_eq!(total, 150.0);
+    }
+
+    /// Projekt bez kosztów daje pustą listę i zero — nie błąd.
+    #[test]
+    fn report_costs_empty_for_project_without_costs() {
+        let conn = setup();
+        conn.execute("INSERT INTO projects (id, name) VALUES (2, 'Globex')", [])
+            .unwrap();
+        let range = DateRange {
+            start: "2026-05-01".into(),
+            end: "2026-05-31".into(),
+        };
+
+        let (costs, total) = load_report_costs(&conn, 2, &range).expect("costs");
+
+        assert!(costs.is_empty());
+        assert_eq!(total, 0.0);
+    }
 }
 
 /// Natywny druk bieżącego webview → systemowy panel druku / zapis do PDF.

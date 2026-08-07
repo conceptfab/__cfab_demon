@@ -1,3 +1,5 @@
+import type { ProjectCost } from '@/lib/tauri/costs';
+
 export interface Project {
   id: number;
   name: string;
@@ -290,6 +292,10 @@ export interface EstimateProjectRow {
   client_name: string | null;
   /** Rozbicie czasu na dni z etykietami dat (YYYY-MM-DD), chronologicznie. */
   days: EstimateDay[];
+  /** Suma kosztów dodatkowych projektu w okresie (osobno od `estimated_value`). */
+  costs_value: number;
+  /** Liczba pozycji kosztowych w okresie. */
+  costs_count: number;
 }
 
 export interface EstimateSummary {
@@ -298,6 +304,9 @@ export interface EstimateSummary {
   total_value: number;
   projects_count: number;
   overrides_count: number;
+  total_costs: number;
+  /** `total_value + total_costs` — kwota do rozliczenia. */
+  grand_total: number;
 }
 
 export interface DateRange {
@@ -346,6 +355,9 @@ export interface ProjectReportData {
   estimate: number;
   sessions: SessionWithApp[];
   manual_sessions: ManualSessionWithProject[];
+  /** Pozycje kosztowe z okresu raportu, chronologicznie. */
+  costs: ProjectCost[];
+  costs_total: number;
 }
 
 export interface ProjectFolder {

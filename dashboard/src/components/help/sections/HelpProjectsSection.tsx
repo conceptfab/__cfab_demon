@@ -34,6 +34,7 @@ export function HelpProjectsSection() {
         t18n('help_page.project_manual_sessions_dedicated_card_in_the_project_vi'),
         t18n('help_page.chart_context_menu_right_click_on_a_day_in_the_project_t'),
         t18n('help_page.project_timeline_states_loading_empty_and_error_messages'),
+        t18n('costs.help_feature'),
       ]}
     >
       <HelpDetailsBlock
@@ -50,6 +51,14 @@ export function HelpProjectsSection() {
           t18n('help_page.manual_session_dialog_detail_what_it_does'),
           t18n('help_page.manual_session_dialog_detail_when_to_use'),
           t18n('help_page.manual_session_dialog_detail_limitations'),
+        ]}
+      />
+      <HelpDetailsBlock
+        title={t18n('costs.help_title')}
+        items={[
+          t18n('costs.help_what'),
+          t18n('costs.help_when'),
+          t18n('costs.help_limits'),
         ]}
       />
     </SectionHelp>

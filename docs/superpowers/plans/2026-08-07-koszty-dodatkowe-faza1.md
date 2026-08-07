@@ -388,20 +388,115 @@ Otwórz `src/tombstone_triggers.rs` i sprawdź, jak realizuje lustro (re-eksport
 
 Run: `grep -n "CREATE_ALL_TOMBSTONE_TRIGGERS_SQL\|pub use" src/tombstone_triggers.rs`
 
+- [ ] **Step 5a: Zapewnij istnienie obu tabel w demonie — OBOWIĄZKOWE w tym tasku**
+
+> **Dlaczego tutaj, a nie w Task 6.** `merge_incoming_data` (`src/sync_common.rs`) bezwarunkowo DROP-uje i CREATE-uje **wszystkie** triggery z tablicy przy KAŻDYM merge. Z chwilą rozszerzenia tablicy do 7 pozycji demon próbuje `CREATE TRIGGER ... ON project_costs` — a demon ma własny, ręcznie pisany schemat i NIE uruchamia migracji dashboardu. Bez tego kroku merge wywala się na `no such table: main.project_costs` i przestaje działać **cała** synchronizacja (sesje, projekty, aplikacje — nie tylko koszty), bo pętla tworzenia triggerów przerywa się na pierwszym błędzie. Zweryfikowane: pominięcie tego kroku wywraca 24 testy w `sync_common::tests`.
+
+W `src/sync_common.rs`, obok `ensure_project_client_columns`, dodaj:
+
+```rust
+/// Tabele encji z m26. Tworzone awaryjnie, bo demon ma własny schemat i NIE
+/// uruchamia migracji dashboardu. Wołane przed odtworzeniem triggerów tombstone —
+/// `CREATE TRIGGER ... ON <tabela>` wymaga istniejącej tabeli, a błąd przerwałby
+/// CAŁY merge, nie tylko część kosztową.
+///
+/// `todos` jest tworzona razem z `project_costs`, bo jej trigger też jest już
+/// w `CREATE_ALL_TOMBSTONE_TRIGGERS_SQL` (kod zadań dochodzi dopiero w fazie 2).
+pub fn ensure_m26_entity_tables(conn: &rusqlite::Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS project_costs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT NOT NULL UNIQUE,
+            project_name TEXT NOT NULL,
+            cost_date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            comment TEXT,
+            created_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_costs_project_date
+            ON project_costs(project_name, cost_date);
+        CREATE INDEX IF NOT EXISTS idx_project_costs_updated_at
+            ON project_costs(updated_at);
+
+        CREATE TABLE IF NOT EXISTS todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid TEXT NOT NULL UNIQUE,
+            scope TEXT NOT NULL,
+            project_name TEXT,
+            client_name TEXT,
+            title TEXT NOT NULL,
+            notes TEXT,
+            due_date TEXT,
+            due_time TEXT,
+            priority INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'open',
+            completed_at TEXT,
+            sort_order REAL,
+            gcal_event_id TEXT,
+            gcal_synced_at TEXT,
+            created_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+        );
+        CREATE INDEX IF NOT EXISTS idx_todos_status_due ON todos(status, due_date);
+        CREATE INDEX IF NOT EXISTS idx_todos_updated_at ON todos(updated_at);",
+    )
+    .map_err(|e| format!("ensure_m26_entity_tables: {e}"))
+}
+```
+
+W `merge_incoming_data`, zaraz po `ensure_project_client_columns(conn)?;` (czyli PRZED otwarciem transakcji i pętlą DROP triggerów):
+
+```rust
+    ensure_m26_entity_tables(conn)?;
+```
+
+**Znana kruchość (świadomie nienaprawiana).** `verify_merge_integrity` ma WŁASNĄ, wewnętrzną pętlę DROP/CREATE wszystkich triggerów, odpalaną warunkowo przy `!fk_errors.is_empty()` (`src/sync_common.rs:~856`). Nie dostaje `ensure_m26_entity_tables`, bo wszystkie cztery produkcyjne wywołania (`lan_server.rs:1030`, `lan_sync_orchestrator.rs:663`, `online_store_forward.rs:382`, `online_async_delta.rs:371`) lecą bezpośrednio po `merge_incoming_data` na tej samej bazie — tabele zawsze już istnieją. Skutek uboczny: test wołający `verify_merge_integrity` w izolacji, na ręcznie zbudowanym schemacie, musi sam utworzyć tabele m26. Jeśli kiedyś pojawi się wywołanie `verify_merge_integrity` BEZ poprzedzającego merge, trzeba tam dodać `ensure_m26_entity_tables`.
+
+Fixture'y testowe budujące schemat ręcznie i instalujące `CREATE_ALL_TOMBSTONE_TRIGGERS_SQL` (np. `orphan_cleanup_in_verify_does_not_mint_tombstones`) muszą dostać minimalne `project_costs` i `todos` — tak jak wcześniej dostały `clients`.
+
+Dodaj też test regresji w `mod tests`:
+
+```rust
+    /// Rozszerzenie tablicy triggerów o m26 wywracało CAŁY merge na demonie,
+    /// bo demon nie uruchamia migracji dashboardu i nie ma tych tabel.
+    #[test]
+    fn ensure_m26_entity_tables_is_idempotent() {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory");
+        ensure_m26_entity_tables(&conn).expect("pierwsze wywolanie");
+        ensure_m26_entity_tables(&conn).expect("drugie wywolanie musi byc no-op");
+        conn.execute(
+            "INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u1', 'Acme', '2026-05-10', 10.0, '2026-05-10 10:00:00')",
+            [],
+        )
+        .expect("insert po ensure");
+        conn.execute(
+            "INSERT INTO todos (uid, scope, title, updated_at)
+             VALUES ('t1', 'global', 'zadanie', '2026-05-10 10:00:00')",
+            [],
+        )
+        .expect("insert todo po ensure");
+    }
+```
+
 - [ ] **Step 6: Uruchom testy**
 
 Run: `cargo test --workspace triggers`
 Expected: PASS — `create_and_drop_arrays_are_aligned` oraz `costs_and_todos_triggers_are_registered`
 
-- [ ] **Step 7: Zweryfikuj, że cały workspace się kompiluje (Task 1 + Task 2 razem)**
+- [ ] **Step 7: Zweryfikuj CAŁY workspace (Task 1 + Task 2 razem)**
 
 Run: `cargo build --workspace`
 Expected: sukces, bez błędów o brakujących stałych w `m26_costs_and_todos.rs`
 
+Run: `cargo test --workspace`
+Expected: PASS — **cały** workspace, nie tylko filtr `triggers`. W szczególności `sync_common::tests` w crate `timeflow-demon` musi przejść w komplecie; jeśli sypie się `no such table: main.project_costs`, to znaczy że Step 5a został pominięty.
+
 - [ ] **Step 8: Commit**
 
 ```bash
-git add shared/sync/triggers.rs src/tombstone_triggers.rs
+git add shared/sync/triggers.rs src/tombstone_triggers.rs src/sync_common.rs
 git commit -m "feat(sync): tombstone triggers for project_costs and todos"
 ```
 
@@ -1019,73 +1114,17 @@ W `src/lan_common.rs`, w `compute_tables_hash_string` (ok. linii 205), rozszerz 
     ];
 ```
 
-- [ ] **Step 2: Napisz test obronnego tworzenia tabeli**
+- [ ] **Step 2: Wywołaj merge kosztów**
 
-W `src/sync_common.rs`, w bloku `mod tests`, dopisz:
+> Funkcja obronna `ensure_m26_entity_tables` oraz jej wywołanie w `merge_incoming_data` **powstały już w Task 2 Step 5a** — bez nich merge wywalał się na braku tabeli. Tutaj dokładasz wyłącznie samo wywołanie merge kosztów.
 
-```rust
-    /// Demon może wystartować ZANIM dashboard wykona migrację m26. Eksport i merge
-    /// nie mogą wtedy paść — `ensure_project_costs_table` tworzy tabelę awaryjnie.
-    #[test]
-    fn ensure_project_costs_table_is_idempotent() {
-        let conn = rusqlite::Connection::open_in_memory().expect("in-memory");
-        ensure_project_costs_table(&conn).expect("pierwsze wywolanie");
-        ensure_project_costs_table(&conn).expect("drugie wywolanie musi byc no-op");
-        conn.execute(
-            "INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
-             VALUES ('u1', 'Acme', '2026-05-10', 10.0, '2026-05-10 10:00:00')",
-            [],
-        )
-        .expect("insert po ensure");
-    }
-```
-
-- [ ] **Step 3: Uruchom test — musi nie przejść**
-
-Run: `cargo test --workspace ensure_project_costs_table_is_idempotent`
-Expected: FAIL — `cannot find function 'ensure_project_costs_table'`
-
-- [ ] **Step 4: Dodaj funkcję obronną i wywołaj merge**
-
-W `src/sync_common.rs`, obok `ensure_project_client_columns`, dopisz:
-
-```rust
-/// Tabela kosztów dodatkowych (m26). Tworzona awaryjnie, gdy demon wystartuje
-/// przed migracją dashboardu — inaczej eksport/merge padłyby na brakującej tabeli.
-pub fn ensure_project_costs_table(conn: &rusqlite::Connection) -> Result<(), String> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS project_costs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            uid TEXT NOT NULL UNIQUE,
-            project_name TEXT NOT NULL,
-            cost_date TEXT NOT NULL,
-            amount REAL NOT NULL,
-            comment TEXT,
-            created_at TEXT,
-            updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
-        );
-        CREATE INDEX IF NOT EXISTS idx_project_costs_project_date
-            ON project_costs(project_name, cost_date);
-        CREATE INDEX IF NOT EXISTS idx_project_costs_updated_at
-            ON project_costs(updated_at);",
-    )
-    .map_err(|e| format!("ensure_project_costs_table: {e}"))
-}
-```
-
-W `merge_incoming_data`, obok pozostałych wywołań `ensure_*` (zaraz po `ensure_project_client_columns(conn)?;`):
-
-```rust
-    ensure_project_costs_table(conn)?;
-```
-
-W tej samej funkcji, po `merge_clients`:
+W `src/sync_common.rs`, w `merge_incoming_data`, po `merge_clients`:
 
 ```rust
     timeflow_shared::sync::merge::merge_project_costs(&tx, &archive, &hooks)?;
 ```
 
-- [ ] **Step 5: Rozszerz `TableHashes` demona**
+- [ ] **Step 3: Rozszerz `TableHashes` demona**
 
 W `src/lan_server.rs`, w `struct TableHashes` (linia 43), dopisz po `clients`:
 
@@ -1110,12 +1149,12 @@ W ręcznym `impl PartialEq for TableHashes` (linia 1783) dopisz warunek:
 
 > Bez tego ostatniego kroku rozjazd kosztów NIE zostałby wykryty — dwa peery z różnymi kwotami raportowałyby „zsynchronizowane" i nigdy by się nie uzgodniły.
 
-- [ ] **Step 6: Dodaj koszty do eksportu demona**
+- [ ] **Step 4: Dodaj koszty do eksportu demona**
 
 W `src/lan_server.rs`, w `build_delta_for_pull`, obok pozostałych wywołań obronnych (po `ensure_project_client_columns(conn)?;`):
 
 ```rust
-    crate::sync_common::ensure_project_costs_table(conn)?;
+    crate::sync_common::ensure_m26_entity_tables(conn)?;
 ```
 
 Pod pobraniem `clients` (linia ~1669) dopisz:
@@ -1132,10 +1171,7 @@ W obiekcie JSON budowanym na końcu funkcji, obok `"clients": clients,`:
             "project_costs": project_costs,
 ```
 
-- [ ] **Step 7: Uruchom testy**
-
-Run: `cargo test --workspace ensure_project_costs_table_is_idempotent`
-Expected: PASS
+- [ ] **Step 5: Uruchom testy**
 
 Run: `cargo build --workspace`
 Expected: sukces — `TableHashes` ma komplet pól we wszystkich trzech miejscach (struct, konstruktor, `PartialEq`)
@@ -1143,7 +1179,7 @@ Expected: sukces — `TableHashes` ma komplet pól we wszystkich trzech miejscac
 Run: `cargo test --workspace`
 Expected: PASS — wszystkie istniejące testy sync nadal przechodzą
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/lan_common.rs src/sync_common.rs src/lan_server.rs
@@ -1643,6 +1679,26 @@ pub async fn costs_delete(app: AppHandle, uid: String) -> Result<(), CommandErro
     .await
     .map_err(CommandError::Other)
 }
+```
+
+- [ ] **Step 3a: Zregeneruj warstwę RPC webui — OBOWIĄZKOWE po dodaniu komend**
+
+> **Trzecie miejsce rejestracji komend, którego spec nie przewidział.** Poza `mod.rs`
+> i `invoke_handler` w `lib.rs` istnieje `dashboard/src-tauri/src/webui/rpc_generated.rs`
+> — plik GENEROWANY, przez który webui (wersja mobilna serwowana po HTTP) dispatchuje
+> komendy. Bez regeneracji komendy działają w aplikacji desktop, ale **cicho nie działają
+> na telefonie**. `build.rs` sygnalizuje rozjazd tylko ostrzeżeniem (nie błędem), więc
+> łatwo to przeoczyć.
+
+```bash
+cd dashboard/src-tauri && node scripts/gen_webrpc.cjs
+node scripts/gen_webrpc.cjs --check   # exit 0 = zgodne
+```
+
+Zweryfikuj, że wszystkie cztery komendy wylądowały w pliku:
+
+```bash
+grep -c "costs_" dashboard/src-tauri/src/webui/rpc_generated.rs   # oczekiwane: 4
 ```
 
 - [ ] **Step 4: Zarejestruj moduł i komendy**
@@ -3065,6 +3121,12 @@ W `PARITY.md`, w sekcji „Parity wersji (LAN sync)", dopisz:
   idzie po nazwie i SQLite nie ma tu kaskady FK.
 - **Tabela `todos` (m26):** utworzona razem z `project_costs`, ale w tej wersji
   pusta i NIEwpięta w sync — wpięcie należy do fazy 2 (TODO).
+- **Profil wzrostu `project_costs` a pełny snapshot:** koszty jadą w eksporcie jako
+  PEŁNY zbiór (bez filtra `since`), wzorem `clients`. Różnica: `clients` jest z natury
+  skończoną tabelą referencyjną, a `project_costs` rośnie liniowo z czasem — każdy
+  wydatek to nowy wiersz, przez lata. Przy dzisiejszej skali (dziesiątki/setki wpisów)
+  to nieistotne, ale gdyby tabela urosła do tysięcy rekordów, każda delta zaczęłaby
+  przenosić cały zbiór. Wtedy przejść na filtr `since`, jak `sessions`/`manual_sessions`.
 ```
 
 - [ ] **Step 2: Pełna weryfikacja**

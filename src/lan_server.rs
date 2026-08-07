@@ -55,6 +55,14 @@ pub struct TableHashes {
     pub assignment_feedback: String,
     #[serde(default)]
     pub assignment_auto_runs: String,
+    // m26 koszty dodatkowe. `#[serde(default)]` utrzymuje parsowalność archiwów
+    // od peerów sprzed m26 (pomijają to pole).
+    #[serde(default)]
+    pub project_costs: String,
+    // m26 zadania. `#[serde(default)]` utrzymuje parsowalność archiwów od peerów
+    // sprzed fazy 2 (pomijają to pole).
+    #[serde(default)]
+    pub todos: String,
 }
 
 #[derive(Serialize)]
@@ -751,6 +759,8 @@ fn build_table_hashes(conn: &rusqlite::Connection) -> TableHashes {
         manual_sessions: compute_table_hash(conn, "manual_sessions"),
         assignment_feedback: compute_table_hash(conn, "assignment_feedback"),
         assignment_auto_runs: compute_table_hash(conn, "assignment_auto_runs"),
+        project_costs: compute_table_hash(conn, "project_costs"),
+        todos: compute_table_hash(conn, "todos"),
     }
 }
 
@@ -1655,6 +1665,7 @@ fn build_delta_for_pull(
     // before SELECT-ing them (no-op when already migrated).
     crate::sync_common::ensure_project_merge_columns(conn)?;
     crate::sync_common::ensure_project_client_columns(conn)?;
+    crate::sync_common::ensure_m26_entity_tables(conn)?;
 
     // Normalize ISO timestamp for SQLite comparison
     let since_norm = since.replace('T', " ");
@@ -1667,6 +1678,14 @@ fn build_delta_for_pull(
 
     // Fetch clients (m24 entity — always full, tiny table). Identified by name.
     let clients = fetch_all_rows(conn, "SELECT id, name, contact, address, tax_id, currency, default_hourly_rate, color, archived_at, created_at, updated_at FROM clients ORDER BY name")?;
+
+    // Koszty dodatkowe (m26 encja — zawsze pełny zbiór, tabela mała).
+    // Identyfikowane przez `uid`; `project_name` linkuje projekt po nazwie.
+    let project_costs = fetch_all_rows(conn, "SELECT id, uid, project_name, cost_date, amount, comment, created_at, updated_at FROM project_costs ORDER BY uid")?;
+
+    // Zadania (m26 encja — zawsze pełny zbiór, tabela mała). `gcal_*` pomijane:
+    // są per-maszyna i nie mogą trafić do peera.
+    let todos = fetch_all_rows(conn, "SELECT id, uid, scope, project_name, client_name, title, notes, due_date, end_date, due_time, priority, status, completed_at, sort_order, created_at, updated_at FROM todos ORDER BY uid")?;
 
     // Fetch applications (always full)
     let apps = fetch_all_rows(conn, "SELECT id, executable_name, display_name, project_id, color, updated_at FROM applications ORDER BY executable_name")?;
@@ -1723,6 +1742,8 @@ fn build_delta_for_pull(
         "data": {
             "projects": projects,
             "clients": clients,
+            "project_costs": project_costs,
+            "todos": todos,
             "applications": apps,
             "sessions": sessions,
             "manual_sessions": manual,
@@ -1787,6 +1808,8 @@ impl PartialEq for TableHashes {
             && self.applications == other.applications
             && self.sessions == other.sessions
             && self.manual_sessions == other.manual_sessions
+            && self.project_costs == other.project_costs
+            && self.todos == other.todos
     }
 }
 

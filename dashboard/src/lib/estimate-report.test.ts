@@ -29,6 +29,8 @@ function row(partial: Partial<EstimateProjectRow>): EstimateProjectRow {
     daily_seconds: [3600],
     client_name: null,
     days: [{ date: '2026-01-01', seconds: 3600 }],
+    costs_value: 0,
+    costs_count: 0,
     ...partial,
   };
 }

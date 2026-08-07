@@ -45,6 +45,64 @@ pub struct Project {
     pub status: String,
 }
 
+/// Wiersz kosztu dodatkowego (m26). Serializowany do sync i do UI.
+/// `uid` jest kluczem synchronizacji; `project_name` linkuje projekt po NAZWIE.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CostRow {
+    #[serde(default)]
+    pub uid: String,
+    #[serde(default)]
+    pub project_name: String,
+    #[serde(default)]
+    pub cost_date: String,
+    #[serde(default)]
+    pub amount: f64,
+    #[serde(default)]
+    pub comment: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+/// Wiersz zadania (m26). Serializowany do sync i do UI.
+/// `uid` jest kluczem synchronizacji; projekt i klient linkowane po NAZWIE.
+/// `gcal_*` ŚWIADOMIE poza strukturą — są per-maszyna i nie jadą w sync.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TodoRow {
+    #[serde(default)]
+    pub uid: String,
+    #[serde(default)]
+    pub scope: String,
+    #[serde(default)]
+    pub project_name: Option<String>,
+    #[serde(default)]
+    pub client_name: Option<String>,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub due_date: Option<String>,
+    /// m27: koniec zakresu. `None` = zadanie jednodniowe.
+    #[serde(default)]
+    pub end_date: Option<String>,
+    #[serde(default)]
+    pub due_time: Option<String>,
+    #[serde(default)]
+    pub priority: i64,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub completed_at: Option<String>,
+    #[serde(default)]
+    pub sort_order: Option<f64>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
 /// m24 client entity carried by delta archives (online sync). Mirrors the
 /// `clients` table; identified by NAME (portable across machines, like projects).
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -225,6 +283,12 @@ pub struct ProjectReportData {
     pub estimate: f64,
     pub sessions: Vec<SessionWithApp>,
     pub manual_sessions: Vec<ManualSessionWithProject>,
+    /// Pozycje kosztowe z okresu raportu, chronologicznie.
+    #[serde(default)]
+    pub costs: Vec<CostRow>,
+    /// Suma powyższych — żeby front nie musiał sumować sam.
+    #[serde(default)]
+    pub costs_total: f64,
 }
 
 #[derive(Serialize)]
@@ -280,6 +344,14 @@ pub struct EstimateProjectRow {
     /// Rozbicie czasu na dni z ETYKIETAMI DAT (YYYY-MM-DD), chronologicznie. Dla raportu
     /// estymacji w wariancie „plus" (projekt → dni z godzinami). Pomija dni z 0 s.
     pub days: Vec<EstimateDay>,
+    /// Suma kosztów dodatkowych projektu w wybranym okresie. ŚWIADOMIE osobne pole:
+    /// `estimated_value` zostaje „czas × stawka", więc zaokrąglanie per_day i wykresy
+    /// pozostają nietknięte, a stare archiwa dają tu 0.
+    #[serde(default)]
+    pub costs_value: f64,
+    /// Liczba pozycji kosztowych w okresie — do badge'a w UI.
+    #[serde(default)]
+    pub costs_count: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -289,6 +361,12 @@ pub struct EstimateSummary {
     pub total_value: f64,
     pub projects_count: i64,
     pub overrides_count: i64,
+    /// Suma kosztów dodatkowych w okresie (osobno od wartości czasu).
+    #[serde(default)]
+    pub total_costs: f64,
+    /// `total_value + total_costs` — kwota faktycznie do rozliczenia.
+    #[serde(default)]
+    pub grand_total: f64,
 }
 
 #[derive(Serialize)]
@@ -529,6 +607,14 @@ pub struct ExportData {
     // (absent → empty). Carried by both full exports and delta archives.
     #[serde(default)]
     pub clients: Vec<ClientRow>,
+    // m26 koszty dodatkowe. `#[serde(default)]` utrzymuje importowalność archiwów
+    // sprzed m26 (brak klucza → pusta lista, nie błąd).
+    #[serde(default)]
+    pub project_costs: Vec<CostRow>,
+    // m26 zadania. `#[serde(default)]` utrzymuje importowalność archiwów sprzed
+    // fazy 2 (brak klucza → pusta lista, nie błąd).
+    #[serde(default)]
+    pub todos: Vec<TodoRow>,
     pub applications: Vec<ApplicationRow>,
     pub sessions: Vec<SessionRow>,
     pub manual_sessions: Vec<ManualSession>,

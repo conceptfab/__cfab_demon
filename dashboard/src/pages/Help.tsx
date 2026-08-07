@@ -22,6 +22,7 @@ import {
   FileText,
   Briefcase,
   Users,
+  ListTodo,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,6 +52,7 @@ import { HelpBughunterSection } from '@/components/help/sections/HelpBughunterSe
 import { HelpSettingsSection } from '@/components/help/sections/HelpSettingsSection';
 import {
   HelpDashboardSection,
+  HelpTodoSection,
   HelpEstimatesSection,
   HelpClientsSection,
   HelpAppsSection,
@@ -233,6 +235,7 @@ export function Help() {
           <TabsList className="flex h-auto w-full shrink-0 flex-row gap-1 overflow-x-auto border-b border-border/10 bg-transparent p-0 pb-2 md:w-56 md:flex-col md:overflow-visible md:border-b-0 md:border-r md:pb-0 md:pr-6">
             <HelpTabTrigger value="quickstart" icon={<Rocket className="size-3.5" />} label={t18n('help_page.quick_start')} />
             <HelpTabTrigger value="dashboard" icon={<LayoutDashboard className="size-3.5" />} label={t18n('help_page.dashboard')} />
+            <HelpTabTrigger value="todo" icon={<ListTodo className="size-3.5" />} label={t18n('todo.help_title')} />
             <HelpTabTrigger value="sessions" icon={<List className="size-3.5" />} label={t18n('help_page.sessions')} />
             <HelpTabTrigger value="projects" icon={<FolderKanban className="size-3.5" />} label={t18n('help_page.projects')} />
             <HelpTabTrigger value="estimates" icon={<CircleDollarSign className="size-3.5" />} label={t18n('help_page.estimates')} />
@@ -259,6 +262,9 @@ export function Help() {
             </TabsContent>
             <TabsContent value="dashboard" className="m-0 focus-visible:outline-none">
               <HelpDashboardSection />
+            </TabsContent>
+            <TabsContent value="todo" className="m-0 focus-visible:outline-none">
+              <HelpTodoSection />
             </TabsContent>
             <TabsContent value="sessions" className="m-0 focus-visible:outline-none">
               <HelpSessionsSection />

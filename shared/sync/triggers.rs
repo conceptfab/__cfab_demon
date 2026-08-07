@@ -55,20 +55,42 @@ pub const CLIENTS_TOMBSTONE_TRIGGER_SQL: &str =
          VALUES ('clients', OLD.id, OLD.name);
      END;";
 
-pub const DROP_ALL_TOMBSTONE_TRIGGERS_SQL: [&str; 5] = [
+pub const PROJECT_COSTS_TOMBSTONE_TRIGGER_SQL: &str =
+    "CREATE TRIGGER IF NOT EXISTS trg_project_costs_tombstone
+     AFTER DELETE ON project_costs
+     FOR EACH ROW
+     BEGIN
+         INSERT INTO tombstones (table_name, record_id, sync_key)
+         VALUES ('project_costs', OLD.id, OLD.uid);
+     END;";
+
+pub const TODOS_TOMBSTONE_TRIGGER_SQL: &str =
+    "CREATE TRIGGER IF NOT EXISTS trg_todos_tombstone
+     AFTER DELETE ON todos
+     FOR EACH ROW
+     BEGIN
+         INSERT INTO tombstones (table_name, record_id, sync_key)
+         VALUES ('todos', OLD.id, OLD.uid);
+     END;";
+
+pub const DROP_ALL_TOMBSTONE_TRIGGERS_SQL: [&str; 7] = [
     "DROP TRIGGER IF EXISTS trg_sessions_tombstone",
     "DROP TRIGGER IF EXISTS trg_applications_tombstone",
     "DROP TRIGGER IF EXISTS trg_projects_tombstone",
     "DROP TRIGGER IF EXISTS trg_manual_sessions_tombstone",
     "DROP TRIGGER IF EXISTS trg_clients_tombstone",
+    "DROP TRIGGER IF EXISTS trg_project_costs_tombstone",
+    "DROP TRIGGER IF EXISTS trg_todos_tombstone",
 ];
 
-pub const CREATE_ALL_TOMBSTONE_TRIGGERS_SQL: [&str; 5] = [
+pub const CREATE_ALL_TOMBSTONE_TRIGGERS_SQL: [&str; 7] = [
     SESSIONS_TOMBSTONE_TRIGGER_SQL,
     APPLICATIONS_TOMBSTONE_TRIGGER_SQL,
     PROJECTS_TOMBSTONE_TRIGGER_SQL,
     MANUAL_SESSIONS_TOMBSTONE_TRIGGER_SQL,
     CLIENTS_TOMBSTONE_TRIGGER_SQL,
+    PROJECT_COSTS_TOMBSTONE_TRIGGER_SQL,
+    TODOS_TOMBSTONE_TRIGGER_SQL,
 ];
 
 #[cfg(test)]
@@ -78,6 +100,17 @@ mod tests {
     #[test]
     fn create_and_drop_arrays_are_aligned() {
         assert_eq!(CREATE_ALL_TOMBSTONE_TRIGGERS_SQL.len(), DROP_ALL_TOMBSTONE_TRIGGERS_SQL.len());
+    }
+
+    #[test]
+    fn costs_and_todos_triggers_are_registered() {
+        assert_eq!(CREATE_ALL_TOMBSTONE_TRIGGERS_SQL.len(), 7);
+        let joined = CREATE_ALL_TOMBSTONE_TRIGGERS_SQL.join("\n");
+        assert!(joined.contains("trg_project_costs_tombstone"));
+        assert!(joined.contains("trg_todos_tombstone"));
+        let dropped = DROP_ALL_TOMBSTONE_TRIGGERS_SQL.join("\n");
+        assert!(dropped.contains("trg_project_costs_tombstone"));
+        assert!(dropped.contains("trg_todos_tombstone"));
     }
 
     #[test]
