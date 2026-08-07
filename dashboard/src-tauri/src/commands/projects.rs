@@ -1181,6 +1181,20 @@ pub async fn restore_project(app: AppHandle, id: i64) -> Result<(), CommandError
         .map_err(CommandError::Other)
 }
 
+/// Kasuje koszty dodatkowe (m26) skasowanego projektu. Link idzie po NAZWIE, nie
+/// po `id`, więc SQLite nie ma tu kaskady FK — bez tego zostają sieroty, które
+/// nadal liczyłyby się w raporcie klienta. DELETE (nie UPDATE), żeby trigger
+/// `trg_project_costs_tombstone` odnotował usunięcie i sync rozniósł je dalej.
+fn delete_costs_of_project(tx: &rusqlite::Transaction<'_>, id: i64) -> Result<(), String> {
+    tx.execute(
+        "DELETE FROM project_costs \
+         WHERE project_name = (SELECT name FROM projects WHERE id = ?1)",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub(crate) fn delete_project_in_conn(
     conn: &mut rusqlite::Connection,
     id: i64,
@@ -1210,6 +1224,7 @@ pub(crate) fn delete_project_in_conn(
         [id],
     )
     .map_err(|e| e.to_string())?;
+    delete_costs_of_project(&tx, id)?;
     tx.execute("DELETE FROM projects WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
@@ -1282,6 +1297,7 @@ pub(crate) fn delete_all_excluded_projects_in_conn(
             [id],
         )
         .map_err(|e| e.to_string())?;
+        delete_costs_of_project(&tx, *id)?;
         tx.execute("DELETE FROM projects WHERE id = ?1", [id])
             .map_err(|e| e.to_string())?;
     }
@@ -2099,6 +2115,92 @@ mod tests {
         assert_eq!(
             merged[0].total_seconds, 1800,
             "merged child shows raw own time"
+        );
+    }
+
+    #[test]
+    /// Brak FK (link po nazwie) ⇒ kasowanie projektu musi jawnie usunąć jego koszty,
+    /// inaczej zostają sieroty, które nadal liczyłyby się w raporcie klienta.
+    #[test]
+    fn deleting_project_removes_its_costs() {
+        let mut conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, created_at) VALUES (1, 'Acme', datetime('now'));
+             INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u1', 'Acme', '2026-05-10', 100.0, '2026-05-10 10:00:00');",
+        )
+        .unwrap();
+
+        delete_project_in_conn(&mut conn, 1).expect("delete");
+
+        let costs: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM project_costs WHERE project_name = 'Acme'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(costs, 0);
+
+        // Trigger tombstone musi odnotować usunięcie, żeby sync je rozniósł.
+        let tombstones: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tombstones WHERE table_name = 'project_costs' AND sync_key = 'u1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tombstones, 1);
+    }
+
+    /// Koszty innego projektu nie mogą zniknąć przy okazji.
+    #[test]
+    fn deleting_project_spares_costs_of_other_projects() {
+        let mut conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, created_at) VALUES (1, 'Acme', datetime('now'));
+             INSERT INTO projects (id, name, created_at) VALUES (2, 'Globex', datetime('now'));
+             INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('a', 'Acme', '2026-05-10', 100.0, '2026-05-10 10:00:00');
+             INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('g', 'Globex', '2026-05-10', 50.0, '2026-05-10 10:00:00');",
+        )
+        .unwrap();
+
+        delete_project_in_conn(&mut conn, 1).expect("delete");
+
+        let remaining: String = conn
+            .query_row("SELECT uid FROM project_costs", [], |r| r.get(0))
+            .expect("koszt Globexa musi przetrwac");
+        assert_eq!(remaining, "g");
+    }
+
+    /// Rename projektu przenosi koszty na nową nazwę (trigger m26) i odświeża
+    /// `updated_at`, żeby LWW rozniósł zmianę na inne maszyny.
+    #[test]
+    fn renaming_project_cascades_to_costs() {
+        let conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, created_at) VALUES (1, 'Acme', datetime('now'));
+             INSERT INTO project_costs (uid, project_name, cost_date, amount, updated_at)
+             VALUES ('u1', 'Acme', '2026-05-10', 100.0, '1970-01-01 00:00:00');",
+        )
+        .unwrap();
+
+        conn.execute("UPDATE projects SET name = 'Acme Corp' WHERE id = 1", [])
+            .unwrap();
+
+        let (name, updated_at): (String, String) = conn
+            .query_row(
+                "SELECT project_name, updated_at FROM project_costs WHERE uid = 'u1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "Acme Corp");
+        assert_ne!(
+            updated_at, "1970-01-01 00:00:00",
+            "rename musi odswiezyc updated_at, inaczej LWW nie rozniesie zmiany"
         );
     }
 
