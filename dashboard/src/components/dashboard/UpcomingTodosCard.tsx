@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { Check, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { TodoDialog } from '@/components/todo/TodoDialog';
 import { cn } from '@/lib/utils';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import { buildUpcomingTodoWindow } from '@/lib/todo-grouping';
-import { logger } from '@/lib/logger';
-import { todosList, type Todo } from '@/lib/tauri/todos';
+import { useTodoPageController } from '@/hooks/useTodoPageController';
+import { useTodoReferenceOptions } from '@/hooks/useTodoReferenceOptions';
+import type { Todo } from '@/lib/tauri/todos';
 
 /** Okno kafelka w dniach — ta sama liczba trafia do tekstów w UI. */
 const WINDOW_DAYS = 7;
@@ -19,37 +22,26 @@ const PRIORITY_EDGE = [
   'border-l-rose-400',
 ];
 
-interface UpcomingTodosCardProps {
-  /** NAZWA projektu → kolor, do oznaczenia zakresu zadania kropką. */
-  colorByName?: Record<string, string>;
-}
-
 /**
  * Pasek terminów na całą szerokość: kolumna „Zaległe" (tylko gdy są) i siedem
  * kolumn dni, licząc od dziś. Dalsze terminy oraz zadania bez terminu są
  * wyłącznie zliczone w stopce — widżet odpowiada na pytanie „co mnie goni
  * w tym tygodniu", nie zastępuje pełnego ekranu Zadań.
+ *
+ * Dodawanie i edycja idą przez ten sam kontroler i ten sam dialog co ekran
+ * Zadań, więc walidacja, zapis i odświeżanie zachowują się identycznie.
  */
-export function UpcomingTodosCard({ colorByName }: UpcomingTodosCardProps) {
+export function UpcomingTodosCard() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language);
-  const [todos, setTodos] = useState<Todo[]>([]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount
-    void (async () => {
-      try {
-        setTodos(await todosList());
-      } catch (e) {
-        logger.error('[todos] dashboard widget load failed:', e);
-      }
-    })();
-  }, []);
+  const controller = useTodoPageController();
+  const { projectOptions, clientOptions, colorByName } =
+    useTodoReferenceOptions();
 
   const { overdue, columns, rest } = useMemo(() => {
-    const open = todos.filter((todo) => todo.status === 'open');
+    const open = controller.todos.filter((todo) => todo.status === 'open');
     return buildUpcomingTodoWindow(open, WINDOW_DAYS);
-  }, [todos]);
+  }, [controller.todos]);
 
   const inWindow =
     overdue.length + columns.reduce((sum, day) => sum + day.todos.length, 0);
@@ -77,6 +69,8 @@ export function UpcomingTodosCard({ colorByName }: UpcomingTodosCardProps) {
               todos={overdue}
               colorByName={colorByName}
               tone="overdue"
+              onEdit={controller.openEdit}
+              onToggle={controller.toggleStatus}
             />
           )}
 
@@ -88,6 +82,10 @@ export function UpcomingTodosCard({ colorByName }: UpcomingTodosCardProps) {
               todos={day.todos}
               colorByName={colorByName}
               tone={day.isToday ? 'today' : 'default'}
+              addLabel={`${t('todo.add')} — ${format(parseISO(day.date), 'EEE, d MMM', { locale })}`}
+              onAdd={() => controller.openCreateForDate(day.date)}
+              onEdit={controller.openEdit}
+              onToggle={controller.toggleStatus}
             />
           ))}
         </div>
@@ -105,6 +103,12 @@ export function UpcomingTodosCard({ colorByName }: UpcomingTodosCardProps) {
           )}
         </div>
       </CardContent>
+
+      <TodoDialog
+        controller={controller}
+        projectOptions={projectOptions}
+        clientOptions={clientOptions}
+      />
     </Card>
   );
 }
@@ -113,8 +117,13 @@ interface DayColumnProps {
   label: string;
   sublabel: string;
   todos: Todo[];
-  colorByName?: Record<string, string>;
+  colorByName: Map<string, string>;
   tone: 'default' | 'today' | 'overdue';
+  /** Bez tej pary kolumna nie przyjmuje nowych zadań (kolumna zaległych). */
+  addLabel?: string;
+  onAdd?: () => void;
+  onEdit: (todo: Todo) => void;
+  onToggle: (todo: Todo) => Promise<void>;
 }
 
 function DayColumn({
@@ -123,11 +132,20 @@ function DayColumn({
   todos,
   colorByName,
   tone,
+  addLabel,
+  onAdd,
+  onEdit,
+  onToggle,
 }: DayColumnProps) {
+  const { t } = useTranslation();
+
   return (
+    // Kolumna jest kontenerem, NIE przyciskiem — w środku są przyciski
+    // (zadania + „dodaj"), a zagnieżdżanie kontrolek psuje nawigację
+    // klawiaturą i czytniki ekranu.
     <div
       className={cn(
-        'flex min-h-[7rem] flex-col gap-1 rounded-md p-1.5',
+        'group flex min-h-[7rem] flex-col gap-1 rounded-md p-1.5',
         tone === 'overdue'
           ? 'bg-rose-500/10 ring-1 ring-rose-400/30'
           : 'bg-[rgba(41,46,66,0.45)]',
@@ -147,34 +165,62 @@ function DayColumn({
         >
           {label}
         </span>
-        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-          {sublabel}
+        <span className="flex shrink-0 items-baseline gap-1">
+          <span className="text-[10px] tabular-nums text-muted-foreground">
+            {sublabel}
+          </span>
+          {onAdd && (
+            <button
+              type="button"
+              onClick={onAdd}
+              aria-label={addLabel}
+              // Widoczny przy hoverze i zawsze przy fokusie klawiatury, żeby
+              // nie był nieosiągalny bez myszy.
+              className="rounded p-0.5 text-muted-foreground/40 transition-colors hover:bg-background/60 hover:text-foreground focus-visible:text-foreground group-hover:text-muted-foreground"
+            >
+              <Plus className="size-3.5" />
+            </button>
+          )}
         </span>
       </div>
 
       {todos.map((todo) => {
         const entity = todo.project_name ?? todo.client_name ?? null;
-        const dotColor = entity ? colorByName?.[entity] : undefined;
+        const dotColor = entity ? colorByName.get(entity) : undefined;
         return (
           <div
             key={todo.uid}
-            title={entity ? `${todo.title} — ${entity}` : todo.title}
             className={cn(
               'flex flex-col gap-0.5 rounded border-l-2 bg-background/50 px-1 py-1 text-[11px] leading-tight',
               PRIORITY_EDGE[todo.priority] ?? PRIORITY_EDGE[1],
             )}
           >
             <span className="flex items-center gap-1">
-              {/* Kropka = kolor projektu, tak jak wszędzie w aplikacji.
-                  Szara = zadanie globalne albo klienckie. */}
+              <button
+                type="button"
+                onClick={() => void onToggle(todo)}
+                aria-label={t('todo.mark_done')}
+                className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+              >
+                <Check className="size-2.5" />
+              </button>
+              {/* Kropka = kolor projektu/klienta, tak jak wszędzie
+                  w aplikacji. Szara = zadanie globalne. */}
               <span
                 className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50"
                 style={dotColor ? { backgroundColor: dotColor } : undefined}
               />
-              <span className="min-w-0 flex-1 truncate">{todo.title}</span>
+              <button
+                type="button"
+                onClick={() => onEdit(todo)}
+                title={entity ? `${todo.title} — ${entity}` : todo.title}
+                className="min-w-0 flex-1 truncate rounded px-0.5 text-left hover:bg-background/80"
+              >
+                {todo.title}
+              </button>
             </span>
             {(entity || todo.due_time) && (
-              <span className="flex items-baseline justify-between gap-1 text-[10px] text-muted-foreground">
+              <span className="flex items-baseline justify-between gap-1 pl-5 text-[10px] text-muted-foreground">
                 <span className="min-w-0 truncate">{entity ?? ''}</span>
                 {todo.due_time && (
                   <span className="shrink-0 tabular-nums">{todo.due_time}</span>

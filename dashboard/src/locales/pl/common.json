@@ -891,7 +891,7 @@
     "help_feature": "Zadania — lista z podziałem na globalne, klienckie i projektowe, z terminem i priorytetem, synchronizowana między maszynami.",
     "help_what": "Lista zadań z terminem i priorytetem, w trzech zakresach: globalnym, przypisanym do klienta i przypisanym do projektu.",
     "help_when": "Gdy chcesz trzymać rzeczy do zrobienia obok czasu pracy, zamiast w osobnym narzędziu.",
-    "help_limits": "Zadania nie są powiązane z sesjami i nie liczą czasu — to czysta lista. Usunięcie projektu lub klienta kasuje przypisane do nich zadania. Zadanie projektowe wymaga projektu, klienckie wymaga klienta. Kafelek „Najbliższe terminy” na pulpicie to pasek siedmiu kolumn: dziś i sześć kolejnych dni (okno kroczące, nie do końca tygodnia), a przed nimi kolumna „Zaległe”, gdy coś przeterminowano. Dalsze terminy i zadania bez terminu są tam wyłącznie zliczone w stopce kafelka.",
+    "help_limits": "Zadania nie są powiązane z sesjami i nie liczą czasu — to czysta lista. Usunięcie projektu lub klienta kasuje przypisane do nich zadania. Zadanie projektowe wymaga projektu, klienckie wymaga klienta. Kafelek „Najbliższe terminy” na pulpicie to pasek siedmiu kolumn: dziś i sześć kolejnych dni (okno kroczące, nie do końca tygodnia), a przed nimi kolumna „Zaległe”, gdy coś przeterminowano. Zadania dodajesz tam przyciskiem „+” w nagłówku dnia (termin wypełnia się sam), edytujesz klikając tytuł, a odhaczasz ptaszkiem — tak samo jak w kalendarzu na ekranie Zadań. Dalsze terminy i zadania bez terminu są tam wyłącznie zliczone w stopce kafelka.",
     "upcoming_for_project": "Zadania w tym projekcie: {{count}}",
     "field_end_date": "Termin do",
     "invalid_range": "Data „do” nie może być wcześniejsza niż „od”",

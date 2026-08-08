@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
@@ -7,15 +6,10 @@ import { TodoCalendar } from '@/components/todo/TodoCalendar';
 import { TodoDayView } from '@/components/todo/TodoDayView';
 import { TodoGroupList } from '@/components/todo/TodoGroupList';
 import { TodoToolbar } from '@/components/todo/TodoToolbar';
-import type { PickerOption } from '@/components/todo/TodoEntityPicker';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
-import { clientsList, projectsWithClient } from '@/lib/tauri/clients';
-import { logger } from '@/lib/logger';
 import { mobileLayout } from '@/lib/mobile-layout';
+import { useTodoReferenceOptions } from '@/hooks/useTodoReferenceOptions';
 import type { TodoPageController } from '@/hooks/useTodoPageController';
-
-const byPickerName = (a: PickerOption, b: PickerOption) =>
-  a.name.localeCompare(b.name);
 
 interface TodoPageViewProps {
   controller: TodoPageController;
@@ -23,48 +17,8 @@ interface TodoPageViewProps {
 
 export function TodoPageView({ controller }: TodoPageViewProps) {
   const { t } = useTranslation();
-  const [projectOptions, setProjectOptions] = useState<PickerOption[]>([]);
-  const [clientOptions, setClientOptions] = useState<PickerOption[]>([]);
-
-  useEffect(() => {
-    // Listy do selectów w dialogu. Ładowane raz — nie zmieniają się w trakcie
-    // pracy z zadaniami, a odświeżenie następuje przy powrocie na stronę.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount; listy referencyjne do selectów
-    void (async () => {
-      try {
-        const [projects, clients] = await Promise.all([
-          projectsWithClient(),
-          clientsList(),
-        ]);
-        // Tylko AKTYWNE projekty — menu przypisania sesji filtruje tak samo
-        // (`!frozen_at`), więc zamrożone, wykluczone i zarchiwizowane nie
-        // zaśmiecają listy dziesiątkami pozycji.
-        const activeProjects: PickerOption[] = [];
-        for (const project of projects) {
-          if (project.status !== 'active') continue;
-          activeProjects.push({ name: project.name, color: project.color });
-        }
-        setProjectOptions(activeProjects.toSorted(byPickerName));
-        setClientOptions(
-          clients
-            .map((c) => ({ name: c.name, color: c.color }))
-            .toSorted(byPickerName),
-        );
-      } catch (e) {
-        logger.error('[todos] reference lists failed:', e);
-      }
-    })();
-  }, []);
-
-  // Jedna mapa NAZWA → kolor dla projektów i klientów: kafelek kalendarza
-  // oznacza zadanie kolorem jego encji, tak jak reszta aplikacji.
-  const colorByName = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const option of [...projectOptions, ...clientOptions]) {
-      map.set(option.name, option.color);
-    }
-    return map;
-  }, [projectOptions, clientOptions]);
+  const { projectOptions, clientOptions, colorByName } =
+    useTodoReferenceOptions();
 
   return (
     <div className={mobileLayout.pageContainer}>
