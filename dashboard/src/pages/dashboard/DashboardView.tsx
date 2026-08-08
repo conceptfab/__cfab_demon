@@ -275,9 +275,11 @@ export function DashboardView({ controller }: DashboardViewProps) {
               </Card>
 
               <TopAppsChart apps={stats?.top_apps ?? []} />
-
-              <UpcomingTodosCard />
             </div>
+
+            {/* Pasek terminów potrzebuje pełnej szerokości — siedem kolumn dni
+                nie zmieściłoby się w połówce siatki wykresów. */}
+            <UpcomingTodosCard colorByName={projectColorMap} />
 
             <AllProjectsChart projects={allProjects} />
           </>
