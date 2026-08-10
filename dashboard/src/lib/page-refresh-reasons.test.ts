@@ -8,6 +8,7 @@ import {
   shouldRefreshProjectsPageAllTime,
   shouldRefreshProjectsPageFolders,
   shouldRefreshSessionsPage,
+  shouldRefreshTodos,
 } from '@/lib/page-refresh-reasons';
 
 describe('page refresh reason helpers', () => {
@@ -62,5 +63,21 @@ describe('page refresh reason helpers', () => {
     expect(shouldRefreshProjectPage('update_session_comment')).toBe(true);
     expect(shouldRefreshProjectPage('project_page_session_mutation')).toBe(true);
     expect(shouldRefreshProjectPage('applications_changed')).toBe(false);
+  });
+
+  it('refreshes todos after every sync path and after todo mutations', () => {
+    // Zadanie przesunięte na inny dzień na drugiej maszynie dochodzi przez sync
+    // demona — bez tych powodów widok zadań zostawał na starej dacie.
+    expect(shouldRefreshTodos('daemon_sync_finished')).toBe(true);
+    expect(shouldRefreshTodos('lan_sync_pull')).toBe(true);
+    expect(shouldRefreshTodos('sse_sync_pull')).toBe(true);
+    expect(shouldRefreshTodos('settings_manual_sync_pull')).toBe(true);
+    expect(shouldRefreshTodos('background_sync_interval')).toBe(true);
+    expect(shouldRefreshTodos('background_local_data_changed')).toBe(true);
+    expect(shouldRefreshTodos('restore_database_from_file')).toBe(true);
+    expect(shouldRefreshTodos('todos_update')).toBe(true);
+    expect(shouldRefreshTodos('todos_delete')).toBe(true);
+    expect(shouldRefreshTodos('update_session_comment')).toBe(false);
+    expect(shouldRefreshTodos('applications_changed')).toBe(false);
   });
 });

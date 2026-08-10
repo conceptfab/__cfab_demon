@@ -14,6 +14,8 @@ import {
 } from '@/lib/todo-calendar';
 import { groupTodosByDue } from '@/lib/todo-grouping';
 import { logger } from '@/lib/logger';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
+import { shouldRefreshTodos } from '@/lib/page-refresh-reasons';
 import {
   todosCreate,
   todosDelete,
@@ -96,6 +98,14 @@ export function useTodoPageController() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount; ten sam callback reużyty w handlerach mutacji
     void reload();
   }, [reload]);
+
+  // Demon scala zadania peera wprost do bazy, bez udziału UI — bez tego widok
+  // trzymał stan z montowania i zadanie przesunięte na inny dzień na drugiej
+  // maszynie wyglądało na niezsynchronizowane.
+  usePageRefreshListener((reasons) => {
+    if (!reasons.some(shouldRefreshTodos)) return;
+    void reload();
+  });
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();

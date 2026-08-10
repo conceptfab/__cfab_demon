@@ -131,8 +131,45 @@ const PROJECT_PAGE_APP_REASON_SET = new Set([
   'settings_manual_sync_pull',
 ]);
 
+// Zadania są encją SYNCHRONIZOWANĄ (LWW po `uid`), a merge robi demon poza UI —
+// dlatego każda ścieżka sync musi je przeładować. Bez tego zadanie przesunięte
+// na inny dzień na drugiej maszynie zostawało w widoku na starej dacie i
+// wyglądało to jak brak synchronizacji zadań.
+const TODOS_APP_REASON_SET = new Set([
+  'background_auto_import',
+  'background_file_signature_changed',
+  'background_local_data_changed',
+  'daemon_sync_finished',
+  'lan_sync_pull',
+  'settings_manual_sync_pull',
+  'sse_sync_pull',
+]);
+
+// Mutacje zadań lecą jako nazwa komendy (`invokeMutation`), więc plakietka w
+// nawigacji i sekcje na kartach projektu/klienta widzą zmianę z ekranu Zadań.
+// Doklejone operacje hurtowe na bazie — po nich cała lista jest inna.
+const TODOS_LOCAL_REASON_SET = new Set([
+  'clear_all_data',
+  'import_data',
+  'import_json_files',
+  'restore_database_from_file',
+  'set_demo_mode',
+  'todos_create',
+  'todos_delete',
+  'todos_set_status',
+  'todos_update',
+]);
+
 function isBackgroundSyncReason(reason: string): boolean {
   return reason.startsWith(BACKGROUND_SYNC_REASON_PREFIX);
+}
+
+export function shouldRefreshTodos(reason: string): boolean {
+  return (
+    TODOS_APP_REASON_SET.has(reason) ||
+    TODOS_LOCAL_REASON_SET.has(reason) ||
+    isBackgroundSyncReason(reason)
+  );
 }
 
 export function shouldRefreshProjectsCacheFromAppReason(reason: string): boolean {

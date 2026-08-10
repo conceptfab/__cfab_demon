@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { buildTodayDate } from '@/lib/date-helpers';
 import { logger } from '@/lib/logger';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
+import { shouldRefreshTodos } from '@/lib/page-refresh-reasons';
 import { todosList, type Todo } from '@/lib/tauri/todos';
 
 /**
@@ -14,16 +16,24 @@ import { todosList, type Todo } from '@/lib/tauri/todos';
 export function useUpcomingTodosByProject(): Map<string, number> {
   const [todos, setTodos] = useState<Todo[]>([]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount
-    void (async () => {
-      try {
-        setTodos(await todosList());
-      } catch (e) {
-        logger.error('[todos] upcoming-by-project load failed:', e);
-      }
-    })();
+  const load = useCallback(async () => {
+    try {
+      setTodos(await todosList());
+    } catch (e) {
+      logger.error('[todos] upcoming-by-project load failed:', e);
+    }
   }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount; ten sam loader reużywa listener odświeżania
+    void load();
+  }, [load]);
+
+  // Zadania dochodzą też z merge demona (sync), nie tylko z ekranu Zadań.
+  usePageRefreshListener((reasons) => {
+    if (!reasons.some(shouldRefreshTodos)) return;
+    void load();
+  });
 
   return useMemo(() => {
     const today = buildTodayDate();
@@ -45,17 +55,24 @@ export function useUpcomingTodosByProject(): Map<string, number> {
 export function useUpcomingTodosCount(): number {
   const [count, setCount] = useState(0);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount
-    void (async () => {
-      try {
-        const todos = await todosList();
-        setCount(todos.filter((todo) => todo.status === 'open').length);
-      } catch (e) {
-        logger.error('[todos] sidebar count load failed:', e);
-      }
-    })();
+  const load = useCallback(async () => {
+    try {
+      const todos = await todosList();
+      setCount(todos.filter((todo) => todo.status === 'open').length);
+    } catch (e) {
+      logger.error('[todos] sidebar count load failed:', e);
+    }
   }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount; ten sam loader reużywa listener odświeżania
+    void load();
+  }, [load]);
+
+  usePageRefreshListener((reasons) => {
+    if (!reasons.some(shouldRefreshTodos)) return;
+    void load();
+  });
 
   return count;
 }

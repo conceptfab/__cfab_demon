@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useUIStore } from '@/store/ui-store';
 import { logger } from '@/lib/logger';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
+import { shouldRefreshTodos } from '@/lib/page-refresh-reasons';
 import { todosList, type Todo, type TodoScope } from '@/lib/tauri/todos';
 
 interface ContextTodosSectionProps {
@@ -27,16 +29,24 @@ export function ContextTodosSection({
   const setCurrentPage = useUIStore((s) => s.setCurrentPage);
   const [todos, setTodos] = useState<Todo[]>([]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount
-    void (async () => {
-      try {
-        setTodos(await todosList());
-      } catch (e) {
-        logger.error('[todos] context section load failed:', e);
-      }
-    })();
+  const load = useCallback(async () => {
+    try {
+      setTodos(await todosList());
+    } catch (e) {
+      logger.error('[todos] context section load failed:', e);
+    }
   }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount; ten sam loader reużywa listener odświeżania
+    void load();
+  }, [load]);
+
+  // Karta projektu/klienta zostaje otwarta długo — sync w tle musi ją odświeżyć.
+  usePageRefreshListener((reasons) => {
+    if (!reasons.some(shouldRefreshTodos)) return;
+    void load();
+  });
 
   const mine = useMemo(
     () =>
