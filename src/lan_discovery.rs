@@ -586,7 +586,22 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
                 http_scan_subnet(&device_id)
             };
 
-            for (peer_device_id, peer_info) in found {
+            for (peer_device_id, mut peer_info) in found {
+                // `/lan/ping` celowo nie ujawnia machine_name (endpoint jest
+                // nieuwierzytelniony), więc HTTP scan zawsze zwraca pustą nazwę.
+                // Nie wolno nią nadpisać nazwy poznanej z beacona ani z parowania —
+                // inaczej UI pokazuje urwane „TIMEFLOW znaleziony na ".
+                if peer_info.machine_name.trim().is_empty() {
+                    if let Some(known) = peers
+                        .get(&peer_device_id)
+                        .map(|p| p.machine_name.trim().to_string())
+                        .filter(|n| !n.is_empty())
+                    {
+                        peer_info.machine_name = known;
+                    } else if let Some(paired) = paired_machine_name(&peer_device_id) {
+                        peer_info.machine_name = paired;
+                    }
+                }
                 if !peers.contains_key(&peer_device_id) {
                     log::info!(
                         "LAN discovery: HTTP scan found NEW peer {} ({}) at {}",
@@ -1106,6 +1121,15 @@ fn handle_packet(
 }
 
 /// Ping a single IP on the LAN server port. Returns (device_id, PeerInfo) if a peer responds.
+/// Nazwa maszyny zapamiętana przy parowaniu — fallback dla peerów wykrytych
+/// wyłącznie przez HTTP scan, gdzie ping nie zwraca `machine_name`.
+fn paired_machine_name(device_id: &str) -> Option<String> {
+    crate::lan_pairing::load_paired_devices()
+        .get(device_id)
+        .map(|d| d.machine_name.trim().to_string())
+        .filter(|n| !n.is_empty())
+}
+
 fn http_ping_one(ip: String, my_device_id: &str) -> Option<(String, PeerInfo)> {
     let addr = format!("{}:{}", ip, DASHBOARD_PORT_DEFAULT);
     let stream = std::net::TcpStream::connect_timeout(

@@ -187,7 +187,12 @@ ${armText}
 `;
 
 if (process.argv.includes('--check')) {
-  const existing = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
+  // Normalize CRLF — on Windows (core.autocrlf) the checked-out file has \r\n
+  // while the generator emits \n, which would report false drift on every build.
+  const existing = (fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '').replace(
+    /\r\n/g,
+    '\n',
+  );
   if (existing !== header) {
     process.stderr.write(
       'rpc_generated.rs is out of date — run: node scripts/gen_webrpc.cjs\n',

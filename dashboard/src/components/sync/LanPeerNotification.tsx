@@ -146,14 +146,25 @@ export function LanPeerNotification() {
           lanSyncApi.getLanPeers(),
           lanSyncApi.getPairedDevices().catch(() => []),
         ]);
-        const pairedIds = new Set(pairedDevices.map((d) => d.device_id));
-        const dismissed = getDismissedPeers();
-        const candidates = peers.filter(
-          (p) =>
-            isLanPeerOnline(p) &&
-            pairedIds.has(p.device_id) &&
-            !dismissed.has(p.device_id),
+        const pairedNames = new Map(
+          pairedDevices.map((d) => [d.device_id, (d.machine_name ?? '').trim()]),
         );
+        const dismissed = getDismissedPeers();
+        const candidates = peers
+          .filter(
+            (p) =>
+              isLanPeerOnline(p) &&
+              pairedNames.has(p.device_id) &&
+              !dismissed.has(p.device_id),
+          )
+          // Peer wykryty przez HTTP scan nie ma nazwy (ping jej nie ujawnia) —
+          // podstawiamy tę zapamiętaną przy parowaniu, żeby toast nie urywał się
+          // na „TIMEFLOW znaleziony na ".
+          .map((p) =>
+            (p.machine_name ?? '').trim()
+              ? p
+              : { ...p, machine_name: pairedNames.get(p.device_id) ?? '' },
+          );
 
         const local = localVersionRef.current;
         const incompat = candidates.find((p) => peerVersionConflicts(p, local)) ?? null;
@@ -287,7 +298,12 @@ export function LanPeerNotification() {
             <Wifi className="size-4 text-sky-400 shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-medium">
-                {t('settings.lan_sync.peer_found', { name: visiblePeer.machine_name })}
+                {t('settings.lan_sync.peer_found', {
+                  name:
+                    visiblePeer.machine_name?.trim() ||
+                    visiblePeer.ip ||
+                    t('settings.lan_sync.unknown_peer', 'peer'),
+                })}
               </p>
             </div>
             <Button
