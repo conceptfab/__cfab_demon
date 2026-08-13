@@ -41,7 +41,14 @@ export function useUpcomingTodosByProject(): Map<string, number> {
     for (const todo of todos) {
       if (todo.status !== 'open') continue;
       if (todo.scope !== 'project' || !todo.project_name) continue;
-      if (!todo.due_date || todo.due_date < today) continue;
+      if (!todo.due_date) continue;
+      // O „minęło" decyduje KONIEC zakresu: zadanie od–do trwające dziś nie
+      // jest zaległe tylko dlatego, że zaczęło się wczoraj.
+      const end =
+        todo.end_date && todo.end_date > todo.due_date
+          ? todo.end_date
+          : todo.due_date;
+      if (end < today) continue;
       map.set(todo.project_name, (map.get(todo.project_name) ?? 0) + 1);
     }
     return map;

@@ -7,7 +7,12 @@ import {
 } from '@/lib/todo-grouping';
 import type { Todo } from '@/lib/tauri/todos';
 
-function todo(uid: string, dueDate: string | null, priority = 1): Todo {
+function todo(
+  uid: string,
+  dueDate: string | null,
+  priority = 1,
+  endDate: string | null = null,
+): Todo {
   return {
     uid,
     scope: 'global',
@@ -16,7 +21,7 @@ function todo(uid: string, dueDate: string | null, priority = 1): Todo {
     title: uid,
     notes: null,
     due_date: dueDate,
-    end_date: null,
+    end_date: endDate,
     due_time: null,
     priority,
     status: 'open',
@@ -129,6 +134,56 @@ describe('buildUpcomingTodoWindow', () => {
     );
     expect(columns.every((c) => c.todos.length === 0)).toBe(true);
     expect(rest.map((x) => x.uid)).toEqual(['poza', 'bez']);
+  });
+
+  it('rozkłada zadanie od–do na WSZYSTKIE dni zakresu wewnątrz okna', () => {
+    const { columns, overdue, rest } = buildUpcomingTodoWindow(
+      [todo('zakres', '2026-08-09', 1, '2026-08-11')],
+      7,
+      SATURDAY,
+    );
+    const withTask = columns
+      .filter((c) => c.todos.length > 0)
+      .map((c) => c.date);
+    expect(withTask).toEqual(['2026-08-09', '2026-08-10', '2026-08-11']);
+    expect(overdue).toHaveLength(0);
+    expect(rest).toHaveLength(0);
+  });
+
+  it('pokazuje trwające zadanie, którego START wypadł przed oknem', () => {
+    // Regresja: liczył się wyłącznie dzień początkowy, więc zadanie 05→10
+    // znikało w sobotę 08 — lądowało w „Zaległych" mimo że wciąż trwało.
+    const { columns, overdue } = buildUpcomingTodoWindow(
+      [todo('trwa', '2026-08-05', 1, '2026-08-10')],
+      7,
+      SATURDAY,
+    );
+    expect(overdue).toHaveLength(0);
+    expect(columns.filter((c) => c.todos.length > 0).map((c) => c.date)).toEqual([
+      '2026-08-08',
+      '2026-08-09',
+      '2026-08-10',
+    ]);
+  });
+
+  it('zaległe liczy się po KOŃCU zakresu, nie po początku', () => {
+    const { overdue, columns } = buildUpcomingTodoWindow(
+      [todo('skonczone_wczoraj', '2026-08-01', 1, '2026-08-07')],
+      7,
+      SATURDAY,
+    );
+    expect(overdue.map((x) => x.uid)).toEqual(['skonczone_wczoraj']);
+    expect(columns.every((c) => c.todos.length === 0)).toBe(true);
+  });
+
+  it('zakres zaczynający się po oknie zostaje w rest', () => {
+    const { columns, rest } = buildUpcomingTodoWindow(
+      [todo('daleko', '2026-08-20', 1, '2026-08-25')],
+      7,
+      SATURDAY,
+    );
+    expect(columns.every((c) => c.todos.length === 0)).toBe(true);
+    expect(rest.map((x) => x.uid)).toEqual(['daleko']);
   });
 
   it('sorts a single day by priority descending', () => {

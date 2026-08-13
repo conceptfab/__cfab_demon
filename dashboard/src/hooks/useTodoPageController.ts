@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { addMonths, format } from 'date-fns';
 
 import { useToast } from '@/components/ui/toast-notification';
+import { loadTodoSettings, saveTodoSettings } from '@/lib/user-settings';
 
 import { todoPresetToRange, shiftTodoAnchor } from '@/lib/todo-period';
 import type { TimePreset } from '@/store/data-store';
@@ -80,10 +81,17 @@ export function useTodoPageController() {
 
   const [search, setSearch] = useState('');
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all');
-  // Widoczność ukończonych żyje WYŁĄCZNIE tutaj — przełącznik „Pokaż zrobione"
-  // w pasku Zadań. Bliźniacza opcja w Ustawieniach byłaby drugim, sprzecznym
-  // źródłem prawdy dla tej samej rzeczy.
-  const [showDone, setShowDone] = useState(false);
+  // Widoczność ukończonych ma JEDNĄ kontrolkę — przełącznik „Pokaż zrobione"
+  // w pasku Zadań (w Ustawieniach nie ma bliźniaczej opcji) — ale stan jest
+  // trwały: wraca po przeładowaniu ekranu i restarcie aplikacji, a przez
+  // write-through do `user_settings.json` widzi go też web UI.
+  const [showDone, setShowDoneState] = useState(
+    () => loadTodoSettings().showCompleted,
+  );
+  const setShowDone = useCallback((value: boolean) => {
+    setShowDoneState(value);
+    saveTodoSettings({ ...loadTodoSettings(), showCompleted: value });
+  }, []);
   // Zadania odhaczone w oknie „Cofnij" — widoczne mimo `showDone === false`,
   // żeby użytkownik zobaczył efekt kliknięcia zanim wiersz zniknie.
   const [recentlyDone, setRecentlyDone] = useState<Set<string>>(

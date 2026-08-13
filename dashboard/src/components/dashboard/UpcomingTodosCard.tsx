@@ -15,12 +15,8 @@ import type { Todo } from '@/lib/tauri/todos';
 /** Okno kafelka w dniach — ta sama liczba trafia do tekstów w UI. */
 const WINDOW_DAYS = 7;
 
-/** Priorytet na lewej krawędzi kafelka — jak w kalendarzu zadań. */
-const PRIORITY_EDGE = [
-  'border-l-transparent',
-  'border-l-sky-400/70',
-  'border-l-rose-400',
-];
+/** Akcent wysokiego priorytetu — prosty pasek, jak w kalendarzu zadań. */
+const HIGH_PRIORITY = 2;
 
 /**
  * Pasek terminów na całą szerokość: kolumna „Zaległe" (tylko gdy są) i siedem
@@ -67,6 +63,7 @@ export function UpcomingTodosCard() {
               label={t('todo.group_overdue')}
               sublabel={String(overdue.length)}
               todos={overdue}
+              date={null}
               colorByName={colorByName}
               tone="overdue"
               onEdit={controller.openEdit}
@@ -74,12 +71,14 @@ export function UpcomingTodosCard() {
             />
           )}
 
-          {columns.map((day) => (
+          {columns.map((day, index) => (
             <DayColumn
               key={day.date}
               label={format(parseISO(day.date), 'EEE', { locale })}
               sublabel={format(parseISO(day.date), 'd MMM', { locale })}
               todos={day.todos}
+              date={day.date}
+              isFirstColumn={index === 0}
               colorByName={colorByName}
               tone={day.isToday ? 'today' : 'default'}
               addLabel={`${t('todo.add')} — ${format(parseISO(day.date), 'EEE, d MMM', { locale })}`}
@@ -117,6 +116,18 @@ interface DayColumnProps {
   label: string;
   sublabel: string;
   todos: Todo[];
+  /**
+   * Data tej kolumny (YYYY-MM-DD) — potrzebna, by odróżnić dzień, w którym
+   * zadanie od–do się ZACZYNA, od dni kontynuacji. `null` dla kolumny
+   * zaległych, która nie reprezentuje konkretnego dnia.
+   */
+  date: string | null;
+  /**
+   * Pierwsza kolumna okna. Zakres, który zaczął się przed dziś, nie ma tu
+   * swojego dnia startu — wtedy głowę belki (tytuł, ikona) niesie właśnie ta
+   * kolumna, żeby zadanie nie zostało ciągiem bezimiennych pasków.
+   */
+  isFirstColumn?: boolean;
   colorByName: Map<string, string>;
   tone: 'default' | 'today' | 'overdue';
   /** Bez tej pary kolumna nie przyjmuje nowych zadań (kolumna zaległych). */
@@ -130,6 +141,8 @@ function DayColumn({
   label,
   sublabel,
   todos,
+  date,
+  isFirstColumn = false,
   colorByName,
   tone,
   addLabel,
@@ -187,14 +200,45 @@ function DayColumn({
       {todos.map((todo) => {
         const entity = todo.project_name ?? todo.client_name ?? null;
         const dotColor = entity ? colorByName.get(entity) : undefined;
+        // Ta sama gramatyka co w kalendarzu zadań: dzień startu niesie pełny
+        // opis, kolejne dni zakresu to belka. Bez tego zadanie na cztery dni
+        // powtarzało tytuł w czterech kolumnach i wyglądało jak cztery
+        // osobne zadania.
+        const ranged = Boolean(
+          todo.end_date && todo.due_date && todo.end_date > todo.due_date,
+        );
+        const isHead =
+          !ranged || date === null || todo.due_date === date || isFirstColumn;
+        if (!isHead) {
+          return (
+            <span
+              key={todo.uid}
+              title={entity ? `${todo.title} — ${entity}` : todo.title}
+              className="flex h-[18px] w-full items-center bg-background/50 px-1"
+            >
+              <span
+                className="h-1 flex-1 rounded-full bg-muted-foreground/40"
+                style={dotColor ? { backgroundColor: dotColor } : undefined}
+              />
+            </span>
+          );
+        }
         return (
           <div
             key={todo.uid}
             className={cn(
-              'flex flex-col gap-0.5 rounded border-l-2 bg-background/50 px-1 py-1 text-[11px] leading-tight',
-              PRIORITY_EDGE[todo.priority] ?? PRIORITY_EDGE[1],
+              'relative flex flex-col gap-0.5 overflow-hidden bg-background/50 px-1.5 py-1 text-[11px] leading-tight',
+              // Zakres domyka się dopiero w ostatnim dniu, więc głowa belki ma
+              // zaokrąglony tylko lewy bok — tak samo jak w kalendarzu.
+              ranged ? 'rounded-l' : 'rounded',
             )}
           >
+            {todo.priority === HIGH_PRIORITY && (
+              <span
+                aria-hidden
+                className="absolute inset-y-0 left-0 w-[3px] bg-rose-400"
+              />
+            )}
             <span className="flex items-center gap-1">
               <button
                 type="button"
@@ -204,12 +248,12 @@ function DayColumn({
               >
                 {/* Widżet pokazuje wyłącznie zadania otwarte — puste kółko,
                     bo ptaszek sugerowałby, że są już zrobione. */}
-                <Circle className="size-2.5" />
+                <Circle className="size-3.5" />
               </button>
               {/* Kropka = kolor projektu/klienta, tak jak wszędzie
                   w aplikacji. Szara = zadanie globalne. */}
               <span
-                className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50"
+                className="size-2.5 shrink-0 rounded-full bg-muted-foreground/50"
                 style={dotColor ? { backgroundColor: dotColor } : undefined}
               />
               <button

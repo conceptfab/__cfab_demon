@@ -423,22 +423,32 @@ export const saveSplitSettings = splitManager.save;
 
 export interface TodoSettings {
   /**
+   * Stan przełącznika „Pokaż zrobione" z paska ekranu Zadań.
+   *
+   * Trzymany trwale (write-through do `user_settings.json`), ale sterowany
+   * WYŁĄCZNIE z tego jednego miejsca — w Ustawieniach nie ma bliźniaczej
+   * kontrolki, bo dwie kontrolki na jedną rzecz to dwa sprzeczne źródła prawdy.
+   */
+  showCompleted: boolean;
+  /**
    * Czy sesja bez własnego komentarza ma dostawać komentarz z tytułu zadania
    * tego samego projektu, gdy zakresy czasu się pokrywają.
-   *
-   * ŚWIADOMIE nie ma tu widoczności ukończonych zadań: to przełącznik
-   * „Pokaż zrobione" w pasku ekranu Zadań i jedno miejsce mu wystarczy.
    */
   autoSessionComment: boolean;
 }
 const TODO_STORAGE_KEY = 'timeflow.settings.todo';
 export const DEFAULT_TODO_SETTINGS: TodoSettings = {
+  showCompleted: false,
   autoSessionComment: false,
 };
 const todoManager = createSettingsManager<TodoSettings>({
   key: TODO_STORAGE_KEY,
   defaults: DEFAULT_TODO_SETTINGS,
   normalize: (parsed) => ({
+    showCompleted:
+      typeof parsed.showCompleted === 'boolean'
+        ? parsed.showCompleted
+        : DEFAULT_TODO_SETTINGS.showCompleted,
     autoSessionComment:
       typeof parsed.autoSessionComment === 'boolean'
         ? parsed.autoSessionComment

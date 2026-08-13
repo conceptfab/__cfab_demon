@@ -7,12 +7,13 @@ import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import type { TodoCalendarWeek } from '@/lib/todo-calendar';
 import type { Todo } from '@/lib/tauri/todos';
 
-/** Priorytet na lewej krawędzi kafelka — kropka jest zajęta przez kolor encji. */
-const PRIORITY_EDGE = [
-  'border-l-transparent',
-  'border-l-sky-400/70',
-  'border-l-rose-400',
-];
+/**
+ * Akcent wysokiego priorytetu — PROSTY pasek wstawiany jako element potomny,
+ * nie `border-l`. Zaokrąglona krawędź o grubości 2 px wyginała się w łuk i cały
+ * pasek zadania czytał się jak tekst w nawiasie: „( … )". Priorytety niski
+ * i normalny nie mają akcentu — były czystą dekoracją na prawie każdym kaflu.
+ */
+const HIGH_PRIORITY = 2;
 
 interface TodoCalendarProps {
   weeks: TodoCalendarWeek[];
@@ -143,23 +144,23 @@ export function TodoCalendar({
                     todo.end_date && todo.end_date > (todo.due_date ?? ''),
                   );
                   const isStart = !ranged || todo.due_date === day.date;
-                  // Zadanie od–do zajmuje kilka komórek naraz, więc w pełnej
-                  // sile przytłacza siatkę i zagłusza jednodniowe terminy —
-                  // stąd półprzezroczystość. Zakończone gaśnie mocniej
-                  // („ledwo widoczne"); hover przywraca pełny kontrast.
-                  const dimming = done
-                    ? 'opacity-40 hover:opacity-100 focus-within:opacity-100'
-                    : ranged
-                      ? 'opacity-60 hover:opacity-100 focus-within:opacity-100'
-                      : '';
+                  // Jedyna reguła przezroczystości w kalendarzu:
+                  //   zakończone  → CAŁE zadanie półprzezroczyste (wszystkie
+                  //                 jego elementy: ikona, kropka, tytuł, tło),
+                  //   do zrobienia → 100% krycia, bez wyjątków — także zadania
+                  //                 wielodniowe.
+                  // Krycie siedzi na elemencie zadania, nigdy na komórce dnia,
+                  // więc zrobione i niezrobione w tym samym dniu różnią się
+                  // między sobą, a sam dzień wygląda jak każdy inny.
+                  const doneDimming = done ? 'opacity-50' : '';
                   if (ranged && !isStart) {
                     return (
                       <span
                         key={todo.uid}
                         title={todo.title}
                         className={cn(
-                          'flex h-[18px] w-full items-center bg-background/50 px-1 transition-opacity',
-                          dimming,
+                          'flex h-[18px] w-full items-center bg-background/50 px-1',
+                          doneDimming,
                         )}
                       >
                         <span
@@ -175,44 +176,53 @@ export function TodoCalendar({
                     <span
                       key={todo.uid}
                       className={cn(
-                        'flex w-full items-center gap-1 border-l-2 bg-background/50 pl-1 pr-0.5 text-[10px] leading-tight transition-opacity',
-                        PRIORITY_EDGE[todo.priority] ?? PRIORITY_EDGE[1],
+                        'relative flex w-full items-center gap-1 overflow-hidden bg-background/50 pl-1.5 pr-0.5 text-[10px] leading-tight',
                         ranged ? 'rounded-l' : 'rounded',
-                        dimming,
+                        doneDimming,
                       )}
                     >
+                      {todo.priority === HIGH_PRIORITY && (
+                        <span
+                          aria-hidden
+                          className="absolute inset-y-0 left-0 w-[3px] bg-rose-400"
+                        />
+                      )}
                       <button
                         type="button"
                         onClick={() => onToggleStatus(todo)}
                         aria-label={done ? t('todo.mark_open') : t('todo.mark_done')}
                         className={cn(
-                          'shrink-0 rounded p-0.5 hover:bg-background hover:text-foreground',
-                          done ? 'text-emerald-500' : 'text-muted-foreground',
+                          'shrink-0 rounded p-0.5 hover:bg-background',
+                          // Kolor rozróżnia stan także wtedy, gdy całe zadanie
+                          // jest przygaszone: zielony ptaszek vs szare kółko.
+                          done
+                            ? 'text-emerald-400'
+                            : 'text-muted-foreground/70 hover:text-foreground',
                         )}
                       >
-                        {/* Semantyka checkboxa: puste kółko = do zrobienia, ptaszek = zrobione. */}
+                        {/* Semantyka checkboxa: puste kółko = do zrobienia,
+                            wypełniony ptaszek = zrobione. `size-2.5` (10 px) było
+                            za małe — ptaszek zlewał się w pierścień nie do
+                            odróżnienia od pustego kółka. */}
                         {done ? (
-                          <CheckCircle2 className="size-2.5" />
+                          <CheckCircle2 className="size-3.5" />
                         ) : (
-                          <Circle className="size-2.5" />
+                          <Circle className="size-3.5" />
                         )}
                       </button>
                       {/* Kropka = kolor projektu/klienta, tak jak wszędzie
                           w aplikacji. Szara = zadanie globalne. */}
                       <span
-                        className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50"
+                        className="size-2.5 shrink-0 rounded-full bg-muted-foreground/50"
                         style={dotColor ? { backgroundColor: dotColor } : undefined}
                       />
                       <button
                         type="button"
                         onClick={() => onTodoClick(todo)}
                         title={entity ?? t('todo.scope_global')}
-                        className={cn(
-                          'min-w-0 flex-1 truncate rounded px-0.5 text-left hover:bg-background/80',
-                          // Bez przekreślenia — o „zakończone" mówi ptaszek
-                          // i wygaszenie całego kafelka, a tytuł zostaje czytelny.
-                          done && 'text-muted-foreground',
-                        )}
+                        // Bez przekreślenia i bez własnego wygaszania tytułu —
+                        // o stanie mówi ptaszek i krycie CAŁEGO zadania.
+                        className="min-w-0 flex-1 truncate rounded px-0.5 text-left hover:bg-background/80"
                       >
                         {todo.title}
                       </button>

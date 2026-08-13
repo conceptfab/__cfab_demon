@@ -104,9 +104,16 @@ export interface UpcomingTodoWindow {
  * następnego tygodnia. Grupa `this_week` z `groupTodosByDue` urywa się na
  * niedzieli, więc nie nadaje się tam, gdzie UI obiecuje „najbliższe N dni".
  *
- * Zadanie trafia do kolumny po `due_date` (zakresy od–do liczą się według dnia
- * początkowego). Puste dni zostają w wyniku — widżet ma pokazywać także to,
- * że w danym dniu nic nie ma.
+ * Zadanie od–do trafia do KAŻDEGO dnia swojego zakresu, który mieści się
+ * w oknie — tak samo jak w kalendarzu na ekranie Zadań. Wcześniej liczył się
+ * wyłącznie dzień początkowy, więc zadanie rozpisane np. na 10–16 sierpnia
+ * znikało z widżetu 13 sierpnia: start wypadał przed oknem, a widżet uznawał
+ * je za zaległe albo odległe, mimo że trwało właśnie tego dnia.
+ *
+ * „Zaległe" to dziś zadanie, którego KONIEC zakresu minął — nie początek.
+ *
+ * Puste dni zostają w wyniku — widżet ma pokazywać także to, że w danym dniu
+ * nic nie ma.
  */
 export function buildUpcomingTodoWindow(
   todos: readonly Todo[],
@@ -123,6 +130,7 @@ export function buildUpcomingTodoWindow(
     columns.push({ date, isToday: offset === 0, todos: bucket });
   }
 
+  const todayIso = format(todayStart, 'yyyy-MM-dd');
   const overdue: Todo[] = [];
   const rest: Todo[] = [];
   for (const todo of todos) {
@@ -130,10 +138,22 @@ export function buildUpcomingTodoWindow(
       rest.push(todo);
       continue;
     }
-    const bucket = byDate.get(todo.due_date);
-    if (bucket) {
-      bucket.push(todo);
-    } else if (isBefore(startOfDay(parseISO(todo.due_date)), todayStart)) {
+    const start = todo.due_date;
+    // Format YYYY-MM-DD jest leksykograficznie porównywalny, więc zakres
+    // liczymy na stringach — bez parsowania dat i bez pułapek strefy czasowej.
+    const end = todo.end_date && todo.end_date > start ? todo.end_date : start;
+
+    let placed = false;
+    for (const column of columns) {
+      if (column.date >= start && column.date <= end) {
+        byDate.get(column.date)?.push(todo);
+        placed = true;
+      }
+    }
+    if (placed) continue;
+
+    // Poza oknem: zaległe tylko wtedy, gdy minął KONIEC zakresu.
+    if (end < todayIso) {
       overdue.push(todo);
     } else {
       rest.push(todo);
