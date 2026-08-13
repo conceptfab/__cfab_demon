@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { TodoDialog } from '@/components/todo/TodoDialog';
 import { TodoCalendar } from '@/components/todo/TodoCalendar';
+import { TodoCalendarLegend } from '@/components/todo/TodoCalendarLegend';
 import { TodoDayView } from '@/components/todo/TodoDayView';
 import { TodoGroupList } from '@/components/todo/TodoGroupList';
 import { TodoToolbar } from '@/components/todo/TodoToolbar';
@@ -98,14 +99,17 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
           onDelete={(todo) => void controller.remove(todo)}
         />
       ) : (
-        <div className="overflow-x-auto">
-          <TodoCalendar
-            weeks={controller.calendarWeeks}
-            colorByName={colorByName}
-            onDayClick={controller.openCreateForDate}
-            onTodoClick={controller.openEdit}
-            onToggleStatus={(todo) => void controller.toggleStatus(todo)}
-          />
+        <div className="space-y-2">
+          <TodoCalendarLegend />
+          <div className="overflow-x-auto">
+            <TodoCalendar
+              weeks={controller.calendarWeeks}
+              colorByName={colorByName}
+              onDayClick={controller.openCreateForDate}
+              onTodoClick={controller.openEdit}
+              onToggleStatus={(todo) => void controller.toggleStatus(todo)}
+            />
+          </div>
         </div>
       )}
 

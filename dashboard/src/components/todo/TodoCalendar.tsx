@@ -4,16 +4,9 @@ import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
+import { HIGH_PRIORITY, HIGH_PRIORITY_BAR } from '@/lib/todo-priority';
 import type { TodoCalendarWeek } from '@/lib/todo-calendar';
 import type { Todo } from '@/lib/tauri/todos';
-
-/**
- * Akcent wysokiego priorytetu — PROSTY pasek wstawiany jako element potomny,
- * nie `border-l`. Zaokrąglona krawędź o grubości 2 px wyginała się w łuk i cały
- * pasek zadania czytał się jak tekst w nawiasie: „( … )". Priorytety niski
- * i normalny nie mają akcentu — były czystą dekoracją na prawie każdym kaflu.
- */
-const HIGH_PRIORITY = 2;
 
 interface TodoCalendarProps {
   weeks: TodoCalendarWeek[];
@@ -182,9 +175,15 @@ export function TodoCalendar({
                       )}
                     >
                       {todo.priority === HIGH_PRIORITY && (
+                        // `title`, nie `aria-hidden`: sam pasek nic nie mówi,
+                        // dopóki nie otworzysz zadania — a bez podpowiedzi
+                        // kolorowy znacznik wygląda na usterkę, nie na priorytet.
                         <span
-                          aria-hidden
-                          className="absolute inset-y-0 left-0 w-[3px] bg-rose-400"
+                          title={t('todo.priority_high')}
+                          className={cn(
+                            'absolute inset-y-0 left-0 w-[3px]',
+                            HIGH_PRIORITY_BAR,
+                          )}
                         />
                       )}
                       <button

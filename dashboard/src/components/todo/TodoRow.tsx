@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { HIGH_PRIORITY_BADGE, isHighPriority } from '@/lib/todo-priority';
 import type { Todo } from '@/lib/tauri/todos';
 
 interface TodoRowProps {
@@ -74,8 +75,12 @@ export function TodoRow({
         )}
         <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {scopeLabel ? <Badge variant="secondary">{scopeLabel}</Badge> : null}
-          {todo.priority === 2 ? (
-            <Badge variant="destructive">{t('todo.priority_high')}</Badge>
+          {/* `destructive` znaczy w tym UI „błąd" — wysoki priorytet dostaje
+              własny, bursztynowy akcent, ten sam co pasek w kalendarzu. */}
+          {isHighPriority(todo.priority) ? (
+            <Badge variant="outline" className={HIGH_PRIORITY_BADGE}>
+              {t('todo.priority_high')}
+            </Badge>
           ) : null}
           {todo.due_date ? (
             <span className="tabular-nums">

@@ -8,15 +8,13 @@ import { TodoDialog } from '@/components/todo/TodoDialog';
 import { cn } from '@/lib/utils';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import { buildUpcomingTodoWindow } from '@/lib/todo-grouping';
+import { HIGH_PRIORITY, HIGH_PRIORITY_BAR } from '@/lib/todo-priority';
 import { useTodoPageController } from '@/hooks/useTodoPageController';
 import { useTodoReferenceOptions } from '@/hooks/useTodoReferenceOptions';
 import type { Todo } from '@/lib/tauri/todos';
 
 /** Okno kafelka w dniach — ta sama liczba trafia do tekstów w UI. */
 const WINDOW_DAYS = 7;
-
-/** Akcent wysokiego priorytetu — prosty pasek, jak w kalendarzu zadań. */
-const HIGH_PRIORITY = 2;
 
 /**
  * Pasek terminów na całą szerokość: kolumna „Zaległe" (tylko gdy są) i siedem
@@ -235,8 +233,11 @@ function DayColumn({
           >
             {todo.priority === HIGH_PRIORITY && (
               <span
-                aria-hidden
-                className="absolute inset-y-0 left-0 w-[3px] bg-rose-400"
+                title={t('todo.priority_high')}
+                className={cn(
+                  'absolute inset-y-0 left-0 w-[3px]',
+                  HIGH_PRIORITY_BAR,
+                )}
               />
             )}
             <span className="flex items-center gap-1">
