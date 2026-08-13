@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Circle, Plus } from 'lucide-react';
+import { ArrowUp, Circle, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
@@ -8,7 +8,7 @@ import { TodoDialog } from '@/components/todo/TodoDialog';
 import { cn } from '@/lib/utils';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import { buildUpcomingTodoWindow } from '@/lib/todo-grouping';
-import { HIGH_PRIORITY, HIGH_PRIORITY_BAR } from '@/lib/todo-priority';
+import { HIGH_PRIORITY, HIGH_PRIORITY_ICON } from '@/lib/todo-priority';
 import { useTodoPageController } from '@/hooks/useTodoPageController';
 import { useTodoReferenceOptions } from '@/hooks/useTodoReferenceOptions';
 import type { Todo } from '@/lib/tauri/todos';
@@ -231,15 +231,6 @@ function DayColumn({
               ranged ? 'rounded-l' : 'rounded',
             )}
           >
-            {todo.priority === HIGH_PRIORITY && (
-              <span
-                title={t('todo.priority_high')}
-                className={cn(
-                  'absolute inset-y-0 left-0 w-[3px]',
-                  HIGH_PRIORITY_BAR,
-                )}
-              />
-            )}
             <span className="flex items-center gap-1">
               <button
                 type="button"
@@ -257,6 +248,15 @@ function DayColumn({
                 className="size-2.5 shrink-0 rounded-full bg-muted-foreground/50"
                 style={dotColor ? { backgroundColor: dotColor } : undefined}
               />
+              {/* Priorytet w rzędzie z tekstem — patrz `todo-priority.ts`. */}
+              {todo.priority === HIGH_PRIORITY && (
+                <span
+                  title={t('todo.priority_high')}
+                  className="flex shrink-0 items-center"
+                >
+                  <ArrowUp className={cn('size-3', HIGH_PRIORITY_ICON)} />
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => onEdit(todo)}

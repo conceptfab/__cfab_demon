@@ -1,10 +1,10 @@
-import { CheckCircle2, Circle, Plus } from 'lucide-react';
+import { ArrowUp, CheckCircle2, Circle, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
-import { HIGH_PRIORITY, HIGH_PRIORITY_BAR } from '@/lib/todo-priority';
+import { HIGH_PRIORITY, HIGH_PRIORITY_ICON } from '@/lib/todo-priority';
 import type { TodoCalendarWeek } from '@/lib/todo-calendar';
 import type { Todo } from '@/lib/tauri/todos';
 
@@ -174,18 +174,6 @@ export function TodoCalendar({
                         doneDimming,
                       )}
                     >
-                      {todo.priority === HIGH_PRIORITY && (
-                        // `title`, nie `aria-hidden`: sam pasek nic nie mówi,
-                        // dopóki nie otworzysz zadania — a bez podpowiedzi
-                        // kolorowy znacznik wygląda na usterkę, nie na priorytet.
-                        <span
-                          title={t('todo.priority_high')}
-                          className={cn(
-                            'absolute inset-y-0 left-0 w-[3px]',
-                            HIGH_PRIORITY_BAR,
-                          )}
-                        />
-                      )}
                       <button
                         type="button"
                         onClick={() => onToggleStatus(todo)}
@@ -215,6 +203,18 @@ export function TodoCalendar({
                         className="size-2.5 shrink-0 rounded-full bg-muted-foreground/50"
                         style={dotColor ? { backgroundColor: dotColor } : undefined}
                       />
+                      {/* Priorytet stoi W RZĘDZIE z tekstem, tuż przed tytułem.
+                          Znacznik na krawędzi kafelka wyglądał jak artefakt
+                          renderowania — strzałka ma kształt znaku i czyta się
+                          jako informacja. */}
+                      {todo.priority === HIGH_PRIORITY && (
+                        <span
+                          title={t('todo.priority_high')}
+                          className="flex shrink-0 items-center"
+                        >
+                          <ArrowUp className={cn('size-3', HIGH_PRIORITY_ICON)} />
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={() => onTodoClick(todo)}
