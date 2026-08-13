@@ -11,6 +11,20 @@ Tracker znanych różnic w zachowaniu i stubów między platformami.
 - Sygnał obecności peera: `LanSyncState.peer_present` (AtomicBool) aktualizowany w pętli `lan_discovery` na podstawie `!peers.is_empty()`; czytany przez oba traye.
 - Widoczność bloku sync w trayu: `online_ready || lan_enabled` (online_ready = `online.enabled && !url.is_empty() && !token.is_empty()`).
 - Klikalność akcji sync (`has_target`/`syncable`): `online_ready || peer_present` (i nie trwa już sync).
+- **`dashboard_running` NIE znaczy „dashboard otwarty".** Flaga w beaconie i w
+  `lan_peers.json` oznacza osiągalność węzła. Historycznie liczył ją odczyt
+  `heartbeat.txt` (plik pisany przez pętlę trackera DEMONA, nie przez dashboard)
+  z oknem 60 s, podczas gdy ścieżka HTTP (`http_ping_one`) wpisywała na sztywno
+  `true` — dwa źródła ścierały się i status migał. Gorzej: pojedynczy zamulony
+  tick trackera (zamrożona baza na czas LAN sync, App Nap na macOS, pełny skan
+  podsieci) gasił flagę i **master przestawał widzieć slave'a**, mimo że sync
+  demon↔demon szedł normalnie; w dashboardzie przyciski Sync
+  (`LanSyncPeerRow`) robiły się przez to `disabled`, więc ręczna
+  synchronizacja „nie startowała". Teraz beacon zawsze raportuje `true`, a
+  jedynym kryterium „peer online" jest świeżość `last_seen`:
+  `lan_discovery::is_peer_fresh` (Rust, `PEER_STALE_AFTER` = 180 s) i
+  `lib/lan-sync.ts::isLanPeerOnline` (TS, to samo okno). Zmiana jest
+  wieloplatformowa — obie strony muszą trzymać te progi w zgodzie.
 
 ## Parity wersji (LAN sync)
 - **Koszty dodatkowe (m26, `project_costs`):** encja synchronizuje się jako osobna

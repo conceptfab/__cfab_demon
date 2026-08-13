@@ -13,10 +13,12 @@ import { cn } from '@/lib/utils';
 import type { TodoPageController } from '@/hooks/useTodoPageController';
 import type { TodoScope } from '@/lib/tauri/todos';
 
+// Od najwęższego do najszerszego — zadania projektowe są najczęstsze,
+// więc stoją pierwsze; globalne, jako wyjątek, na końcu.
 const SCOPES: { id: TodoScope; labelKey: string }[] = [
-  { id: 'global', labelKey: 'todo.scope_global' },
-  { id: 'client', labelKey: 'todo.field_client' },
   { id: 'project', labelKey: 'todo.field_project' },
+  { id: 'client', labelKey: 'todo.field_client' },
+  { id: 'global', labelKey: 'todo.scope_global' },
 ];
 
 const PRIORITIES = [

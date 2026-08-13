@@ -439,7 +439,8 @@
       "assign_failed": "Failed to assign session(s): {{error}}",
       "update_multiplier": "Failed to update session rate multiplier: {{error}}",
       "load_manual_sessions": "Failed to load manual sessions",
-      "session_action_failed": "Failed to perform session action"
+      "session_action_failed": "Failed to perform session action",
+      "load_sessions": "Failed to load sessions"
     },
     "row": {
       "idle": "idle",
@@ -457,7 +458,8 @@
       "final_confidence": "final confidence:",
       "margin": "margin:",
       "total_evidence": "total evidence:",
-      "evidence_short": "{{count}}ev"
+      "evidence_short": "{{count}}ev",
+      "comment_from_todo": "Automatic comment from an overlapping todo (not stored in the database)"
     }
   },
   "ai_page": {
@@ -891,14 +893,17 @@
     "help_feature": "Tasks — a list split into global, client and project scopes, with due dates and priorities, synced across machines.",
     "help_what": "A task list with due dates and priorities, in three scopes: global, assigned to a client, and assigned to a project.",
     "help_when": "When you want your to-dos next to your tracked time instead of in a separate tool.",
-    "help_limits": "Tasks are not linked to sessions and do not track time — this is a plain list. Deleting a project or client deletes the tasks assigned to it. A project task requires a project; a client task requires a client. The dashboard's \"Upcoming deadlines\" card is a strip of seven day columns: today plus the next six (a rolling window, not up to the end of the week), preceded by an \"Overdue\" column when something has slipped. You add tasks there with the \"+\" button in a day header (the due date is filled in for you), edit them by clicking the title, and tick them off with the check — just like the calendar on the Tasks screen. Later due dates and undated tasks are only counted in the card's footer. The tasks view refreshes itself after every sync, so a task changed on another machine — moved to a different day, for instance — shows up without reloading the screen.",
+    "help_limits": "Tasks are not linked to sessions and do not track time — this is a plain list. Deleting a project or client deletes the tasks assigned to it. A project task requires a project; a client task requires a client. The dashboard's \"Upcoming deadlines\" card is a strip of seven day columns: today plus the next six (a rolling window, not up to the end of the week), preceded by an \"Overdue\" column when something has slipped. You add tasks there with the \"+\" button in a day header (the due date is filled in for you), edit them by clicking the title, and tick them off with the circle on the left — just like the calendar on the Tasks screen. Later due dates and undated tasks are only counted in the card's footer. The tasks view refreshes itself after every sync, so a task changed on another machine — moved to a different day, for instance — shows up without reloading the screen. A completed todo gets a green check mark and stays highlighted for a moment, and a “Completed…” message with an “Undo” button appears in the corner — after eight seconds the undo window closes and the todo leaves the list, unless “Show completed” is enabled in the Todos toolbar. An open todo shows an empty circle, a completed one a green check mark. Completed todos are never struck through (struck-through text stops being readable), only strongly dimmed; hovering restores full contrast. A todo spanning several days is semi-transparent in the calendar so one bar does not drown out the single-day deadlines sharing those cells. Settings → Sessions holds “Automatic comment from todo”: a session without its own comment gets the title of a todo from the same project when their time ranges overlap. That comment is derived on the fly — never stored in the database, never synced, never overwrites your own comment, and it disappears when the option is turned off.",
     "upcoming_for_project": "Tasks in this project: {{count}}",
     "field_end_date": "Due until",
     "invalid_range": "The end date cannot precede the start date",
     "search_results": "Search results",
     "results_count": "{{shown}} of {{total}}",
     "clear_search": "Clear search",
-    "filtered_note": "The list is narrowed by filters — the nav counter shows all open tasks."
+    "filtered_note": "The list is narrowed by filters — the nav counter shows all open tasks.",
+    "undo": "Undo",
+    "completed_badge": "Completed",
+    "completed_toast": "Completed: {{title}}"
   },
   "data_page": {
     "sections": {
@@ -1596,7 +1601,13 @@
       "pairing_unpair_confirm": "Remove pairing with {{name}}? You will need to re-enter a code to sync again.",
       "pairing_repair": "Re-pair",
       "pairing_pair_button": "Pair",
-      "pairing_not_paired": "Not paired — pair this device before syncing"
+      "pairing_not_paired": "Not paired — pair this device before syncing",
+      "unknown_peer": "unknown device"
+    },
+    "todo": {
+      "title": "Todos",
+      "auto_session_comment": "Automatic comment from todo",
+      "auto_session_comment_desc": "A session without its own comment gets the title of a todo from the same project when their time ranges overlap. The comment is derived on the fly — never stored in the database, never synced, and never overwrites your own comment."
     }
   },
   "help": {
@@ -2267,6 +2278,7 @@
     "lan_sync_title": "LAN Sync",
     "lan_sync_description": "Peer-to-peer synchronization between TIMEFLOW instances on the same local network, without an intermediary server.",
     "lan_sync_udp_discovery": "UDP Discovery – TIMEFLOW automatically broadcasts its presence on the local network (port 47892) every 30 seconds. Other instances are detected without manual configuration.",
+    "lan_sync_peer_online_status": "Peer “online” status – a peer counts as reachable based on how recently it was seen (about 3 minutes since `last_seen`), not on whether the dashboard window is open on the other machine. It used to depend on the daemon tracker heartbeat, which could lapse briefly (database frozen during sync, system sleep, a full subnet scan) — the peer then vanished from the list and the Sync buttons went inactive even though synchronization was working fine.",
     "lan_sync_http_server": "Embedded HTTP Server – when LAN Sync is enabled, a local HTTP server starts (default port 47891) and serves 13-step protocol endpoints including /lan/ping, /lan/negotiate, /lan/pull, /lan/db-ready, and /lan/unfreeze.",
     "lan_sync_delta_merge": "Delta Merge – synchronization transfers only changes (projects, applications, sessions, manual sessions, tombstones) since the last sync. Conflicts are resolved by the most recent updated_at timestamp.",
     "lan_sync_convergence_snapshot": "Shared sync result – the master pulls a delta or full snapshot from the slave, merges locally, then sends the final snapshot back to the slave. After a successful sync, both sides should have the same database, including deletions.",

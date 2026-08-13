@@ -421,6 +421,33 @@ const splitManager = createSettingsManager<SplitSettings>({
 export const loadSplitSettings = splitManager.load;
 export const saveSplitSettings = splitManager.save;
 
+export interface TodoSettings {
+  /**
+   * Czy sesja bez własnego komentarza ma dostawać komentarz z tytułu zadania
+   * tego samego projektu, gdy zakresy czasu się pokrywają.
+   *
+   * ŚWIADOMIE nie ma tu widoczności ukończonych zadań: to przełącznik
+   * „Pokaż zrobione" w pasku ekranu Zadań i jedno miejsce mu wystarczy.
+   */
+  autoSessionComment: boolean;
+}
+const TODO_STORAGE_KEY = 'timeflow.settings.todo';
+export const DEFAULT_TODO_SETTINGS: TodoSettings = {
+  autoSessionComment: false,
+};
+const todoManager = createSettingsManager<TodoSettings>({
+  key: TODO_STORAGE_KEY,
+  defaults: DEFAULT_TODO_SETTINGS,
+  normalize: (parsed) => ({
+    autoSessionComment:
+      typeof parsed.autoSessionComment === 'boolean'
+        ? parsed.autoSessionComment
+        : DEFAULT_TODO_SETTINGS.autoSessionComment,
+  }),
+});
+export const loadTodoSettings = todoManager.load;
+export const saveTodoSettings = todoManager.save;
+
 const ROUNDING_STORAGE_KEY = 'timeflow.settings.rounding';
 const roundingManager = createSettingsManager<RoundingSettings>({
   key: ROUNDING_STORAGE_KEY,

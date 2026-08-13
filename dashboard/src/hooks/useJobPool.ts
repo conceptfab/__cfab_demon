@@ -7,7 +7,7 @@ import {
   ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
   loadOnlineSyncSettings,
 } from '@/lib/online-sync';
-import { loadLanSyncSettings, loadLanSyncState } from '@/lib/lan-sync';
+import { isLanPeerOnline, loadLanSyncSettings, loadLanSyncState } from '@/lib/lan-sync';
 import { pollLanSyncUntilComplete } from '@/lib/lan-sync-poll';
 import {
   LOCAL_DATA_CHANGED_EVENT,
@@ -147,7 +147,7 @@ export function useJobPool() {
     // Find an online peer
     try {
       const peers = await lanSyncApi.getLanPeers();
-      const activePeer = peers.find((p) => p.dashboard_running);
+      const activePeer = peers.find(isLanPeerOnline);
       if (!activePeer) return;
 
       // Sync wymaga zgodnej wersji TIMEFLOW po obu stronach — backend i tak

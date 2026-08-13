@@ -4,6 +4,7 @@ import {
   Sparkles,
   CircleDollarSign,
   Trash2,
+  ListChecks,
   MessageSquare,
   BarChart3,
   Scissors,
@@ -456,8 +457,22 @@ export const SessionRow = memo(function SessionRow({
           </div>
 
           {s.comment && (
-            <div className="mt-1.5 flex items-start gap-1 text-amber-500/50 italic border-t border-border/5 pt-1">
-              <MessageSquare className="size-2.5 mt-0.5 shrink-0" />
+            <div
+              className={`mt-1.5 flex items-start gap-1 italic border-t border-border/5 pt-1 ${
+                s.comment_from_todo ? 'text-sky-400/60' : 'text-amber-500/50'
+              }`}
+              // Komentarz z zadania nie leży w bazie — tytuł tłumaczy skąd się wziął.
+              title={
+                s.comment_from_todo
+                  ? t('sessions.row.comment_from_todo')
+                  : undefined
+              }
+            >
+              {s.comment_from_todo ? (
+                <ListChecks className="size-2.5 mt-0.5 shrink-0" />
+              ) : (
+                <MessageSquare className="size-2.5 mt-0.5 shrink-0" />
+              )}
               <p className="text-[10px] line-clamp-1">{s.comment}</p>
             </div>
           )}

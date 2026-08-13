@@ -22,6 +22,8 @@ interface TodoGroupListProps {
   hasAnyTodo: boolean;
   loading: boolean;
   error: string | null;
+  /** UID-y odhaczone w oknie „Cofnij" — patrz `useTodoPageController`. */
+  recentlyDone: ReadonlySet<string>;
   onToggle: (todo: Todo) => void;
   onEdit: (todo: Todo) => void;
   onDelete: (todo: Todo) => void;
@@ -32,6 +34,7 @@ export function TodoGroupList({
   hasAnyTodo,
   loading,
   error,
+  recentlyDone,
   onToggle,
   onEdit,
   onDelete,
@@ -73,6 +76,7 @@ export function TodoGroupList({
                 <TodoRow
                   key={todo.uid}
                   todo={todo}
+                  justCompleted={recentlyDone.has(todo.uid)}
                   onToggle={onToggle}
                   onEdit={onEdit}
                   onDelete={onDelete}

@@ -55,6 +55,9 @@ const DISCOVERY_PORT: u16 = 47892;
 const DASHBOARD_PORT_DEFAULT: u16 = 47891;
 const BEACON_INTERVAL: Duration = Duration::from_secs(30);
 const PEER_EXPIRY: Duration = Duration::from_secs(120);
+/// Po tylu sekundach od `last_seen` wpis w `lan_peers.json` uznajemy za martwy.
+/// Większe niż `PEER_EXPIRY`, bo czyszczenie i zapis pliku są okresowe.
+const PEER_STALE_AFTER: Duration = Duration::from_secs(180);
 const RECV_TIMEOUT: Duration = Duration::from_secs(1);
 const PROTOCOL_VERSION: u32 = 1;
 // ── Beacon / Discovery packets ──
@@ -176,25 +179,26 @@ fn load_previous_peer_ips() -> Vec<String> {
     file.peers.iter().map(|p| p.ip.clone()).collect()
 }
 
-// ── Check if dashboard is running (heartbeat file heuristic) ──
+// ── Peer reachability flag wysyłana w beaconie ──
 
+/// Flaga `dashboard_running` w beaconie/`lan_peers.json` znaczy „ten węzeł jest
+/// osiągalny do synchronizacji", a NIE „użytkownik ma otwarte okno dashboardu".
+///
+/// Historycznie liczył ją odczyt `heartbeat.txt` (plik pisany przez pętlę
+/// trackera demona, nie przez dashboard) z oknem świeżości 60 s. To dawało
+/// fałszywe „offline": heartbeat leci co ≤30 s, ale pojedynczy zamulony tick
+/// (zamrożona baza na czas LAN sync, App Nap na macOS, pełny skan podsieci)
+/// przekraczał okno — a peer był cały czas zdolny do synchronizacji. Master
+/// pokazywał wtedy „brak peerów", mimo że sync (demon↔demon, ta flaga go nie
+/// dotyczy) działał normalnie.
+///
+/// Skoro beacon wychodzi z tego samego procesu, co serwer LAN, sam fakt jego
+/// wysłania dowodzi osiągalności — dlatego zwracamy `true`. To ujednolica
+/// wartość ze ścieżką HTTP (`http_ping_one` zawsze ustawia `true`), która
+/// wcześniej ścierała się z beaconem i powodowała miganie statusu.
+/// Świeżość peera pilnuje `last_seen` + `PEER_EXPIRY`, nie ta flaga.
 fn is_dashboard_running() -> bool {
-    let dir = match config::config_dir() {
-        Ok(d) => d,
-        Err(_) => return false,
-    };
-    let heartbeat = dir.join("heartbeat.txt");
-    match std::fs::read_to_string(&heartbeat) {
-        Ok(content) => {
-            if let Ok(ts) = DateTime::parse_from_rfc3339(content.trim()) {
-                let age = Utc::now().signed_duration_since(ts.with_timezone(&Utc));
-                age.num_seconds() < 60
-            } else {
-                false
-            }
-        }
-        Err(_) => false,
-    }
+    true
 }
 
 // ── Main discovery loop ──
@@ -1244,14 +1248,35 @@ fn http_scan_subnet(my_device_id: &str) -> HashMap<String, PeerInfo> {
     found
 }
 
-/// Read lan_peers.json and return the first active peer with dashboard running.
+/// Czy wpis peera z `lan_peers.json` jest wciąż świeży.
+///
+/// Jedyne wiarygodne kryterium „peer online": plik przeżywa śmierć demona, więc
+/// sam fakt obecności wpisu nic nie dowodzi. Okno jest szersze niż `PEER_EXPIRY`
+/// (pętla discovery czyści wpisy dopiero co 30 s i zapisuje plik raz na 5 s),
+/// żeby nie migać offline w normalnym rytmie odświeżania.
+pub fn is_peer_fresh(last_seen: &str) -> bool {
+    match DateTime::parse_from_rfc3339(last_seen.trim()) {
+        Ok(ts) => {
+            let age = Utc::now().signed_duration_since(ts.with_timezone(&Utc));
+            age.num_seconds() < PEER_STALE_AFTER.as_secs() as i64
+        }
+        // Nieparsowalny znacznik: nie blokuj synchronizacji — realną
+        // nieosiągalność i tak wyłapie ping/preflight z czytelnym błędem.
+        Err(_) => true,
+    }
+}
+
+/// Read lan_peers.json and return the first peer that is still fresh.
+///
+/// Wcześniej filtr szedł po `dashboard_running`, co przy zwietrzałym
+/// `heartbeat.txt` dawało „No LAN peer found" mimo w pełni sprawnego peera.
 pub fn find_first_peer() -> Option<lan_sync_orchestrator::PeerTarget> {
     let path = peers_file_path()?;
     let content = std::fs::read_to_string(&path).ok()?;
     let file: PeersFile = serde_json::from_str(&content).ok()?;
 
     for p in file.peers {
-        if !p.dashboard_running {
+        if !is_peer_fresh(&p.last_seen) {
             continue;
         }
         return Some(lan_sync_orchestrator::PeerTarget {
@@ -1261,4 +1286,41 @@ pub fn find_first_peer() -> Option<lan_sync_orchestrator::PeerTarget> {
         });
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fresh_peer_is_accepted() {
+        let now = Utc::now().to_rfc3339();
+        assert!(is_peer_fresh(&now));
+    }
+
+    #[test]
+    fn peer_within_write_window_is_still_fresh() {
+        // Demon zapisuje plik okresowo, więc kilkudziesięciosekundowe
+        // opóźnienie `last_seen` jest normą, nie awarią.
+        let recent = (Utc::now() - chrono::Duration::seconds(150)).to_rfc3339();
+        assert!(is_peer_fresh(&recent));
+    }
+
+    #[test]
+    fn long_gone_peer_is_rejected() {
+        let old = (Utc::now() - chrono::Duration::seconds(600)).to_rfc3339();
+        assert!(!is_peer_fresh(&old));
+    }
+
+    #[test]
+    fn unparsable_last_seen_does_not_block_sync() {
+        assert!(is_peer_fresh("nonsens"));
+    }
+
+    #[test]
+    fn beacon_reports_reachability_not_tracker_heartbeat() {
+        // Regresja: flaga szła z `heartbeat.txt` i gasła przy zamulonym ticku
+        // trackera, przez co peer znikał z UI mimo sprawnej synchronizacji.
+        assert!(is_dashboard_running());
+    }
 }

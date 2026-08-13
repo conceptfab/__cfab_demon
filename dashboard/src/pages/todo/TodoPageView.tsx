@@ -80,6 +80,7 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
         <TodoDayView
           date={controller.dateRange.end}
           todos={controller.dayTodos}
+          recentlyDone={controller.recentlyDone}
           onAdd={controller.openCreateForDate}
           onToggle={(todo) => void controller.toggleStatus(todo)}
           onEdit={controller.openEdit}
@@ -91,6 +92,7 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
           hasAnyTodo={controller.hasAnyTodo}
           loading={false}
           error={null}
+          recentlyDone={controller.recentlyDone}
           onToggle={(todo) => void controller.toggleStatus(todo)}
           onEdit={controller.openEdit}
           onDelete={(todo) => void controller.remove(todo)}
@@ -136,6 +138,7 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
           hasAnyTodo={controller.hasAnyTodo}
           loading={false}
           error={null}
+          recentlyDone={controller.recentlyDone}
           onToggle={(todo) => void controller.toggleStatus(todo)}
           onEdit={controller.openEdit}
           onDelete={(todo) => void controller.remove(todo)}

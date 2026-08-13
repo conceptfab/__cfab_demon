@@ -1,6 +1,7 @@
 import { Loader2, Search, Shield } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { isLanPeerOnline } from '@/lib/lan-sync';
 import type { LanSyncCardController } from '@/hooks/useLanSyncCardController';
 
 import { LanSyncPeerRow } from './LanSyncPeerRow';
@@ -216,6 +217,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                   isSlave,
                   isBusy,
                   canSync,
+                  isOnline: isLanPeerOnline(peer),
                 }}
                 pairingState={{
                   isPaired,
@@ -256,15 +258,21 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
         </div>
       )}
 
-      {lastSyncAt && (
+      {/* Wynik ostatniej próby MUSI być poza bramką `lastSyncAt`: przy pierwszej,
+          nieudanej synchronizacji nie ma jeszcze żadnego znacznika czasu, więc
+          komunikat błędu (np. odmowa demona) nie miał się gdzie pokazać i klik
+          w Sync wyglądał, jakby nic nie zrobił. */}
+      {(lastSyncAt || lastSyncResult) && (
         <div className="pt-2 border-t border-border/50">
-          <p className="text-xs text-muted-foreground">
-            {lastSyncLabel}{' '}
-            <span className="font-mono text-foreground">
-              {/* eslint-disable-next-line react-doctor/rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
-              {new Date(lastSyncAt).toLocaleString()}
-            </span>
-          </p>
+          {lastSyncAt && (
+            <p className="text-xs text-muted-foreground">
+              {lastSyncLabel}{' '}
+              <span className="font-mono text-foreground">
+                {/* eslint-disable-next-line react-doctor/rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
+                {new Date(lastSyncAt).toLocaleString()}
+              </span>
+            </p>
+          )}
           {lastSyncResult && (
             <p
               className={`text-xs mt-1 ${

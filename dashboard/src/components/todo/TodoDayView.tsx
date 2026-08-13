@@ -12,6 +12,8 @@ interface TodoDayViewProps {
   /** YYYY-MM-DD */
   date: string;
   todos: Todo[];
+  /** UID-y odhaczone w oknie „Cofnij" — patrz `useTodoPageController`. */
+  recentlyDone: ReadonlySet<string>;
   onAdd: (date: string) => void;
   onToggle: (todo: Todo) => void;
   onEdit: (todo: Todo) => void;
@@ -26,6 +28,7 @@ interface TodoDayViewProps {
 export function TodoDayView({
   date,
   todos,
+  recentlyDone,
   onAdd,
   onToggle,
   onEdit,
@@ -56,6 +59,7 @@ export function TodoDayView({
               <TodoRow
                 key={todo.uid}
                 todo={todo}
+                justCompleted={recentlyDone.has(todo.uid)}
                 onToggle={onToggle}
                 onEdit={onEdit}
                 onDelete={onDelete}

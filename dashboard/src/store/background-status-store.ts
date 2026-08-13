@@ -11,7 +11,7 @@ import type {
   DatabaseSettings,
 } from '@/lib/db-types';
 import type { LanPeer } from '@/lib/lan-sync-types';
-import { loadLanSyncSettings } from '@/lib/lan-sync';
+import { isLanPeerOnline, loadLanSyncSettings } from '@/lib/lan-sync';
 import { logTauriError } from '@/lib/utils';
 
 let diagnosticsInFlight = false;
@@ -222,7 +222,7 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
           return;
         }
         const peers = await lanSyncApi.getLanPeers();
-        const online = peers.find((p) => p.dashboard_running) ?? null;
+        const online = peers.find(isLanPeerOnline) ?? null;
         let isPaired = false;
         if (online) {
           try {

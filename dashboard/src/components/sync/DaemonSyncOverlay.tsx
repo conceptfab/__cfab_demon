@@ -15,6 +15,7 @@ import { getDaemonOnlineSyncResult, lanSyncApi } from '@/lib/tauri';
 import { saveOnlineSyncLastResult } from '@/lib/sync/sync-state';
 import { refreshIndicatorFromStorage } from '@/lib/sync/sync-indicator';
 import { SyncProgressOverlay } from './SyncProgressOverlay';
+import { isLanPeerOnline } from '@/lib/lan-sync';
 import type { SyncProgress } from '@/lib/lan-sync-types';
 import { useDataStore } from '@/store/data-store';
 
@@ -60,7 +61,7 @@ export function DaemonSyncOverlay() {
     setLanActive(false);
     // LAN sync is triggered via daemon tray — find first peer and run
     lanSyncApi.getLanPeers().then(async (peers) => {
-      const peer = peers.find((p) => p.dashboard_running);
+      const peer = peers.find(isLanPeerOnline);
       if (peer) {
         // Use last known marker timestamp as `since` to avoid full re-sync on retry
         const marker = await lanSyncApi.getLatestSyncMarker().catch(() => null);

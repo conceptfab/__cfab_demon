@@ -77,7 +77,7 @@ export function LanSyncPeerRow({
   onSyncContextMenu,
   handlePairWithFlash,
 }: LanSyncPeerRowProps) {
-  const { isBusy, isSlave, canSync } = mode;
+  const { isBusy, isSlave, canSync, isOnline } = mode;
   const { isPaired, isPairingExpired, justPaired, needsPairing } = pairingState;
 
   return (
@@ -97,14 +97,12 @@ export function LanSyncPeerRow({
         {/* Connection status badge */}
         <span
           className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${
-            peer.dashboard_running
+            isOnline
               ? 'bg-emerald-500/15 text-emerald-400'
               : 'bg-zinc-500/15 text-zinc-400'
           }`}
         >
-          {peer.dashboard_running
-            ? dashboardRunningLabel
-            : dashboardOfflineLabel}
+          {isOnline ? dashboardRunningLabel : dashboardOfflineLabel}
         </span>
         {/* Pairing status icon */}
         {isPaired && !isPairingExpired && (
@@ -182,7 +180,7 @@ export function LanSyncPeerRow({
               variant="outline"
               size="sm"
               className="h-7 px-2.5 text-xs"
-              disabled={isBusy || !peer.dashboard_running}
+              disabled={isBusy || !isOnline}
               onClick={() => onSyncWithPeer(peer)}
               onContextMenu={(e) => onSyncContextMenu(e, peer)}
             >
@@ -199,7 +197,7 @@ export function LanSyncPeerRow({
                 variant="ghost"
                 size="sm"
                 className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                disabled={isBusy || !peer.dashboard_running}
+                disabled={isBusy || !isOnline}
                 onClick={() => onFullSyncWithPeer(peer)}
               >
                 {fullSyncButtonLabel}
@@ -211,7 +209,7 @@ export function LanSyncPeerRow({
                 variant="ghost"
                 size="sm"
                 className="h-7 px-2 text-xs text-amber-400 hover:text-amber-300"
-                disabled={isBusy || !peer.dashboard_running}
+                disabled={isBusy || !isOnline}
                 onClick={() => onForceSyncWithPeer(peer)}
                 title={forceMergeTooltip ?? 'Force merge — ignores hash comparison'}
               >

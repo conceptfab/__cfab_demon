@@ -1,4 +1,4 @@
-import { Check, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { CheckCircle2, Circle, Pencil, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/ui/badge';
@@ -8,12 +8,20 @@ import type { Todo } from '@/lib/tauri/todos';
 
 interface TodoRowProps {
   todo: Todo;
+  /** Odhaczone przed chwilą — wiersz świeci na zielono w oknie „Cofnij". */
+  justCompleted?: boolean;
   onToggle: (todo: Todo) => void;
   onEdit: (todo: Todo) => void;
   onDelete: (todo: Todo) => void;
 }
 
-export function TodoRow({ todo, onToggle, onEdit, onDelete }: TodoRowProps) {
+export function TodoRow({
+  todo,
+  justCompleted = false,
+  onToggle,
+  onEdit,
+  onDelete,
+}: TodoRowProps) {
   const { t } = useTranslation();
   const done = todo.status === 'done';
   const scopeLabel =
@@ -24,27 +32,46 @@ export function TodoRow({ todo, onToggle, onEdit, onDelete }: TodoRowProps) {
         : t('todo.scope_global');
 
   return (
-    <li className="flex items-start gap-3 border-t py-2 first:border-t-0">
+    <li
+      className={cn(
+        'flex items-start gap-3 border-t py-2 first:border-t-0 transition-[opacity,background-color] duration-500',
+        justCompleted && 'rounded-md bg-emerald-500/10',
+        // Zakończone „ledwo widoczne" — ale przez wygaszenie, NIE przekreślenie:
+        // przekreślony tekst przestaje się dać przeczytać. Hover i fokus
+        // przywracają pełną widoczność, więc treść zawsze jest do odzyskania.
+        done &&
+          !justCompleted &&
+          'opacity-40 hover:opacity-100 focus-within:opacity-100',
+      )}
+    >
       <Button
         size="sm"
         variant="ghost"
-        className="mt-0.5 shrink-0"
+        className={cn(
+          'mt-0.5 shrink-0 transition-colors',
+          done && 'text-emerald-500',
+        )}
         onClick={() => onToggle(todo)}
         aria-label={done ? t('todo.mark_open') : t('todo.mark_done')}
       >
+        {/* Semantyka checkboxa: puste kółko = do zrobienia, ptaszek = zrobione.
+            Ptaszek na zadaniu otwartym czytał się jak „już ukończone". */}
         {done ? (
-          <RotateCcw className="h-4 w-4" />
+          <CheckCircle2 className="h-4 w-4" />
         ) : (
-          <Check className="h-4 w-4" />
+          <Circle className="h-4 w-4" />
         )}
       </Button>
 
       <div className="min-w-0 flex-1">
-        <p
-          className={cn('text-sm', done && 'text-muted-foreground line-through')}
-        >
+        <p className={cn('text-sm', done && 'text-muted-foreground')}>
           {todo.title}
         </p>
+        {justCompleted && (
+          <p className="mt-0.5 text-[11px] font-medium text-emerald-500">
+            {t('todo.completed_badge')}
+          </p>
+        )}
         <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {scopeLabel ? <Badge variant="secondary">{scopeLabel}</Badge> : null}
           {todo.priority === 2 ? (

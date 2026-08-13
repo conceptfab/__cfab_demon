@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Check, Plus } from 'lucide-react';
+import { Circle, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
@@ -202,7 +202,9 @@ function DayColumn({
                 aria-label={t('todo.mark_done')}
                 className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
               >
-                <Check className="size-2.5" />
+                {/* Widżet pokazuje wyłącznie zadania otwarte — puste kółko,
+                    bo ptaszek sugerowałby, że są już zrobione. */}
+                <Circle className="size-2.5" />
               </button>
               {/* Kropka = kolor projektu/klienta, tak jak wszędzie
                   w aplikacji. Szara = zadanie globalne. */}

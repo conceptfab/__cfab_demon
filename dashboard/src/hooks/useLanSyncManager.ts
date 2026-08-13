@@ -108,6 +108,10 @@ export function useLanSyncManager() {
               (p, i) =>
                 p.device_id !== prev[i]?.device_id ||
                 p.dashboard_running !== prev[i]?.dashboard_running ||
+                // `last_seen` musi być w porównaniu: to z niego liczy się
+                // `isLanPeerOnline`, więc bez tego badge „online" i przyciski
+                // Sync zamarzały na stanie z pierwszego pobrania.
+                p.last_seen !== prev[i]?.last_seen ||
                 p.ip !== prev[i]?.ip,
             );
             return changed ? peers : prev;
@@ -345,6 +349,11 @@ export function useLanSyncManager() {
         dashboard_port: result.dashboard_port,
         last_seen: new Date().toISOString(),
         dashboard_running: true,
+        // Bez tego pola `upsert_lan_peer` zapisywał peera z pustą wersją
+        // (`#[serde(default)]` po stronie Rusta), a UI czytało pustkę jako
+        // realny rozjazd i pokazywało czerwone „Niezgodność wersji" mimo
+        // identycznych buildów po obu stronach.
+        timeflow_version: result.version,
       };
       await lanSyncApi.upsertLanPeer(peer);
       setLanPeers((prev) => {

@@ -2,6 +2,8 @@ export type LanSyncPeerRowMode = {
   isSlave: boolean;
   isBusy: boolean;
   canSync: boolean;
+  /** Świeżość `last_seen` — patrz `isLanPeerOnline`. Bramkuje przyciski Sync. */
+  isOnline: boolean;
 };
 
 export type LanSyncPeerPairingState = {

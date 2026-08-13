@@ -1,4 +1,4 @@
-import { Check, Plus, RotateCcw } from 'lucide-react';
+import { CheckCircle2, Circle, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
@@ -143,12 +143,24 @@ export function TodoCalendar({
                     todo.end_date && todo.end_date > (todo.due_date ?? ''),
                   );
                   const isStart = !ranged || todo.due_date === day.date;
+                  // Zadanie od–do zajmuje kilka komórek naraz, więc w pełnej
+                  // sile przytłacza siatkę i zagłusza jednodniowe terminy —
+                  // stąd półprzezroczystość. Zakończone gaśnie mocniej
+                  // („ledwo widoczne"); hover przywraca pełny kontrast.
+                  const dimming = done
+                    ? 'opacity-40 hover:opacity-100 focus-within:opacity-100'
+                    : ranged
+                      ? 'opacity-60 hover:opacity-100 focus-within:opacity-100'
+                      : '';
                   if (ranged && !isStart) {
                     return (
                       <span
                         key={todo.uid}
                         title={todo.title}
-                        className="flex h-[18px] w-full items-center bg-background/50 px-1"
+                        className={cn(
+                          'flex h-[18px] w-full items-center bg-background/50 px-1 transition-opacity',
+                          dimming,
+                        )}
                       >
                         <span
                           className="h-1 flex-1 rounded-full bg-muted-foreground/40"
@@ -163,21 +175,26 @@ export function TodoCalendar({
                     <span
                       key={todo.uid}
                       className={cn(
-                        'flex w-full items-center gap-1 border-l-2 bg-background/50 pl-1 pr-0.5 text-[10px] leading-tight',
+                        'flex w-full items-center gap-1 border-l-2 bg-background/50 pl-1 pr-0.5 text-[10px] leading-tight transition-opacity',
                         PRIORITY_EDGE[todo.priority] ?? PRIORITY_EDGE[1],
                         ranged ? 'rounded-l' : 'rounded',
+                        dimming,
                       )}
                     >
                       <button
                         type="button"
                         onClick={() => onToggleStatus(todo)}
                         aria-label={done ? t('todo.mark_open') : t('todo.mark_done')}
-                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                        className={cn(
+                          'shrink-0 rounded p-0.5 hover:bg-background hover:text-foreground',
+                          done ? 'text-emerald-500' : 'text-muted-foreground',
+                        )}
                       >
+                        {/* Semantyka checkboxa: puste kółko = do zrobienia, ptaszek = zrobione. */}
                         {done ? (
-                          <RotateCcw className="size-2.5" />
+                          <CheckCircle2 className="size-2.5" />
                         ) : (
-                          <Check className="size-2.5" />
+                          <Circle className="size-2.5" />
                         )}
                       </button>
                       {/* Kropka = kolor projektu/klienta, tak jak wszędzie
@@ -192,7 +209,9 @@ export function TodoCalendar({
                         title={entity ?? t('todo.scope_global')}
                         className={cn(
                           'min-w-0 flex-1 truncate rounded px-0.5 text-left hover:bg-background/80',
-                          done && 'text-muted-foreground line-through',
+                          // Bez przekreślenia — o „zakończone" mówi ptaszek
+                          // i wygaszenie całego kafelka, a tytuł zostaje czytelny.
+                          done && 'text-muted-foreground',
                         )}
                       >
                         {todo.title}

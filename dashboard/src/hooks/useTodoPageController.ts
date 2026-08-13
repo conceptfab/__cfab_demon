@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { addMonths, format } from 'date-fns';
+
+import { useToast } from '@/components/ui/toast-notification';
 
 import { todoPresetToRange, shiftTodoAnchor } from '@/lib/todo-period';
 import type { TimePreset } from '@/store/data-store';
@@ -28,6 +30,13 @@ import {
 } from '@/lib/tauri/todos';
 
 export type ScopeFilter = 'all' | TodoScope;
+
+/**
+ * Ile czasu zadanie zostaje widoczne (przekreślone) po odhaczeniu — tyle samo
+ * trwa okno „Cofnij" w toaście. Bez tego okna zadanie znikało natychmiast i
+ * jedynym śladem operacji było to, że wiersz przepadł.
+ */
+const UNDO_WINDOW_MS = 8_000;
 
 const EMPTY_FORM: TodoInput = {
   scope: 'global',
@@ -71,7 +80,39 @@ export function useTodoPageController() {
 
   const [search, setSearch] = useState('');
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all');
+  // Widoczność ukończonych żyje WYŁĄCZNIE tutaj — przełącznik „Pokaż zrobione"
+  // w pasku Zadań. Bliźniacza opcja w Ustawieniach byłaby drugim, sprzecznym
+  // źródłem prawdy dla tej samej rzeczy.
   const [showDone, setShowDone] = useState(false);
+  // Zadania odhaczone w oknie „Cofnij" — widoczne mimo `showDone === false`,
+  // żeby użytkownik zobaczył efekt kliknięcia zanim wiersz zniknie.
+  const [recentlyDone, setRecentlyDone] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const undoTimersRef = useRef<Map<string, number>>(new Map());
+  const { showInfo } = useToast();
+
+  const forgetRecentlyDone = useCallback((uid: string) => {
+    const timer = undoTimersRef.current.get(uid);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      undoTimersRef.current.delete(uid);
+    }
+    setRecentlyDone((prev) => {
+      if (!prev.has(uid)) return prev;
+      const next = new Set(prev);
+      next.delete(uid);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const timers = undoTimersRef;
+    return () => {
+      timers.current.forEach((timer) => window.clearTimeout(timer));
+      timers.current.clear();
+    };
+  }, []);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Todo | null>(null);
@@ -110,7 +151,8 @@ export function useTodoPageController() {
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return todos.filter((todo) => {
-      if (!showDone && todo.status === 'done') return false;
+      if (!showDone && todo.status === 'done' && !recentlyDone.has(todo.uid))
+        return false;
       if (scopeFilter !== 'all' && todo.scope !== scopeFilter) return false;
       if (needle && !todo.title.toLowerCase().includes(needle)) return false;
       return true;
@@ -120,7 +162,7 @@ export function useTodoPageController() {
     // nie renderują. Wcześniejszy filtr powodował, że przy presecie „Dziś"
     // rysowany był cały miesiąc, ale przepuszczany jeden dzień, więc kalendarz
     // wyglądał na pusty mimo istniejących zadań.
-  }, [todos, search, scopeFilter, showDone]);
+  }, [todos, search, scopeFilter, showDone, recentlyDone]);
 
   const groups = useMemo(() => groupTodosByDue(filtered), [filtered]);
 
@@ -266,17 +308,63 @@ export function useTodoPageController() {
     }
   }, [form, editing, closeDialog, reload, t]);
 
-  const toggleStatus = useCallback(
-    async (todo: Todo) => {
+  const setStatus = useCallback(
+    async (todo: Todo, status: 'open' | 'done') => {
       try {
-        await todosSetStatus(todo.uid, todo.status === 'done' ? 'open' : 'done');
+        await todosSetStatus(todo.uid, status);
         await reload();
+        return true;
       } catch (e) {
         logger.error('[todos] status change failed:', e);
         setError(e instanceof Error ? e.message : String(e));
+        return false;
       }
     },
     [reload],
+  );
+
+  const toggleStatus = useCallback(
+    async (todo: Todo) => {
+      // Odhaczenie na „open" (cofnięcie ręczne) nie potrzebuje ceremonii —
+      // zadanie i tak zostaje na liście.
+      if (todo.status === 'done') {
+        forgetRecentlyDone(todo.uid);
+        await setStatus(todo, 'open');
+        return;
+      }
+
+      if (!(await setStatus(todo, 'done'))) return;
+
+      // Zadanie zostaje widoczne jako przekreślone przez okno cofnięcia,
+      // a toast daje jedyną drogę odwrotu bez szukania go z filtrem.
+      setRecentlyDone((prev) => new Set(prev).add(todo.uid));
+      const previous = undoTimersRef.current.get(todo.uid);
+      if (previous !== undefined) window.clearTimeout(previous);
+      undoTimersRef.current.set(
+        todo.uid,
+        window.setTimeout(() => {
+          undoTimersRef.current.delete(todo.uid);
+          setRecentlyDone((prev) => {
+            if (!prev.has(todo.uid)) return prev;
+            const next = new Set(prev);
+            next.delete(todo.uid);
+            return next;
+          });
+        }, UNDO_WINDOW_MS),
+      );
+
+      showInfo(t('todo.completed_toast', { title: todo.title }), {
+        durationMs: UNDO_WINDOW_MS,
+        action: {
+          label: t('todo.undo'),
+          onAction: () => {
+            forgetRecentlyDone(todo.uid);
+            void setStatus(todo, 'open');
+          },
+        },
+      });
+    },
+    [forgetRecentlyDone, setStatus, showInfo, t],
   );
 
   const remove = useCallback(
@@ -321,6 +409,7 @@ export function useTodoPageController() {
     setScopeFilter,
     showDone,
     setShowDone,
+    recentlyDone,
     dialogOpen,
     editing,
     form,

@@ -3,7 +3,12 @@ import { AlertTriangle, Wifi, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { lanSyncApi, getDaemonRuntimeStatus } from '@/lib/tauri';
-import { loadLanSyncSettings, loadLanSyncState, recordPeerSync } from '@/lib/lan-sync';
+import {
+  isLanPeerOnline,
+  loadLanSyncSettings,
+  loadLanSyncState,
+  recordPeerSync,
+} from '@/lib/lan-sync';
 import { pollLanSyncUntilComplete } from '@/lib/lan-sync-poll';
 import type { LanPeer } from '@/lib/lan-sync-types';
 import { useDataStore } from '@/store/data-store';
@@ -16,13 +21,19 @@ import {
 } from '@/components/sync/lan-peer-notification-state';
 
 /**
- * Strict version match — LAN sync ma sens tylko dla identycznych wersji
- * po obu stronach (schema bazy / format snapshotu mogą się rozjechać między
- * patchami). Backend `run_lan_sync` blokuje to dodatkowo serwerowo.
+ * Czy wersje po obu stronach na pewno się ROZJEŻDŻAJĄ.
+ *
+ * Alarmujemy wyłącznie, gdy obie wersje są znane i różne. Nieznana wersja
+ * (pusty string) to brak informacji, nie niezgodność — wcześniejszy strict
+ * match traktował pustkę jak rozjazd i wyświetlał czerwone „Niezgodność wersji
+ * … Peer: v?.?.?" przy w pełni działającej synchronizacji. Realny rozjazd i tak
+ * blokuje backend: `run_lan_sync` porównuje wersje z pingu, a orkiestrator
+ * odrzuca preflight (`version_mismatch`).
  */
-function peerVersionMatches(peer: LanPeer, localVersion: string): boolean {
+function peerVersionConflicts(peer: LanPeer, localVersion: string): boolean {
   const peerVersion = (peer.timeflow_version ?? '').trim();
-  return localVersion !== '' && peerVersion !== '' && peerVersion === localVersion;
+  if (localVersion === '' || peerVersion === '') return false;
+  return peerVersion !== localVersion;
 }
 
 const POLL_INTERVAL_MS = 5_000;
@@ -128,9 +139,9 @@ export function LanPeerNotification() {
     const poll = async () => {
       try {
         // Sync wymaga sparowania. Powiadomienie pokazujemy tylko dla peerów,
-        // którzy są jednocześnie widoczni w LAN (dashboard_running) ORAZ
-        // znajdują się na liście sparowanych urządzeń. Niesparowanych peerów
-        // obsługuje panel ustawień LAN Sync (tam jest flow parowania).
+        // którzy są jednocześnie świeżo widoczni w LAN ORAZ znajdują się na
+        // liście sparowanych urządzeń. Niesparowanych peerów obsługuje panel
+        // ustawień LAN Sync (tam jest flow parowania).
         const [peers, pairedDevices] = await Promise.all([
           lanSyncApi.getLanPeers(),
           lanSyncApi.getPairedDevices().catch(() => []),
@@ -139,14 +150,14 @@ export function LanPeerNotification() {
         const dismissed = getDismissedPeers();
         const candidates = peers.filter(
           (p) =>
-            p.dashboard_running &&
+            isLanPeerOnline(p) &&
             pairedIds.has(p.device_id) &&
             !dismissed.has(p.device_id),
         );
 
         const local = localVersionRef.current;
-        const compat = candidates.find((p) => peerVersionMatches(p, local)) ?? null;
-        const incompat = candidates.find((p) => !peerVersionMatches(p, local)) ?? null;
+        const incompat = candidates.find((p) => peerVersionConflicts(p, local)) ?? null;
+        const compat = candidates.find((p) => !peerVersionConflicts(p, local)) ?? null;
 
         if (compat?.device_id !== visiblePeerRef.current?.device_id) {
           dispatch({ type: 'set_visible_peer', visiblePeer: compat });
@@ -264,7 +275,7 @@ export function LanPeerNotification() {
               type="button"
               className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
               onClick={handleIncompatDismiss}
-              aria-label={t('common.dismiss', 'Dismiss')}
+              aria-label={t('ui.common.dismiss')}
             >
               <X className="size-3.5" />
             </button>
@@ -292,7 +303,7 @@ export function LanPeerNotification() {
               type="button"
               className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
               onClick={handleDismiss}
-              aria-label={t('common.dismiss', 'Dismiss')}
+              aria-label={t('ui.common.dismiss')}
             >
               <X className="size-3.5" />
             </button>

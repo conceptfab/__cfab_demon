@@ -4,10 +4,13 @@ import {
   type FreezeSettings,
   type SessionSettings,
   type SplitSettings,
+  type TodoSettings,
   loadFreezeSettings,
   loadSessionSettings,
   loadSplitSettings,
+  loadTodoSettings,
   saveSplitSettings,
+  saveTodoSettings,
 } from '@/lib/user-settings';
 import {
   type StateUpdater,
@@ -31,6 +34,9 @@ export function useGeneralSettings({
   );
   const [splitSettings, setSplitSettings] = useState<SplitSettings>(() =>
     loadSplitSettings(),
+  );
+  const [todoSettings, setTodoSettings] = useState<TodoSettings>(() =>
+    loadTodoSettings(),
   );
 
   const sliderValue = useMemo(
@@ -77,6 +83,15 @@ export function useGeneralSettings({
     [setSavedSettings],
   );
 
+  // Zapis natychmiastowy (jak split): to przełączniki, nie formularz —
+  // trzymanie ich za przyciskiem „Zapisz" tylko myli.
+  const updateTodoSetting = useCallback(
+    <K extends keyof TodoSettings>(key: K, value: TodoSettings[K]) => {
+      setTodoSettings((prev) => saveTodoSettings({ ...prev, [key]: value }));
+    },
+    [],
+  );
+
   return {
     sessionSettings,
     setSessionSettings,
@@ -84,6 +99,8 @@ export function useGeneralSettings({
     setFreezeSettings,
     splitSettings,
     setSplitSettings,
+    todoSettings,
+    updateTodoSetting,
     sliderValue,
     splitToleranceDescription,
     updateSessionSettings,

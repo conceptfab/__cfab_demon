@@ -18,8 +18,11 @@ import {
   loadSessionSettings,
   loadIndicatorSettings,
   loadFreezeSettings,
+  loadTodoSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
+import { applyTodoAutoComments } from '@/lib/todo-session-comment';
+import { todosList, type Todo } from '@/lib/tauri/todos';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import { useSessionActions } from '@/hooks/useSessionActions';
 import { useSessionsData } from '@/hooks/useSessionsData';
@@ -92,6 +95,9 @@ export function useSessionsPageController() {
   const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
+  const [autoSessionComment, setAutoSessionComment] = useState(
+    () => loadTodoSettings().autoSessionComment,
+  );
   const splitSettings = useSettingsStore((s) => s.splitSettings);
   const [customScrollParent, setCustomScrollParent] = useState<
     HTMLElement | undefined
@@ -115,6 +121,7 @@ export function useSessionsPageController() {
   const reloadDisplaySettings = useCallback(() => {
     const sessionSettings = loadSessionSettings();
     setIndicators(loadIndicatorSettings());
+    setAutoSessionComment(loadTodoSettings().autoSessionComment);
     setMinDuration(
       sessionSettings.minSessionDurationSeconds > 0
         ? sessionSettings.minSessionDurationSeconds
@@ -197,15 +204,44 @@ export function useSessionsPageController() {
     };
   }, [activeDateRange, dataReloadVersion, reportError, t]);
 
+  // Zadania do automatycznych komentarzy sesji. Ładowane tylko gdy opcja
+  // włączona — wyłączona nie kosztuje ani zapytania, ani renderu.
+  const [autoCommentTodos, setAutoCommentTodos] = useState<Todo[]>([]);
+  useEffect(() => {
+    if (!autoSessionComment) return;
+    let cancelled = false;
+    todosList()
+      .then((list) => {
+        if (!cancelled) setAutoCommentTodos(list);
+      })
+      .catch(() => {
+        // Brak zadań = brak auto-komentarzy; to nie jest błąd strony sesji.
+        if (!cancelled) setAutoCommentTodos([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [autoSessionComment, dataReloadVersion]);
+
   const mergedSessions = useMemo(() => {
-    if (manualSessions.length === 0) return sessions;
-    const manualAsSession = manualSessions.map((m) =>
-      manualToSessionRow(m, t('project_page.text.manual_session', 'Manual Session')),
-    );
-    return [...sessions, ...manualAsSession].toSorted((a, b) =>
-      b.start_time.localeCompare(a.start_time),
-    );
-  }, [sessions, manualSessions, t]);
+    const base =
+      manualSessions.length === 0
+        ? sessions
+        : [
+            ...sessions,
+            ...manualSessions.map((m) =>
+              manualToSessionRow(
+                m,
+                t('project_page.text.manual_session', 'Manual Session'),
+              ),
+            ),
+          ].toSorted((a, b) => b.start_time.localeCompare(a.start_time));
+    // Wyłączona opcja nie może zostawić „ogona" z poprzedniego załadowania,
+    // dlatego bramka jest tu, a nie tylko przy pobieraniu zadań.
+    return autoSessionComment
+      ? applyTodoAutoComments(base, autoCommentTodos)
+      : base;
+  }, [sessions, manualSessions, t, autoCommentTodos, autoSessionComment]);
 
   const {
     aiBreakdowns,

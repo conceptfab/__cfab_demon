@@ -439,7 +439,8 @@
       "assign_failed": "Nie udało się przypisać sesji: {{error}}",
       "update_multiplier": "Nie udało się zaktualizować mnożnika stawki sesji: {{error}}",
       "load_manual_sessions": "Nie udało się załadować sesji ręcznych",
-      "session_action_failed": "Nie udało się wykonać operacji na sesji"
+      "session_action_failed": "Nie udało się wykonać operacji na sesji",
+      "load_sessions": "Nie udało się załadować sesji"
     },
     "row": {
       "idle": "bezczynność",
@@ -457,7 +458,8 @@
       "final_confidence": "końcowa pewność:",
       "margin": "margines:",
       "total_evidence": "łącznie dowodów:",
-      "evidence_short": "{{count}}dow."
+      "evidence_short": "{{count}}dow.",
+      "comment_from_todo": "Komentarz automatyczny z pokrywającego się zadania (nie zapisany w bazie)"
     }
   },
   "ai_page": {
@@ -891,14 +893,17 @@
     "help_feature": "Zadania — lista z podziałem na globalne, klienckie i projektowe, z terminem i priorytetem, synchronizowana między maszynami.",
     "help_what": "Lista zadań z terminem i priorytetem, w trzech zakresach: globalnym, przypisanym do klienta i przypisanym do projektu.",
     "help_when": "Gdy chcesz trzymać rzeczy do zrobienia obok czasu pracy, zamiast w osobnym narzędziu.",
-    "help_limits": "Zadania nie są powiązane z sesjami i nie liczą czasu — to czysta lista. Usunięcie projektu lub klienta kasuje przypisane do nich zadania. Zadanie projektowe wymaga projektu, klienckie wymaga klienta. Kafelek „Najbliższe terminy” na pulpicie to pasek siedmiu kolumn: dziś i sześć kolejnych dni (okno kroczące, nie do końca tygodnia), a przed nimi kolumna „Zaległe”, gdy coś przeterminowano. Zadania dodajesz tam przyciskiem „+” w nagłówku dnia (termin wypełnia się sam), edytujesz klikając tytuł, a odhaczasz ptaszkiem — tak samo jak w kalendarzu na ekranie Zadań. Dalsze terminy i zadania bez terminu są tam wyłącznie zliczone w stopce kafelka. Widok zadań odświeża się sam po każdej synchronizacji, więc zadanie zmienione na innej maszynie — na przykład przesunięte na inny dzień — pojawia się bez przeładowania ekranu.",
+    "help_limits": "Zadania nie są powiązane z sesjami i nie liczą czasu — to czysta lista. Usunięcie projektu lub klienta kasuje przypisane do nich zadania. Zadanie projektowe wymaga projektu, klienckie wymaga klienta. Kafelek „Najbliższe terminy” na pulpicie to pasek siedmiu kolumn: dziś i sześć kolejnych dni (okno kroczące, nie do końca tygodnia), a przed nimi kolumna „Zaległe”, gdy coś przeterminowano. Zadania dodajesz tam przyciskiem „+” w nagłówku dnia (termin wypełnia się sam), edytujesz klikając tytuł, a odhaczasz kółkiem po lewej — tak samo jak w kalendarzu na ekranie Zadań. Dalsze terminy i zadania bez terminu są tam wyłącznie zliczone w stopce kafelka. Widok zadań odświeża się sam po każdej synchronizacji, więc zadanie zmienione na innej maszynie — na przykład przesunięte na inny dzień — pojawia się bez przeładowania ekranu. Odhaczone zadanie dostaje zielony ptaszek i zostaje przez chwilę wyróżnione, a w rogu pojawia się komunikat „Ukończono…” z przyciskiem „Cofnij” — po ośmiu sekundach okno cofnięcia się zamyka i zadanie znika z listy, o ile w pasku Zadań nie włączono „Pokaż zrobione”. Otwarte zadanie ma puste kółko, zakończone — zielony ptaszek. Zakończone nie są przekreślane (przekreślony tekst przestaje być czytelny), tylko mocno wygaszone; najechanie kursorem przywraca pełny kontrast. Zadanie rozpisane na kilka dni jest w kalendarzu półprzezroczyste, żeby jedna belka nie zagłuszała jednodniowych terminów w tych samych komórkach. W Ustawieniach → Sesje jest opcja „Automatyczny komentarz z zadania”: sesja bez własnego komentarza dostaje tytuł zadania z tego samego projektu, gdy czas sesji pokrywa się z terminem zadania. Taki komentarz jest wyliczany na bieżąco — nie zapisuje się w bazie, nie wchodzi do synchronizacji, nigdy nie nadpisuje Twojego komentarza i znika po wyłączeniu opcji.",
     "upcoming_for_project": "Zadania w tym projekcie: {{count}}",
     "field_end_date": "Termin do",
     "invalid_range": "Data „do” nie może być wcześniejsza niż „od”",
     "search_results": "Wyniki wyszukiwania",
     "results_count": "{{shown}} z {{total}}",
     "clear_search": "Wyczyść wyszukiwanie",
-    "filtered_note": "Lista jest zawężona filtrami — licznik w menu pokazuje wszystkie otwarte zadania."
+    "filtered_note": "Lista jest zawężona filtrami — licznik w menu pokazuje wszystkie otwarte zadania.",
+    "undo": "Cofnij",
+    "completed_badge": "Ukończone",
+    "completed_toast": "Ukończono: {{title}}"
   },
   "data_page": {
     "sections": {
@@ -1596,7 +1601,13 @@
       "pairing_unpair_confirm": "Usunąć parowanie z {{name}}? Aby ponownie synchronizować, trzeba będzie wpisać nowy kod.",
       "pairing_repair": "Sparuj ponownie",
       "pairing_pair_button": "Sparuj",
-      "pairing_not_paired": "Nie sparowane — sparuj urządzenie przed synchronizacją"
+      "pairing_not_paired": "Nie sparowane — sparuj urządzenie przed synchronizacją",
+      "unknown_peer": "nieznane urządzenie"
+    },
+    "todo": {
+      "title": "Zadania",
+      "auto_session_comment": "Automatyczny komentarz z zadania",
+      "auto_session_comment_desc": "Sesja bez własnego komentarza dostaje tytuł zadania z tego samego projektu, jeśli czas sesji pokrywa się z terminem zadania. Komentarz jest wyliczany na bieżąco — nie zapisuje się w bazie, nie wchodzi do synchronizacji i nigdy nie nadpisuje Twojego komentarza."
     }
   },
   "help": {
@@ -2267,6 +2278,7 @@
     "lan_sync_title": "Synchronizacja LAN",
     "lan_sync_description": "Synchronizacja peer-to-peer między instancjami TIMEFLOW w tej samej sieci lokalnej, bez pośredniczącego serwera.",
     "lan_sync_udp_discovery": "Wykrywanie UDP – TIMEFLOW automatycznie rozgłasza swoją obecność w sieci lokalnej (port 47892) co 30 sekund. Inne instancje są wykrywane bez ręcznej konfiguracji.",
+    "lan_sync_peer_online_status": "Status „online” peera – peer jest uznany za dostępny na podstawie świeżości ostatniego kontaktu (ok. 3 minuty od `last_seen`), a nie tego, czy na drugiej maszynie otwarte jest okno dashboardu. Wcześniej brano pod uwagę heartbeat trackera demona, który potrafił wygasnąć na chwilę (zamrożona baza na czas synchronizacji, uśpienie systemu, pełny skan podsieci) — peer znikał wtedy z listy, a przyciski Sync robiły się nieaktywne, mimo że synchronizacja działała poprawnie.",
     "lan_sync_http_server": "Wbudowany serwer HTTP – po włączeniu LAN Sync uruchamia się lokalny serwer HTTP (domyślny port 47891) z endpointami protokołu 13-krokowego, m.in. /lan/ping, /lan/negotiate, /lan/pull, /lan/db-ready i /lan/unfreeze.",
     "lan_sync_delta_merge": "Delta Merge – synchronizacja przesyła tylko zmiany (projekty, aplikacje, sesje, sesje manualne, tombstones) od ostatniej synchronizacji. Konflikty rozwiązywane są wg najnowszego updated_at.",
     "lan_sync_convergence_snapshot": "Wspólny wynik synchronizacji – master pobiera deltę lub pełny snapshot slave, scala dane lokalnie, a następnie odsyła finalny snapshot do slave. Po udanym sync obie strony powinny mieć tę samą bazę, łącznie z usunięciami.",

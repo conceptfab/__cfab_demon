@@ -1,6 +1,7 @@
 import { ProjectFreezeCard } from '@/components/settings/ProjectFreezeCard';
 import { SessionManagementCard } from '@/components/settings/SessionManagementCard';
 import { SessionSplitCard } from '@/components/settings/SessionSplitCard';
+import { TodoSettingsCard } from '@/components/settings/TodoSettingsCard';
 import type { SettingsPageController } from '@/hooks/useSettingsPageController';
 
 type SettingsSessionsTabProps = SettingsPageController;
@@ -14,9 +15,11 @@ export function SettingsSessionsTab({
   splitSettings,
   splitToleranceDescription,
   t,
+  todoSettings,
   updateFreezeSettings,
   updateSessionSettings,
   updateSplitSetting,
+  updateTodoSetting,
 }: SettingsSessionsTabProps) {
   return (
     <div className="space-y-4">
@@ -92,6 +95,16 @@ export function SettingsSessionsTab({
         }}
         onAutoSplitEnabledChange={(enabled) => {
           updateSplitSetting('autoSplitEnabled', enabled);
+        }}
+      />
+
+      <TodoSettingsCard
+        title={t('settings.todo.title')}
+        autoCommentTitle={t('settings.todo.auto_session_comment')}
+        autoCommentDescription={t('settings.todo.auto_session_comment_desc')}
+        todoSettings={todoSettings}
+        onAutoCommentChange={(enabled) => {
+          updateTodoSetting('autoSessionComment', enabled);
         }}
       />
 

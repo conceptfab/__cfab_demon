@@ -91,6 +91,12 @@ export interface SessionWithApp extends Session {
   /** true when the most recent assignment for this session was made by AI auto-safe */
   ai_assigned?: boolean;
   comment?: string | null;
+  /**
+   * `comment` nie pochodzi z bazy, tylko z pokrywającego się zadania
+   * (ustawienie „Automatyczny komentarz z zadania"). Wyliczane w locie, nigdy
+   * nie zapisywane — patrz `lib/todo-session-comment.ts`.
+   */
+  comment_from_todo?: boolean;
 }
 
 export type AssignmentMode = 'off' | 'suggest' | 'auto_safe';
