@@ -19,6 +19,7 @@ export function HelpWebUiSection() {
         t18n('help_page.webui_lan_pairing'),
         t18n('help_page.webui_how_to_start'),
         t18n('help_page.webui_how_to_stop'),
+        t18n('help_page.webui_tray_status'),
         t18n('help_page.webui_start_failure'),
         t18n('help_page.webui_default_port'),
         t18n('help_page.webui_mobile_layout'),

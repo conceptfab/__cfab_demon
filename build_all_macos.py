@@ -311,6 +311,16 @@ def package_demon_app(binary: Path, dist: Path) -> Path:
         # ::Accessory w kodzie ustawia to samo w runtime, ale Info.plist
         # gwarantuje że LaunchServices traktuje bundle właściwie od startu).
         "    <key>LSUIElement</key>\n    <true/>\n"
+        # macOS 15+ blokuje ruch do sieci lokalnej aplikacjom, które nie mają
+        # tego klucza: bez niego system nie pokazuje pytania i nie wpisuje
+        # aplikacji do Prywatność → Sieć lokalna, więc discovery LAN (broadcast
+        # UDP 47892 + skan TCP 47891) dostaje EHOSTUNREACH na KAŻDY cel i cicho
+        # nie znajduje nikogo. Serwer nasłuchujący działa dalej — dlatego drugie
+        # urządzenie widzi ten Mac, a ten Mac nie widzi jego.
+        "    <key>NSLocalNetworkUsageDescription</key>\n"
+        "    <string>TIMEFLOW wyszukuje w sieci lokalnej drugie urządzenie "
+        "z TIMEFLOW, żeby zsynchronizować z nim dane bez wysyłania ich "
+        "do internetu.</string>\n"
         "    <key>NSHighResolutionCapable</key>\n    <true/>\n"
         "    <key>NSSupportsAutomaticGraphicsSwitching</key>\n    <true/>\n"
         "</dict>\n"

@@ -92,6 +92,12 @@ impl Lang {
             (Lang::Pl, TrayText::WebUiStatusOn) => "Web UI:",
             (Lang::En, TrayText::WebUiStatusOn) => "Web UI:",
 
+            (Lang::Pl, TrayText::WebUiStatusWindow) => "(okno aplikacji)",
+            (Lang::En, TrayText::WebUiStatusWindow) => "(app window)",
+
+            (Lang::Pl, TrayText::WebUiOpenInBrowser) => "Otwórz w przeglądarce",
+            (Lang::En, TrayText::WebUiOpenInBrowser) => "Open in browser",
+
             (Lang::Pl, TrayText::WebUiStatusDisabled) => "Web UI: wyłączone w ustawieniach",
             (Lang::En, TrayText::WebUiStatusDisabled) => "Web UI: disabled in settings",
 
@@ -139,6 +145,10 @@ pub enum TrayText {
     WebUiStatusOff,
     WebUiStatusOn,
     WebUiStatusDisabled,
+    /// Dopisek do statusu, gdy Web UI serwuje otwarte okno dashboardu, a nie
+    /// proces wystartowany przez demona — demon nie może go zatrzymać.
+    WebUiStatusWindow,
+    WebUiOpenInBrowser,
     WebUiNotifyTitle,
     WebUiNotifyPortBusy,
     WebUiNotifyDisabled,

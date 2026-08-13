@@ -54,6 +54,13 @@ fn get_ipconfig_output() -> Option<String> {
 const DISCOVERY_PORT: u16 = 47892;
 const DASHBOARD_PORT_DEFAULT: u16 = 47891;
 const BEACON_INTERVAL: Duration = Duration::from_secs(30);
+/// Najkrótszy odstęp między pełnymi skanami podsieci — tyle czeka demon, gdy
+/// nie zna jeszcze żadnego peera i dopiero go szuka.
+const FULL_SWEEP_MIN_INTERVAL: Duration = Duration::from_secs(30);
+/// Najdłuższy odstęp: po serii bezowocnych skanów (albo przy zablokowanym LAN-ie)
+/// demon zagląda do sieci raz na kwadrans zamiast co pół minuty.
+const FULL_SWEEP_MAX_INTERVAL: Duration = Duration::from_secs(900);
+
 const PEER_EXPIRY: Duration = Duration::from_secs(120);
 /// Po tylu sekundach od `last_seen` wpis w `lan_peers.json` uznajemy za martwy.
 /// Większe niż `PEER_EXPIRY`, bo czyszczenie i zapis pliku są okresowe.
@@ -161,8 +168,19 @@ fn write_peers_file(peers: &HashMap<String, PeerInfo>) {
     }
 }
 
-/// Load IP addresses from the previous peers file (before clearing it).
-/// Used to immediately probe known peers on daemon restart.
+/// Adresy warte sprawdzenia zanim sięgniemy po skan całej podsieci: ostatnio
+/// widziani peerzy plus sparowane urządzenia. Bez duplikatów, kolejność stabilna.
+fn candidate_peer_ips() -> Vec<String> {
+    let mut ips = load_previous_peer_ips();
+    for ip in crate::lan_pairing::paired_peer_ips() {
+        if !ips.contains(&ip) {
+            ips.push(ip);
+        }
+    }
+    ips
+}
+
+/// Adresy z pliku peerów zapisanego w poprzedniej sesji.
 fn load_previous_peer_ips() -> Vec<String> {
     let path = match peers_file_path() {
         Some(p) => p,
@@ -282,24 +300,43 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
     let mut last_status_log = Instant::now();
     let mut last_expiry_check = Instant::now();
 
-    // Load previous peers and probe their known IPs immediately (unicast).
-    // This dramatically speeds up re-discovery after daemon restart because
-    // peers usually keep the same LAN IP.
-    let previous_ips = load_previous_peer_ips();
-    if !previous_ips.is_empty() {
-        log::info!("LAN discovery: probing {} known IP(s) from previous session: {:?}", previous_ips.len(), previous_ips);
+    // Kandydaci na start: ostatnio widziane adresy z poprzedniej sesji plus
+    // adresy sparowanych urządzeń. Peer prawie zawsze wraca pod tym samym IP,
+    // więc kilka celowanych pingów zastępuje skan całej podsieci.
+    let candidate_ips = candidate_peer_ips();
+    if !candidate_ips.is_empty() {
+        log::info!(
+            "LAN discovery: sprawdzam {} znany(ch) adres(ów) peerów: {:?}",
+            candidate_ips.len(),
+            candidate_ips
+        );
         let probe_packet = serde_json::to_string(&DiscoverPacket {
             packet_type: "timeflow_discover".to_string(),
             version: PROTOCOL_VERSION,
             device_id: device_id.clone(),
         }).unwrap_or_default();
-        for ip in &previous_ips {
+        for ip in &candidate_ips {
             let target = format!("{}:{}", ip, DISCOVERY_PORT);
             let _ = socket.send_to(probe_packet.as_bytes(), &target);
         }
+        // Ta sama próba po TCP: broadcast i unicast UDP bywają odfiltrowane
+        // (zapora Windows, blokada „Sieć lokalna" na macOS), a `/lan/ping`
+        // przechodzi wszędzie tam, gdzie sync i tak musi działać.
+        for (peer_device_id, peer_info) in http_ping_known_peers(&device_id, &candidate_ips) {
+            log::info!(
+                "LAN discovery: peer {} odnaleziony pod znanym adresem {}",
+                peer_device_id, peer_info.ip
+            );
+            peers.insert(peer_device_id, peer_info);
+        }
     }
-    // Clear file after reading — will be repopulated as peers respond
-    write_peers_file(&peers);
+    // Plik NIE jest czyszczony: to jedyna pamięć adresów między uruchomieniami.
+    // Wpisy i tak starzeją się przez `last_seen` (`is_peer_fresh`), a skasowanie
+    // ich na starcie kasowało zasiew, przez co po restarcie demon nie miał czego
+    // pingować i wpadał w skan całej podsieci.
+    if !peers.is_empty() {
+        write_peers_file(&peers);
+    }
 
     // ── Role assignment: forced or elected ──
     let lan_settings = config::load_lan_sync_settings();
@@ -436,6 +473,10 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
     let mut last_beacon = Instant::now();
     let mut last_http_scan = Instant::now();
     let mut last_full_scan = Instant::now();
+    // Odstęp między pełnymi skanami podsieci. Rośnie po każdym bezowocnym
+    // skanie, wraca do minimum, gdy peer się znajdzie albo gdy użytkownik
+    // wciśnie „Scan LAN". Bez tego demon mielił 253 hosty co 30 s w nieskończoność.
+    let mut sweep_interval = FULL_SWEEP_MIN_INTERVAL;
 
     let mut buf = [0u8; 2048];
     let mut sync_handle: Option<JoinHandle<()>> = None;
@@ -562,29 +603,58 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
             last_beacon = Instant::now();
         }
 
-        // HTTP-based peer scan: health-check known peers (30s) or full subnet scan (300s).
-        // When peers are known, most scans only ping them (1-2 probes instead of 253).
-        let use_health_check = !peers.is_empty() && last_full_scan.elapsed() < Duration::from_secs(300);
-        let http_scan_interval = if peers.is_empty() {
-            Duration::from_secs(30)
-        } else if use_health_check {
-            Duration::from_secs(30)  // health checks are cheap
-        } else {
-            Duration::from_secs(120)
+        // Sprawdzanie peerów po HTTP. Domyślnie CELOWANE: znani peerzy plus
+        // adresy zapamiętane z parowania — kilka pingów co 30 s. Pełny skan
+        // 253 hostów jest ostatecznością: tylko gdy żaden kandydat nie
+        // odpowiada, i to z rosnącym odstępem. Ręczne „Scan LAN" omija tę
+        // ostrożność i skanuje natychmiast.
+        let manual_rescan = sync_state
+            .as_ref()
+            .map(|s| s.rescan_requested.swap(false, Ordering::SeqCst))
+            .unwrap_or(false);
+        let candidates: Vec<String> = {
+            let mut ips: Vec<String> = peers.values().map(|p| p.ip.clone()).collect();
+            for ip in candidate_peer_ips() {
+                if !ips.contains(&ip) {
+                    ips.push(ip);
+                }
+            }
+            ips
         };
-        if discovery_active && (first_run || last_http_scan.elapsed() >= http_scan_interval) {
+        // Pełny skan tylko wtedy, gdy nie ma czego pingować celowanie albo
+        // minął (rosnący) odstęp — a przy znanym, żywym peerze dopiero po
+        // pełnym cyklu backoffu, żeby wykryć ewentualne trzecie urządzenie.
+        let sweep_due = last_full_scan.elapsed() >= sweep_interval;
+        let want_full_scan = manual_rescan || (sweep_due && (peers.is_empty() || candidates.is_empty()));
+        let http_scan_interval = Duration::from_secs(30);
+        if discovery_active
+            && (first_run || manual_rescan || last_http_scan.elapsed() >= http_scan_interval)
+        {
             last_http_scan = Instant::now();
 
-            let found = if use_health_check {
-                // Health check: only ping known peer IPs
-                let known_ips: Vec<String> = peers.values().map(|p| p.ip.clone()).collect();
-                log::debug!("LAN discovery: health-check {} known peer(s)", known_ips.len());
-                http_ping_known_peers(&device_id, &known_ips)
-            } else {
-                // Full subnet scan
+            let found = if want_full_scan {
                 last_full_scan = Instant::now();
-                http_scan_subnet(&device_id)
+                if manual_rescan {
+                    log::info!("LAN discovery: pełny skan wymuszony z dashboardu");
+                }
+                let outcome = http_scan_subnet(&device_id);
+                sweep_interval = next_sweep_interval(
+                    sweep_interval,
+                    !outcome.found.is_empty(),
+                    outcome.blocked,
+                    manual_rescan,
+                );
+                outcome.found
+            } else {
+                log::debug!(
+                    "LAN discovery: celowane sprawdzenie {} kandydat(ów)",
+                    candidates.len()
+                );
+                http_ping_known_peers(&device_id, &candidates)
             };
+            if !found.is_empty() {
+                sweep_interval = FULL_SWEEP_MIN_INTERVAL;
+            }
 
             for (peer_device_id, mut peer_info) in found {
                 // `/lan/ping` celowo nie ujawnia machine_name (endpoint jest
@@ -608,6 +678,10 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
                         peer_info.machine_name, peer_device_id, peer_info.ip
                     );
                 }
+                // Adres potwierdzony — zapisujemy go przy sparowanym urządzeniu,
+                // żeby po restarcie demona zacząć od jednego pingu zamiast od
+                // skanu podsieci. Zapis następuje tylko przy zmianie adresu.
+                crate::lan_pairing::remember_peer_ip(&peer_device_id, &peer_info.ip);
                 peers.insert(peer_device_id, peer_info);
                 peers_dirty = true;
             }
@@ -1130,32 +1204,65 @@ fn paired_machine_name(device_id: &str) -> Option<String> {
         .filter(|n| !n.is_empty())
 }
 
-fn http_ping_one(ip: String, my_device_id: &str) -> Option<(String, PeerInfo)> {
+/// Czemu ping do konkretnego hosta nie dał peera. Rozróżnienie jest istotne:
+/// „nikogo tam nie ma" to normalny wynik skanu, a „system nie wypuścił pakietu"
+/// to awaria konfiguracji, którą trzeba pokazać użytkownikowi.
+enum PingMiss {
+    /// Host nie odpowiedział / nie ma tam TIMEFLOW — spodziewane dla 250+ IP.
+    NoPeer,
+    /// To my sami.
+    Myself,
+    /// Błąd gniazda. `kind` trzymamy osobno, bo po nim rozpoznajemy blokadę
+    /// uprawnień (`HostUnreachable`/`PermissionDenied` dla KAŻDEGO celu).
+    Io(std::io::ErrorKind),
+}
+
+fn http_ping_one(ip: String, my_device_id: &str) -> Result<(String, PeerInfo), PingMiss> {
     let addr = format!("{}:{}", ip, DASHBOARD_PORT_DEFAULT);
-    let stream = std::net::TcpStream::connect_timeout(
-        &addr.parse().ok()?,
-        Duration::from_millis(800),
-    ).ok()?;
+    let sock_addr = addr.parse().map_err(|_| PingMiss::NoPeer)?;
+    let stream =
+        std::net::TcpStream::connect_timeout(&sock_addr, Duration::from_millis(800))
+            .map_err(|e| PingMiss::Io(e.kind()))?;
     let _ = stream.set_read_timeout(Some(Duration::from_millis(800)));
     let _ = stream.set_write_timeout(Some(Duration::from_millis(800)));
     let mut stream = std::io::BufWriter::new(stream);
     use std::io::Write;
     let req = format!("GET /lan/ping HTTP/1.0\r\nHost: {}\r\n\r\n", addr);
-    stream.write_all(req.as_bytes()).ok()?;
-    stream.flush().ok()?;
+    stream
+        .write_all(req.as_bytes())
+        .and_then(|_| stream.flush())
+        .map_err(|e| PingMiss::Io(e.kind()))?;
 
-    let mut reader = std::io::BufReader::new(stream.into_inner().ok()?);
+    let inner = stream.into_inner().map_err(|_| PingMiss::NoPeer)?;
+    let mut reader = std::io::BufReader::new(inner);
     let mut response = String::new();
     use std::io::Read;
-    reader.read_to_string(&mut response).ok()?;
+    reader
+        .read_to_string(&mut response)
+        .map_err(|e| PingMiss::Io(e.kind()))?;
 
-    let body = response.split("\r\n\r\n").nth(1)?;
-    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
-    let device_id = parsed.get("device_id")?.as_str()?.to_string();
+    // Od tego miejsca „coś odpowiedziało, ale to nie nasz peer" — to nie jest
+    // awaria sieci, więc nie zaśmiecamy nią statystyki błędów gniazda.
+    let body = response.split("\r\n\r\n").nth(1).ok_or(PingMiss::NoPeer)?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(body).map_err(|_| PingMiss::NoPeer)?;
+    let device_id = parsed
+        .get("device_id")
+        .and_then(|v| v.as_str())
+        .ok_or(PingMiss::NoPeer)?
+        .to_string();
     if device_id == my_device_id {
-        return None;
+        return Err(PingMiss::Myself);
     }
-    let machine_name = parsed.get("machine_name")?.as_str()?.to_string();
+    // `/lan/ping` celowo nie ujawnia nazwy maszyny — dla peera znanego
+    // z parowania podstawiamy zapamiętaną nazwę, żeby lista nie świeciła pustką.
+    let machine_name = parsed
+        .get("machine_name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| paired_machine_name(&device_id))
+        .unwrap_or_default();
     let role = parsed.get("role").and_then(|v| v.as_str()).unwrap_or("undecided").to_string();
     let timeflow_version = parsed
         .get("version")
@@ -1163,7 +1270,7 @@ fn http_ping_one(ip: String, my_device_id: &str) -> Option<(String, PeerInfo)> {
         .unwrap_or("")
         .to_string();
 
-    Some((
+    Ok((
         device_id.clone(),
         PeerInfo {
             device_id,
@@ -1183,17 +1290,79 @@ fn http_ping_one(ip: String, my_device_id: &str) -> Option<(String, PeerInfo)> {
 fn http_ping_known_peers(my_device_id: &str, known_ips: &[String]) -> HashMap<String, PeerInfo> {
     let mut found = HashMap::new();
     for ip in known_ips {
-        if let Some((id, peer)) = http_ping_one(ip.clone(), my_device_id) {
-            found.insert(id, peer);
+        match http_ping_one(ip.clone(), my_device_id) {
+            Ok((id, peer)) => {
+                found.insert(id, peer);
+            }
+            Err(PingMiss::Io(kind)) => {
+                log::debug!("LAN discovery: health-check {} nieudany ({:?})", ip, kind);
+            }
+            Err(_) => {}
         }
     }
     found
 }
 
+/// Odstęp do NASTĘPNEGO pełnego skanu podsieci po skanie, który właśnie minął.
+///
+/// Reguła: skan, który coś dał (albo zamówiony ręcznie), wraca do najkrótszego
+/// odstępu; skan przy zablokowanym LAN-ie od razu ląduje na maksimum, bo
+/// powtarzanie go niczego nie zmieni; pozostałe podwajają odstęp aż do sufitu.
+/// Dzięki temu cichy peer jest znajdowany szybko, a martwa sieć nie jest
+/// przemiatana 253 połączeniami co pół minuty w nieskończoność.
+fn next_sweep_interval(
+    current: Duration,
+    found_any: bool,
+    blocked: bool,
+    manual: bool,
+) -> Duration {
+    if found_any || manual {
+        FULL_SWEEP_MIN_INTERVAL
+    } else if blocked {
+        FULL_SWEEP_MAX_INTERVAL
+    } else {
+        (current * 2).min(FULL_SWEEP_MAX_INTERVAL)
+    }
+}
+
+/// Czy rozkład błędów gniazda wygląda na blokadę systemową, a nie na pustą sieć.
+///
+/// Nieobecny host daje `TimedOut` (ARP milczy) albo `ConnectionRefused`.
+/// `HostUnreachable`/`PermissionDenied` na KAŻDYM celu to nie jest stan sieci —
+/// tak wygląda odmowa uprawnienia „Sieć lokalna" na macOS 15+, gdzie system
+/// odrzuca połączenie natychmiast, zanim opuści maszynę.
+fn looks_like_blocked_lan(errors: &HashMap<std::io::ErrorKind, usize>, targets: usize) -> bool {
+    if targets == 0 {
+        return false;
+    }
+    let blocked: usize = errors
+        .iter()
+        .filter(|(kind, _)| {
+            matches!(
+                kind,
+                std::io::ErrorKind::HostUnreachable
+                    | std::io::ErrorKind::NetworkUnreachable
+                    | std::io::ErrorKind::PermissionDenied
+            )
+        })
+        .map(|(_, count)| *count)
+        .sum();
+    blocked * 100 / targets >= 90
+}
+
+/// Wynik pełnego skanu podsieci.
+pub(crate) struct ScanOutcome {
+    pub found: HashMap<String, PeerInfo>,
+    /// System odrzucał połączenia do wszystkich celów — skan nic nie mówi
+    /// o zawartości sieci, bo pakiety jej nie opuściły.
+    pub blocked: bool,
+}
+
 /// HTTP-based subnet scan — pings each host on TCP 47891 (LAN server).
 /// Far more reliable than UDP on Windows. Uses threads for parallel probing.
-fn http_scan_subnet(my_device_id: &str) -> HashMap<String, PeerInfo> {
+fn http_scan_subnet(my_device_id: &str) -> ScanOutcome {
     let mut found = HashMap::new();
+    let empty = |found: HashMap<String, PeerInfo>| ScanOutcome { found, blocked: false };
 
     let my_ip = match std::net::UdpSocket::bind("0.0.0.0:0") {
         Ok(sock) => {
@@ -1201,13 +1370,13 @@ fn http_scan_subnet(my_device_id: &str) -> HashMap<String, PeerInfo> {
                 if let Ok(addr) = sock.local_addr() {
                     addr.ip().to_string()
                 } else {
-                    return found;
+                    return empty(found);
                 }
             } else {
-                return found;
+                return empty(found);
             }
         }
-        Err(_) => return found,
+        Err(_) => return empty(found),
     };
 
     let interfaces = get_local_interfaces();
@@ -1239,13 +1408,15 @@ fn http_scan_subnet(my_device_id: &str) -> HashMap<String, PeerInfo> {
     }
 
     if targets.is_empty() {
-        return found;
+        return empty(found);
     }
 
     log::info!("LAN discovery: HTTP scan starting — {} targets", targets.len());
 
     const BATCH_SIZE: usize = 48;
     let my_id = my_device_id.to_string();
+    let target_count = targets.len();
+    let mut errors: HashMap<std::io::ErrorKind, usize> = HashMap::new();
 
     for batch in targets.chunks(BATCH_SIZE) {
         let handles: Vec<_> = batch
@@ -1258,18 +1429,51 @@ fn http_scan_subnet(my_device_id: &str) -> HashMap<String, PeerInfo> {
             .collect();
 
         for handle in handles {
-            if let Ok(Some((id, peer))) = handle.join() {
-                log::info!(
-                    "LAN discovery: HTTP scan found {} ({}) at {}",
-                    peer.machine_name, id, peer.ip
-                );
-                found.insert(id, peer);
+            match handle.join() {
+                Ok(Ok((id, peer))) => {
+                    log::info!(
+                        "LAN discovery: HTTP scan found {} ({}) at {}",
+                        peer.machine_name, id, peer.ip
+                    );
+                    found.insert(id, peer);
+                }
+                Ok(Err(PingMiss::Io(kind))) => {
+                    *errors.entry(kind).or_insert(0) += 1;
+                }
+                Ok(Err(_)) | Err(_) => {}
             }
         }
     }
 
-    log::info!("LAN discovery: HTTP scan complete — {} peer(s)", found.len());
-    found
+    // Pusty wynik bez podania przyczyny był tu najgorszym elementem: skan
+    // raportował „0 peer(s)" identycznie przy pustej sieci i przy całkowicie
+    // zablokowanym gnieździe, więc awaria uprawnień była nie do odróżnienia
+    // od normalnej pracy.
+    let mut blocked = false;
+    if found.is_empty() && !errors.is_empty() {
+        let mut summary: Vec<String> = errors
+            .iter()
+            .map(|(kind, count)| format!("{:?}×{}", kind, count))
+            .collect();
+        summary.sort();
+        log::info!(
+            "LAN discovery: HTTP scan complete — 0 peer(s) z {} celów; błędy: {}",
+            target_count,
+            summary.join(", ")
+        );
+        blocked = looks_like_blocked_lan(&errors, target_count);
+        if blocked {
+            log::warn!(
+                "LAN discovery: system odrzuca KAŻDE połączenie do sieci lokalnej — \
+                 to nie jest brak peerów. Na macOS 15+ sprawdź Ustawienia systemowe → \
+                 Prywatność i ochrona → Sieć lokalna i włącz tam TIMEFLOW Demon; \
+                 na Windows sprawdź reguły zapory dla TCP 47891 / UDP 47892."
+            );
+        }
+    } else {
+        log::info!("LAN discovery: HTTP scan complete — {} peer(s)", found.len());
+    }
+    ScanOutcome { found, blocked }
 }
 
 /// Czy wpis peera z `lan_peers.json` jest wciąż świeży.
@@ -1320,6 +1524,76 @@ mod tests {
     fn fresh_peer_is_accepted() {
         let now = Utc::now().to_rfc3339();
         assert!(is_peer_fresh(&now));
+    }
+
+    #[test]
+    fn fruitless_sweeps_back_off_up_to_the_cap() {
+        let mut interval = FULL_SWEEP_MIN_INTERVAL;
+        let mut steps = 0;
+        while interval < FULL_SWEEP_MAX_INTERVAL {
+            interval = next_sweep_interval(interval, false, false, false);
+            steps += 1;
+            assert!(steps < 20, "backoff nie dobija do sufitu");
+        }
+        assert_eq!(interval, FULL_SWEEP_MAX_INTERVAL);
+        // Sufit jest sufitem — kolejne puste skany go nie przekraczają.
+        assert_eq!(
+            next_sweep_interval(interval, false, false, false),
+            FULL_SWEEP_MAX_INTERVAL
+        );
+    }
+
+    #[test]
+    fn finding_a_peer_restores_the_alert_rhythm() {
+        assert_eq!(
+            next_sweep_interval(FULL_SWEEP_MAX_INTERVAL, true, false, false),
+            FULL_SWEEP_MIN_INTERVAL
+        );
+    }
+
+    #[test]
+    fn manual_scan_resets_backoff_even_when_it_finds_nothing() {
+        // Użytkownik wcisnął „Scan LAN": nawet pusty wynik nie może zostawić
+        // demona na kwadransowym odstępie, bo zaraz spróbuje ponownie.
+        assert_eq!(
+            next_sweep_interval(FULL_SWEEP_MAX_INTERVAL, false, false, true),
+            FULL_SWEEP_MIN_INTERVAL
+        );
+    }
+
+    #[test]
+    fn blocked_lan_skips_straight_to_the_slowest_rhythm() {
+        assert_eq!(
+            next_sweep_interval(FULL_SWEEP_MIN_INTERVAL, false, true, false),
+            FULL_SWEEP_MAX_INTERVAL
+        );
+    }
+
+    #[test]
+    fn empty_network_is_not_reported_as_blocked() {
+        // Nieobecne hosty milczą (ARP nie odpowiada) — to normalny skan pustej
+        // podsieci, nie awaria uprawnień.
+        let mut errors = HashMap::new();
+        errors.insert(std::io::ErrorKind::TimedOut, 253);
+        assert!(!looks_like_blocked_lan(&errors, 253));
+    }
+
+    #[test]
+    fn host_unreachable_on_every_target_is_reported_as_blocked() {
+        // Tak wygląda odmowa uprawnienia „Sieć lokalna" na macOS 15+: system
+        // odrzuca każdy cel natychmiast, zanim pakiet opuści maszynę.
+        let mut errors = HashMap::new();
+        errors.insert(std::io::ErrorKind::HostUnreachable, 253);
+        assert!(looks_like_blocked_lan(&errors, 253));
+    }
+
+    #[test]
+    fn single_unreachable_host_is_not_enough_to_blame_permissions() {
+        // Jeden peer za routerem nie może wywołać ostrzeżenia o uprawnieniach.
+        let mut errors = HashMap::new();
+        errors.insert(std::io::ErrorKind::HostUnreachable, 1);
+        errors.insert(std::io::ErrorKind::TimedOut, 252);
+        assert!(!looks_like_blocked_lan(&errors, 253));
     }
 
     #[test]

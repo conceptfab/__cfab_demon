@@ -178,7 +178,7 @@ export function SettingsSyncTab(controller: SettingsSyncTabProps) {
         roleAutoLabel={t('settings.lan_sync.role_auto')}
         roleMasterLabel={t('settings.lan_sync.role_master')}
         roleSlaveLabel={t('settings.lan_sync.role_slave')}
-        manualSearchLabel={t('settings.lan_sync.my_ip_label')}
+        manualSearchLabel={t('settings.lan_sync.manual_search_label')}
         manualSearchPlaceholder={t('settings.lan_sync.manual_search_placeholder')}
         manualSearchButton={t('settings.lan_sync.manual_search_button')}
         myIpLabel={t('settings.lan_sync.my_ip_label')}

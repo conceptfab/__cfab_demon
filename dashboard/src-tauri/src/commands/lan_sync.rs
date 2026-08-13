@@ -173,6 +173,26 @@ pub struct PingLanPeerResult {
     pub version: String,
 }
 
+/// Rozwija błąd reqwest do przyczyny źródłowej.
+///
+/// Samo `reqwest::Error` wypisuje się jako „error sending request for url (…)",
+/// co ukrywa jedyną informację, która cokolwiek znaczy: błąd gniazda. Przy
+/// odmowie uprawnienia „Sieć lokalna" na macOS 15+ prawdziwym powodem jest
+/// „No route to host" — i to musi trafić do użytkownika, inaczej sprawna sieć
+/// wygląda na zepsuty adres peera.
+fn describe_send_error(err: &reqwest::Error) -> String {
+    let mut parts = vec![err.to_string()];
+    let mut source = std::error::Error::source(err);
+    while let Some(cause) = source {
+        let text = cause.to_string();
+        if !parts.iter().any(|p| p == &text) {
+            parts.push(text);
+        }
+        source = std::error::Error::source(cause);
+    }
+    parts.join(": ")
+}
+
 #[tauri::command]
 pub async fn ping_lan_peer(ip: String, port: u16) -> Result<PingLanPeerResult, CommandError> {
     ensure_private_peer(&ip)?;
@@ -186,7 +206,9 @@ pub async fn ping_lan_peer(ip: String, port: u16) -> Result<PingLanPeerResult, C
         .get(&url)
         .send()
         .await
-        .map_err(|e| CommandError::Other(format!("Cannot reach {}:{} — {}", ip, port, e)))?;
+        .map_err(|e| {
+            CommandError::Other(format!("Cannot reach {}:{} — {}", ip, port, describe_send_error(&e)))
+        })?;
 
     if !resp.status().is_success() {
         return Err(CommandError::Other(format!(
@@ -296,6 +318,27 @@ pub async fn scan_lan_subnet() -> Result<Vec<PingLanPeerResult>, CommandError> {
         "LAN scan: scanning {}.1-254 on port 47891 (my IP: {})",
         prefix, my_ip
     ));
+
+    // Demon skanuje całą podsieć tylko wtedy, gdy nie ma czego pingować
+    // celowanie — i z rosnącym odstępem. Kliknięcie „Scan LAN" musi ten odstęp
+    // zresetować, inaczej dashboard znajdzie peera, a demon (właściciel
+    // `lan_peers.json` i całego sync) dalej czekałby do końca backoffu.
+    // Best-effort: gdy demon nie działa, skan dashboardu i tak się wykona.
+    match reqwest::Client::new()
+        .post("http://127.0.0.1:47891/lan/rescan")
+        .timeout(std::time::Duration::from_secs(2))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            sync_log("LAN scan: demon poproszony o pełny skan podsieci");
+        }
+        Ok(resp) => sync_log(&format!(
+            "LAN scan: demon odrzucił prośbę o skan (HTTP {})",
+            resp.status()
+        )),
+        Err(e) => sync_log(&format!("LAN scan: demon nieosiągalny ({e})")),
+    }
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_millis(800))

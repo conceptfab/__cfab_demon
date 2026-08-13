@@ -350,39 +350,64 @@ impl TrayState {
 
             // Update Web UI status and toggle labels.
             if let Ok(dir) = crate::config::config_dir() {
-                if !crate::webui_host_ctl::is_enabled(&dir) {
+                use crate::webui_host_ctl::WebUiState;
+                match crate::webui_host_ctl::state(&dir) {
                     // Wyłączone w ustawieniach — nie oferuj startu (klik i tak byłby
                     // no-op, bo headless respektuje flagę enabled).
-                    set_menu_item_text(
-                        &self.menu_webui_status.borrow(),
-                        lang.t(TrayText::WebUiStatusDisabled),
-                    );
-                    set_menu_item_text(
-                        &self.menu_webui_toggle.borrow(),
-                        lang.t(TrayText::WebUiStart),
-                    );
-                    self.menu_webui_toggle.borrow().set_enabled(false);
-                } else if crate::webui_host_ctl::is_running(&dir) {
-                    self.menu_webui_toggle.borrow().set_enabled(true);
-                    let addr = crate::webui_host_ctl::display_address(&dir);
-                    set_menu_item_text(
-                        &self.menu_webui_status.borrow(),
-                        &format!("{} {}", lang.t(TrayText::WebUiStatusOn), addr),
-                    );
-                    set_menu_item_text(
-                        &self.menu_webui_toggle.borrow(),
-                        lang.t(TrayText::WebUiStop),
-                    );
-                } else {
-                    self.menu_webui_toggle.borrow().set_enabled(true);
-                    set_menu_item_text(
-                        &self.menu_webui_status.borrow(),
-                        lang.t(TrayText::WebUiStatusOff),
-                    );
-                    set_menu_item_text(
-                        &self.menu_webui_toggle.borrow(),
-                        lang.t(TrayText::WebUiStart),
-                    );
+                    WebUiState::Disabled => {
+                        set_menu_item_text(
+                            &self.menu_webui_status.borrow(),
+                            lang.t(TrayText::WebUiStatusDisabled),
+                        );
+                        set_menu_item_text(
+                            &self.menu_webui_toggle.borrow(),
+                            lang.t(TrayText::WebUiStart),
+                        );
+                        self.menu_webui_toggle.borrow().set_enabled(false);
+                    }
+                    WebUiState::Managed => {
+                        self.menu_webui_toggle.borrow().set_enabled(true);
+                        let addr = crate::webui_host_ctl::display_address(&dir);
+                        set_menu_item_text(
+                            &self.menu_webui_status.borrow(),
+                            &format!("{} {}", lang.t(TrayText::WebUiStatusOn), addr),
+                        );
+                        set_menu_item_text(
+                            &self.menu_webui_toggle.borrow(),
+                            lang.t(TrayText::WebUiStop),
+                        );
+                    }
+                    // Serwuje okno dashboardu: status mówi, że DZIAŁA, a akcją
+                    // jest otwarcie w przeglądarce — demon nie ubija procesu,
+                    // którego nie uruchomił.
+                    WebUiState::Window => {
+                        self.menu_webui_toggle.borrow().set_enabled(true);
+                        let addr = crate::webui_host_ctl::display_address(&dir);
+                        set_menu_item_text(
+                            &self.menu_webui_status.borrow(),
+                            &format!(
+                                "{} {} {}",
+                                lang.t(TrayText::WebUiStatusOn),
+                                addr,
+                                lang.t(TrayText::WebUiStatusWindow)
+                            ),
+                        );
+                        set_menu_item_text(
+                            &self.menu_webui_toggle.borrow(),
+                            lang.t(TrayText::WebUiOpenInBrowser),
+                        );
+                    }
+                    WebUiState::Stopped => {
+                        self.menu_webui_toggle.borrow().set_enabled(true);
+                        set_menu_item_text(
+                            &self.menu_webui_status.borrow(),
+                            lang.t(TrayText::WebUiStatusOff),
+                        );
+                        set_menu_item_text(
+                            &self.menu_webui_toggle.borrow(),
+                            lang.t(TrayText::WebUiStart),
+                        );
+                    }
                 }
             }
         }
@@ -407,14 +432,7 @@ impl TrayState {
             self.trigger_sync(true);
         } else if handle == self.webui_toggle_handle {
             if let Ok(dir) = crate::config::config_dir() {
-                if !crate::webui_host_ctl::is_enabled(&dir) {
-                    log::info!("[tray] Web UI start ignored — disabled in settings");
-                } else if crate::webui_host_ctl::is_running(&dir) {
-                    crate::webui_host_ctl::stop(&dir);
-                } else {
-                    let outcome = crate::webui_host_ctl::start(&dir);
-                    log::info!("[tray] Web UI start outcome: {outcome:?}");
-                }
+                crate::webui_host_ctl::toggle_from_tray(&dir);
             }
         }
     }

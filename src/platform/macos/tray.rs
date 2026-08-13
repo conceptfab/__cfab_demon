@@ -557,28 +557,45 @@ pub fn run(
 
             if let Ok(dir) = crate::config::config_dir() {
                 let lang = lang_state.get();
-                let s = crate::webui_host_ctl::read_webserver_settings(&dir);
-                let (status_text, toggle_text, toggle_enabled) = if !s.enabled {
-                    // Wyłączone w ustawieniach — nie oferuj startu.
-                    (
-                        lang.t(TrayText::WebUiStatusDisabled).to_string(),
-                        lang.t(TrayText::WebUiStart).to_string(),
-                        false,
-                    )
-                } else if crate::webui_host_ctl::is_running(&dir) {
-                    let addr = crate::webui_host_ctl::display_address(&dir);
-                    (
-                        format!("{} {}", lang.t(TrayText::WebUiStatusOn), addr),
-                        lang.t(TrayText::WebUiStop).to_string(),
-                        true,
-                    )
-                } else {
-                    (
-                        lang.t(TrayText::WebUiStatusOff).to_string(),
-                        lang.t(TrayText::WebUiStart).to_string(),
-                        true,
-                    )
-                };
+                use crate::webui_host_ctl::WebUiState;
+                let (status_text, toggle_text, toggle_enabled) =
+                    match crate::webui_host_ctl::state(&dir) {
+                        // Wyłączone w ustawieniach — nie oferuj startu.
+                        WebUiState::Disabled => (
+                            lang.t(TrayText::WebUiStatusDisabled).to_string(),
+                            lang.t(TrayText::WebUiStart).to_string(),
+                            false,
+                        ),
+                        WebUiState::Managed => {
+                            let addr = crate::webui_host_ctl::display_address(&dir);
+                            (
+                                format!("{} {}", lang.t(TrayText::WebUiStatusOn), addr),
+                                lang.t(TrayText::WebUiStop).to_string(),
+                                true,
+                            )
+                        }
+                        // Serwuje okno dashboardu: pokazujemy, że DZIAŁA, ale
+                        // zamiast „Zatrzymaj" dajemy otwarcie w przeglądarce —
+                        // demon nie ubija procesu, którego nie uruchomił.
+                        WebUiState::Window => {
+                            let addr = crate::webui_host_ctl::display_address(&dir);
+                            (
+                                format!(
+                                    "{} {} {}",
+                                    lang.t(TrayText::WebUiStatusOn),
+                                    addr,
+                                    lang.t(TrayText::WebUiStatusWindow)
+                                ),
+                                lang.t(TrayText::WebUiOpenInBrowser).to_string(),
+                                true,
+                            )
+                        }
+                        WebUiState::Stopped => (
+                            lang.t(TrayText::WebUiStatusOff).to_string(),
+                            lang.t(TrayText::WebUiStart).to_string(),
+                            true,
+                        ),
+                    };
 
                 if applied.webui_status.as_deref() != Some(status_text.as_str()) {
                     webui_status_item.set_text(&status_text);
@@ -618,14 +635,7 @@ pub fn run(
                 launch_dashboard();
             } else if ev.id == webui_toggle_id {
                 if let Ok(dir) = crate::config::config_dir() {
-                    if !crate::webui_host_ctl::is_enabled(&dir) {
-                        log::info!("[tray] Web UI start ignored — disabled in settings");
-                    } else if crate::webui_host_ctl::is_running(&dir) {
-                        crate::webui_host_ctl::stop(&dir);
-                    } else {
-                        let outcome = crate::webui_host_ctl::start(&dir);
-                        log::info!("[tray] Web UI start outcome: {outcome:?}");
-                    }
+                    crate::webui_host_ctl::toggle_from_tray(&dir);
                 }
             } else if ev.id == sync_delta_id {
                 if let Some(state) = sync_state.clone() {

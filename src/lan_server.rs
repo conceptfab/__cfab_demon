@@ -172,6 +172,12 @@ pub struct LanSyncState {
     /// Updated by lan_discovery; read by the tray to decide whether sync
     /// actions make sense (no peer ⇒ sync impossible ⇒ hide the menu options).
     pub peer_present: AtomicBool,
+    /// Żądanie pełnego skanu podsieci „na już", zapalane przez `/lan/rescan`.
+    ///
+    /// Pętla discovery skanuje całą podsieć tylko wtedy, gdy nie ma czego
+    /// pingować celowanie, i z rosnącym odstępem. Przycisk „Scan LAN" musi ten
+    /// odstęp omijać — inaczej użytkownik klika, a demon i tak czeka kwadrans.
+    pub rescan_requested: AtomicBool,
     /// Circuit breaker: count of consecutive failed sync cycles. Reset on success.
     pub consecutive_sync_failures: AtomicU32,
     /// Unix epoch secs until which the circuit breaker suppresses auto-sync (0 = none).
@@ -214,6 +220,7 @@ impl LanSyncState {
             progress: std::sync::Mutex::new(SyncProgress::idle()),
             last_sync_completed: AtomicU64::new(0),
             peer_present: AtomicBool::new(false),
+            rescan_requested: AtomicBool::new(false),
             consecutive_sync_failures: AtomicU32::new(0),
             sync_backoff_until: AtomicU64::new(0),
             last_db_ready: std::sync::Mutex::new(None),
@@ -564,7 +571,7 @@ fn handle_connection(
         | "/lan/store-paired-device" | "/lan/remove-paired-device"
         | "/lan/local-identity" | "/lan/initiate-pair"
         | "/lan/trigger-sync" | "/online/trigger-sync" | "/online/cancel-sync"
-        | "/online/last-result"
+        | "/online/last-result" | "/lan/rescan"
     );
     if requires_auth {
         let expected = get_or_create_lan_secret();
@@ -625,6 +632,7 @@ fn handle_connection(
         ("POST", "/lan/remove-paired-device") => handle_remove_paired_device(&body),
         ("GET", "/lan/paired-devices") => handle_get_paired_devices(),
         ("GET", "/lan/local-identity") => handle_local_identity(),
+        ("POST", "/lan/rescan") => handle_rescan(&state, client_ip),
         ("POST", "/lan/trigger-sync") => handle_trigger_sync(&state, &stop_signal, &body, client_ip),
         // Online sync endpoints
         ("POST", "/online/trigger-sync") => handle_online_trigger_sync(&state, &stop_signal, &body, client_ip),
@@ -1159,6 +1167,20 @@ fn handle_pull(state: &LanSyncState, body: &str) -> (u16, String) {
             (500, json_error(&e))
         },
     }
+}
+
+/// Ręczne „Scan LAN" z dashboardu — zapala żądanie pełnego skanu w pętli discovery.
+///
+/// Loopback-only jak pozostałe endpointy bez sekretu: skan podsieci to 253
+/// połączenia wychodzące, więc obcy host w sieci nie może go wyzwalać.
+fn handle_rescan(state: &Arc<LanSyncState>, client_ip: IpAddr) -> (u16, String) {
+    if !is_loopback(client_ip) {
+        log::warn!("LAN rescan rejected from non-loopback {}", client_ip);
+        return (403, json_error("loopback_only"));
+    }
+    state.rescan_requested.store(true, Ordering::SeqCst);
+    log::info!("LAN rescan: pełny skan podsieci zamówiony z dashboardu");
+    (200, json_ok())
 }
 
 fn handle_trigger_sync(

@@ -7,6 +7,46 @@ Tracker znanych różnic w zachowaniu i stubów między platformami.
 | Tray — blok sync (widoczność vs wyszarzenie) | Blok sync jest **widoczny** gdy sync skonfigurowany (online `enabled+url+token` LUB LAN `enabled`); **ukrywany** dopiero gdy sync całkiem wyłączony (`Menu::insert`/`remove`). Bez celu (brak LAN-peera i online nie gotowy) → przyciski wyszarzone, status „Sync: niedostępny". | Blok zawsze obecny (nwg nie usuwa pozycji); **wyszarzony** + status „Sync: niedostępny" gdy brak celu. Warunek `syncable` identyczny jak na macOS (`has_target`). | Różnica szczątkowa: gdy sync CAŁKIEM wyłączony macOS chowa blok, Windows pokazuje wyszarzony. TODO: pełne ukrywanie na Windows przez Win32 `RemoveMenu`/`InsertMenuW` + **weryfikacja na realnym buildzie Windows** (cross-compile z macOS pada na `libsqlite3-sys`). |
 | Detekcja statusu demona — zawężenie do zarządzanej binarki (`commands/daemon/mod.rs::query_daemon_process_status`) | `pgrep -f <pełna_ścieżka_z_find_daemon_exe>` zamiast gołej nazwy. Zweryfikowane na macu (demon startuje z absolutną ścieżką jako argv[0]). | `Get-CimInstance Win32_Process` + porównanie pełnej `ExecutablePath`; fallback do `tasklist /FI IMAGENAME` przy każdym błędzie/braku ścieżki. **NIEZWERYFIKOWANE na realnym Windows** (cross-compile pada). Ryzyko: quoting `-Command` w std::process oraz teoretyczny fałszywy „Stopped", gdy PowerShell zwróci sukces z pustym wyjściem. | TODO: zweryfikować scoped query na realnym buildzie Windows; rozważyć `-EncodedCommand` dla pewnego quotingu. |
 
+## Status Web UI w trayu — jeden stan dla obu platform (2026-08-13)
+- **Objaw (obie platformy identycznie):** tray meldował „Web UI: zatrzymane", choć serwer
+  odpowiadał 200, a zakładka Serwer WWW pokazywała „aktywny".
+- **Przyczyna:** Web UI ma DWÓCH możliwych gospodarzy — proces headless wystartowany przez
+  demona (zapisuje `webui_host.json`) i zwykłe otwarte okno dashboardu, które pliku NIE
+  zapisuje. Tray pytał wyłącznie o plik (`is_running`), więc drugiego przypadku nie widział.
+  `start()` już wcześniej ten przypadek znał (bramka `healthz_ok` przy zajętym porcie) —
+  brakowało go tylko w prezentacji stanu.
+- **Rozwiązanie:** `webui_host_ctl::state()` zwraca `Disabled` / `Stopped` / `Managed` /
+  `Window`, a `toggle_from_tray()` trzyma reakcję na klik. Oba traye wołają te same dwie
+  funkcje, więc różnica zachowań między platformami nie ma się gdzie wziąć. Przy `Window`
+  demon świadomie NIE zatrzymuje serwera (nie jest właścicielem procesu) i oferuje
+  „Otwórz w przeglądarce".
+- **Przy okazji:** `display_address()` pokazywał IP z LAN niezależnie od `lan_exposure`.
+  Przy wyłączonym dostępie z LAN serwer słucha tylko na 127.0.0.1, więc tray podawał link
+  prowadzący donikąd (zweryfikowane: `curl` na adres LAN → brak połączenia).
+- **NIEZWERYFIKOWANE na realnym Windows:** zmiana w `platform/windows/tray.rs` przeszła
+  wyłącznie kontrolę składni (cross-compile z macOS pada na `libsqlite3-sys`). Logika jest
+  wspólna z macOS, więc ryzyko dotyczy samego wpięcia w nwg, nie zachowania.
+
+## Uprawnienie „Sieć lokalna" na macOS 15+ (2026-08-13)
+- **Objaw:** demon na macOS nie znajduje ŻADNEGO peera — ani beaconem UDP, ani skanem
+  HTTP — mimo że peer stoi i odpowiada. Drugie urządzenie równocześnie WIDZI tego Maca.
+  Ta asymetria jest diagnostyczna: nasłuch (`0.0.0.0:47891`) i loopback działają zawsze,
+  bo TCC nie dotyczy połączeń przychodzących ani pętli zwrotnej — blokowany jest wyłącznie
+  ruch WYCHODZĄCY do LAN.
+- **Przyczyna:** od macOS 15 system wymaga zgody „Sieć lokalna". Bez klucza
+  `NSLocalNetworkUsageDescription` w `Info.plist` system nie pokazuje pytania i nie
+  wpisuje aplikacji do listy w Prywatność i ochrona, więc nie ma czego włączyć. Efekt:
+  `connect()` i `sendto()` na adresy LAN kończą się NATYCHMIAST `EHOSTUNREACH`
+  (os error 65) — nie timeoutem. Dotyczy obu binarek (demon i dashboard); demon jest
+  gorszym przypadkiem, bo jako `LSUIElement` pod launchd nie ma jak pokazać pytania.
+- **Rozpoznanie w logu:** skan raportuje teraz rozkład błędów, a `looks_like_blocked_lan`
+  (≥90% celów z `HostUnreachable`/`NetworkUnreachable`/`PermissionDenied`) wypisuje
+  ostrzeżenie wprost. Wcześniej pusta sieć i całkowita blokada dawały identyczne
+  „HTTP scan complete — 0 peer(s)", przez co awaria była nierozpoznawalna w logu.
+- **Windows:** odpowiednik to reguły zapory (TCP 47891 / UDP 47892) tworzone automatycznie
+  przez `platform/windows/firewall.rs`. macOS nie ma czego konfigurować programowo —
+  zgodę musi kliknąć użytkownik, dlatego `platform/macos/firewall.rs` celowo nic nie robi.
+
 ## Notatki
 - Sygnał obecności peera: `LanSyncState.peer_present` (AtomicBool) aktualizowany w pętli `lan_discovery` na podstawie `!peers.is_empty()`; czytany przez oba traye.
 - Widoczność bloku sync w trayu: `online_ready || lan_enabled` (online_ready = `online.enabled && !url.is_empty() && !token.is_empty()`).

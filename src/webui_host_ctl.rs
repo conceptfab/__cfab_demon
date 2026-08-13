@@ -45,6 +45,44 @@ pub fn is_running(data_dir: &Path) -> bool {
     current(data_dir).is_some()
 }
 
+/// Stan Web UI widziany przez demona.
+///
+/// Rozróżnienie `Managed` vs `Window` jest konieczne, bo Web UI ma DWÓCH
+/// możliwych gospodarzy: proces headless wystartowany przez demona (zapisuje
+/// `webui_host.json`) albo zwykłe, otwarte okno dashboardu, które serwuje ten
+/// sam interfejs i pliku NIE zapisuje. Dotąd tray pytał wyłącznie o plik, więc
+/// przy działającym oknie meldował „Web UI: zatrzymane" mimo serwera
+/// odpowiadającego 200 — na obu platformach identycznie.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebUiState {
+    /// Wyłączone w ustawieniach — startu nie oferujemy.
+    Disabled,
+    /// Nikt nie odpowiada na skonfigurowanym porcie.
+    Stopped,
+    /// Serwuje proces wystartowany przez demona — demon może go zatrzymać.
+    Managed,
+    /// Serwuje otwarte okno dashboardu. Demon NIE jest właścicielem tego
+    /// procesu i nie wolno mu go ubić — to zamknęłoby użytkownikowi aplikację.
+    Window,
+}
+
+/// Aktualny stan Web UI. Sonda `/healthz` idzie wyłącznie wtedy, gdy plik hosta
+/// nic nie mówi — a przy naprawdę zatrzymanym serwerze loopback odrzuca
+/// połączenie natychmiast, więc tick traya nie ma na czym utknąć.
+pub fn state(data_dir: &Path) -> WebUiState {
+    let settings = read_webserver_settings(data_dir);
+    if !settings.enabled {
+        return WebUiState::Disabled;
+    }
+    if is_running(data_dir) {
+        return WebUiState::Managed;
+    }
+    if healthz_ok(settings.port) {
+        return WebUiState::Window;
+    }
+    WebUiState::Stopped
+}
+
 /// Musi zgadzać się z `webui/config.rs::DEFAULT_WEB_PORT` (dashboard) oraz
 /// `webui_dev.py`. Zmiana tu wymaga zmiany tam.
 const DEFAULT_PORT: u16 = 47892;
@@ -53,6 +91,9 @@ const DEFAULT_PORT: u16 = 47892;
 pub struct WebServerSettings {
     pub enabled: bool,
     pub port: u16,
+    /// `true` = serwer binduje 0.0.0.0 i jest osiągalny z LAN. Przy `false`
+    /// słucha wyłącznie na 127.0.0.1, więc adres z IP sieciowym jest martwy.
+    pub lan_exposure: bool,
 }
 
 pub fn read_webserver_settings(data_dir: &Path) -> WebServerSettings {
@@ -68,7 +109,11 @@ pub fn read_webserver_settings(data_dir: &Path) -> WebServerSettings {
         .and_then(|v| v.get("port").and_then(|p| p.as_u64()))
         .map(|p| p as u16)
         .unwrap_or(DEFAULT_PORT);
-    WebServerSettings { enabled, port }
+    let lan_exposure = v
+        .as_ref()
+        .and_then(|v| v.get("lan_exposure").and_then(|e| e.as_bool()))
+        .unwrap_or(false);
+    WebServerSettings { enabled, port, lan_exposure }
 }
 
 /// Czy Web Server jest włączony w ustawieniach. Domyślnie `false`.
@@ -80,15 +125,23 @@ fn configured_port(data_dir: &Path) -> u16 {
     read_webserver_settings(data_dir).port
 }
 
-/// Adres do menu: IP LAN, fallback localhost. BEZ efektu ubocznego —
-/// czyta port z pliku hosta bezpośrednio (nie wywołuje `current()`, które kasuje
-/// plik przy martwym PID). Czyszczenie martwego pliku robi `current()` w sekcji stanu.
+/// Adres do menu. BEZ efektu ubocznego — czyta port z pliku hosta bezpośrednio
+/// (nie wywołuje `current()`, które kasuje plik przy martwym PID). Czyszczenie
+/// martwego pliku robi `current()` w sekcji stanu.
+///
+/// Adres z IP sieciowym pokazujemy WYŁĄCZNIE przy włączonym dostępie z LAN.
+/// Bez tego serwer słucha na 127.0.0.1, a tray podawał adres LAN, pod którym
+/// nic nie odpowiada — użytkownik dostawał gotowy link prowadzący donikąd.
 pub fn display_address(data_dir: &Path) -> String {
+    let settings = read_webserver_settings(data_dir);
     let port = webui_host::read(data_dir)
         .map(|h| h.port)
-        .unwrap_or_else(|| configured_port(data_dir));
-    let ip = crate::lan_common::primary_local_ip()
-        .unwrap_or_else(|| "127.0.0.1".to_string());
+        .unwrap_or(settings.port);
+    let ip = if settings.lan_exposure {
+        crate::lan_common::primary_local_ip().unwrap_or_else(|| "127.0.0.1".to_string())
+    } else {
+        "127.0.0.1".to_string()
+    };
     format!("http://{ip}:{port}")
 }
 
@@ -173,6 +226,25 @@ pub fn start(data_dir: &Path) -> StartOutcome {
     spawn_headless();
     open_browser_when_ready(data_dir.to_path_buf(), port);
     StartOutcome::Spawned
+}
+
+/// Reakcja na kliknięcie pozycji Web UI w trayu — wspólna dla macOS i Windows,
+/// żeby obie platformy nie rozjechały się w zachowaniu.
+///
+/// Przy `Window` świadomie NIE zatrzymujemy serwera: należy do otwartego okna
+/// dashboardu, więc jedyne sensowne działanie to otworzyć go w przeglądarce
+/// (`start()` wykrywa zajęty port z odpowiadającym `/healthz` i robi dokładnie to).
+pub fn toggle_from_tray(data_dir: &Path) {
+    match state(data_dir) {
+        WebUiState::Disabled => {
+            log::info!("[tray] Web UI start ignored — disabled in settings");
+        }
+        WebUiState::Managed => stop(data_dir),
+        WebUiState::Window | WebUiState::Stopped => {
+            let outcome = start(data_dir);
+            log::info!("[tray] Web UI start outcome: {outcome:?}");
+        }
+    }
 }
 
 /// Czy nazwa procesu wskazuje na nasz dashboard TIMEFLOW. Pure — testowalne.
@@ -457,6 +529,90 @@ mod tests {
         let host = WebUiHost { pid: std::process::id(), port: 47892, started_at: 1 };
         webui_host::write(&dir, &host).unwrap();
         assert!(is_running(&dir));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Minimalny serwer odpowiadający 200 na `/healthz` — udaje Web UI
+    /// serwowane przez otwarte okno dashboardu. Zwraca port i uchwyt wątku.
+    fn spawn_fake_webui() -> (u16, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                use std::io::{Read, Write};
+                let mut buf = [0u8; 256];
+                let _ = stream.read(&mut buf);
+                let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+            }
+        });
+        (port, handle)
+    }
+
+    fn write_settings(dir: &Path, port: u16, enabled: bool, lan: bool) {
+        std::fs::write(
+            dir.join("webserver_settings.json"),
+            format!(
+                r#"{{"enabled":{enabled},"port":{port},"lan_exposure":{lan}}}"#
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn window_hosted_server_is_reported_as_running() {
+        // Regresja: Web UI serwowane przez otwarte okno dashboardu NIE zapisuje
+        // `webui_host.json`, przez co tray meldował „zatrzymane" mimo serwera
+        // odpowiadającego 200.
+        let dir = temp_dir();
+        let (port, handle) = spawn_fake_webui();
+        write_settings(&dir, port, true, false);
+        assert_eq!(state(&dir), WebUiState::Window);
+        let _ = handle.join();
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn nothing_listening_is_reported_as_stopped() {
+        let dir = temp_dir();
+        // Port zajmujemy i od razu zwalniamy — nikt na nim nie odpowiada.
+        let port = {
+            let l = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            l.local_addr().unwrap().port()
+        };
+        write_settings(&dir, port, true, false);
+        assert_eq!(state(&dir), WebUiState::Stopped);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn disabled_wins_over_a_live_server() {
+        // Wyłączone w ustawieniach ma pierwszeństwo: nie obiecujemy działania
+        // czegoś, czego użytkownik nie włączył.
+        let dir = temp_dir();
+        let (port, handle) = spawn_fake_webui();
+        write_settings(&dir, port, false, false);
+        assert_eq!(state(&dir), WebUiState::Disabled);
+        drop(handle);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn own_host_file_is_reported_as_managed() {
+        let dir = temp_dir();
+        write_settings(&dir, 47892, true, false);
+        let host = WebUiHost { pid: std::process::id(), port: 47892, started_at: 1 };
+        webui_host::write(&dir, &host).unwrap();
+        assert_eq!(state(&dir), WebUiState::Managed);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn address_stays_on_loopback_until_lan_access_is_enabled() {
+        // Bez `lan_exposure` serwer słucha tylko na 127.0.0.1 — adres z IP
+        // sieciowym byłby linkiem donikąd.
+        let dir = temp_dir();
+        write_settings(&dir, 51000, true, false);
+        assert_eq!(display_address(&dir), "http://127.0.0.1:51000");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

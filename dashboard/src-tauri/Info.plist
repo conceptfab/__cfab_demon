@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Klucze doklejane przez Tauri do Info.plist bundla macOS.
+
+  NSLocalNetworkUsageDescription jest wymagany od macOS 15: bez niego system
+  odrzuca połączenia do adresów LAN (ping peera, ręczne wyszukiwanie, skan
+  podsieci) natychmiast, błędem „No route to host", i nie pokazuje aplikacji
+  w Prywatność i ochrona → Sieć lokalna, więc użytkownik nie ma czego włączyć.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>TIMEFLOW wyszukuje w sieci lokalnej drugie urządzenie z TIMEFLOW, żeby zsynchronizować z nim dane bez wysyłania ich do internetu.</string>
+</dict>
+</plist>

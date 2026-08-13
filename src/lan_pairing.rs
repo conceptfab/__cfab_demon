@@ -100,6 +100,14 @@ pub struct PairedDevice {
     /// user explicitly re-pairs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_auth_error_at: Option<String>,
+    /// Ostatni adres, pod którym peer faktycznie odpowiedział.
+    ///
+    /// Zasiew dla discovery po restarcie: sparowane urządzenie prawie zawsze
+    /// wraca pod tym samym IP, więc jeden ping tutaj zastępuje skan całej
+    /// podsieci. Świadomie NIE jest to gwarancja — po zmianie dzierżawy DHCP
+    /// adres bywa nieaktualny i wtedy ratuje beacon albo pełny skan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_seen_ip: Option<String>,
 }
 
 fn paired_devices_path() -> Result<std::path::PathBuf, String> {
@@ -131,14 +139,43 @@ pub fn save_paired_devices(devices: &HashMap<String, PairedDevice>) {
 /// Resets `last_auth_error_at` so a fresh pairing starts clean.
 pub fn store_paired_device(device_id: &str, secret: &str, machine_name: &str) {
     let mut devices = load_paired_devices();
+    // Adres zachowujemy przy ponownym parowaniu — to jedyna wskazówka, gdzie
+    // szukać peera, a re-pair nie zmienia jego miejsca w sieci.
+    let last_seen_ip = devices.get(device_id).and_then(|d| d.last_seen_ip.clone());
     devices.insert(device_id.to_string(), PairedDevice {
         secret: secret.to_string(),
         machine_name: machine_name.to_string(),
         paired_at: chrono::Utc::now().to_rfc3339(),
         last_auth_error_at: None,
+        last_seen_ip,
     });
     save_paired_devices(&devices);
     log::info!("LAN pairing: stored secret for device {} ({})", device_id, machine_name);
+}
+
+/// Zapamiętuje adres, pod którym peer odpowiedział.
+///
+/// Zapis tylko przy ZMIANIE adresu — discovery potwierdza peera co 30 s, więc
+/// bezwarunkowy zapis mieliłby dysk bez powodu.
+pub fn remember_peer_ip(device_id: &str, ip: &str) {
+    let mut devices = load_paired_devices();
+    let Some(device) = devices.get_mut(device_id) else {
+        return;
+    };
+    if device.last_seen_ip.as_deref() == Some(ip) {
+        return;
+    }
+    device.last_seen_ip = Some(ip.to_string());
+    save_paired_devices(&devices);
+    log::info!("LAN pairing: zapamiętano adres {} dla urządzenia {}", ip, device_id);
+}
+
+/// Adresy sparowanych urządzeń — zasiew kandydatów dla discovery.
+pub fn paired_peer_ips() -> Vec<String> {
+    load_paired_devices()
+        .values()
+        .filter_map(|d| d.last_seen_ip.clone())
+        .collect()
 }
 
 /// Mark a paired device as having failed authentication (HTTP 401).
