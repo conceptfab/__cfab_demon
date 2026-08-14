@@ -108,6 +108,7 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
               onDayClick={controller.openCreateForDate}
               onTodoClick={controller.openEdit}
               onToggleStatus={(todo) => void controller.toggleStatus(todo)}
+              onShowDay={controller.showDay}
             />
           </div>
         </div>
@@ -125,6 +126,7 @@ export function TodoPageView({ controller }: TodoPageViewProps) {
               onDayClick={controller.openCreateForDate}
               onTodoClick={controller.openEdit}
               onToggleStatus={(todo) => void controller.toggleStatus(todo)}
+              onShowDay={controller.showDay}
             />
           </div>
         </div>

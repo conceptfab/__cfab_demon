@@ -8,6 +8,9 @@ import { HIGH_PRIORITY, HIGH_PRIORITY_ICON } from '@/lib/todo-priority';
 import type { TodoCalendarWeek } from '@/lib/todo-calendar';
 import type { Todo } from '@/lib/tauri/todos';
 
+/** Ile zadań pokazuje komórka miesiąca, zanim reszta schowa się za „+N". */
+const MONTH_VISIBLE_TODOS = 5;
+
 interface TodoCalendarProps {
   weeks: TodoCalendarWeek[];
   /** NAZWA projektu/klienta → kolor, do oznaczenia zakresu zadania na kafelku. */
@@ -15,6 +18,8 @@ interface TodoCalendarProps {
   onDayClick: (date: string) => void;
   onTodoClick: (todo: Todo) => void;
   onToggleStatus: (todo: Todo) => void;
+  /** Przełączenie widoku na dany dzień — cel kliknięcia w „+N". */
+  onShowDay: (date: string) => void;
 }
 
 /**
@@ -29,6 +34,7 @@ export function TodoCalendar({
   onDayClick,
   onTodoClick,
   onToggleStatus,
+  onShowDay,
 }: TodoCalendarProps) {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language);
@@ -46,10 +52,16 @@ export function TodoCalendar({
   // kłamstwem. Im mniej kolumn, tym wyższa komórka: przy jednym dniu jest miejsce
   // na pełną listę zadań, przy miesiącu liczy się zwartość siatki.
   const columns = weeks[0]?.days.length ?? 7;
+  const isMonth = columns === 7 && weeks.length > 1;
   const cellHeight =
     columns === 1 ? 'min-h-[320px]' : columns <= 7 && weeks.length === 1
       ? 'min-h-[220px]'
-      : 'min-h-[96px]';
+      : 'min-h-[128px]';
+  // W widoku miesiąca komórka nie może rosnąć bez końca — jeden zawalony dzień
+  // rozciągałby CAŁY tydzień i siatka przestawałaby się mieścić na ekranie.
+  // Nadmiar chowa się za „+N", które przełącza widok na ten dzień. Tydzień
+  // i dzień mają miejsce w pionie, więc tam nie chowamy niczego.
+  const visibleLimit = isMonth ? MONTH_VISIBLE_TODOS : Number.POSITIVE_INFINITY;
 
   return (
     <div className="min-w-[400px]">
@@ -82,7 +94,7 @@ export function TodoCalendar({
               <div
                 key={day.date}
                 className={cn(
-                  'group relative flex flex-1 flex-col gap-1 overflow-hidden rounded-md p-1.5',
+                  'group relative flex flex-1 flex-col gap-0.5 overflow-hidden rounded-md p-1.5',
                   cellHeight,
                   day.inMonth
                     ? 'bg-[rgba(41,46,66,0.45)]'
@@ -126,7 +138,7 @@ export function TodoCalendar({
                   </button>
                 </div>
 
-                {day.todos.map((todo) => {
+                {day.todos.slice(0, visibleLimit).map((todo) => {
                   const entity = todo.project_name ?? todo.client_name ?? null;
                   const dotColor = entity ? colorByName.get(entity) : undefined;
                   const done = todo.status === 'done';
@@ -228,6 +240,25 @@ export function TodoCalendar({
                     </span>
                   );
                 })}
+
+                {day.todos.length > visibleLimit && (
+                  <button
+                    type="button"
+                    onClick={() => onShowDay(day.date)}
+                    // Tytuły ukrytych zadań w tooltipie: licznik sam w sobie
+                    // mówi „coś tu jest", ale nie mówi CO — a to jest jedyna
+                    // informacja, dla której warto by klikać w ciemno.
+                    title={day.todos
+                      .slice(visibleLimit)
+                      .map((todo) => todo.title)
+                      .join('\n')}
+                    className="rounded px-1 text-left text-[10px] text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                  >
+                    {t('todo.more_in_day', {
+                      count: day.todos.length - visibleLimit,
+                    })}
+                  </button>
+                )}
               </div>
             ))}
           </div>

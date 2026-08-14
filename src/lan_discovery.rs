@@ -603,6 +603,54 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
             last_beacon = Instant::now();
         }
 
+        // Peerzy, którzy sami się do nas odezwali (sesja sync jako slave).
+        // Ruch przychodzący dowodzi obecności mocniej niż nasz ping i przechodzi
+        // nawet wtedy, gdy system blokuje nam ruch wychodzący — bez tego UI
+        // meldował „Brak peerów" tuż po udanej synchronizacji z tym peerem.
+        if let Some(ref state) = sync_state {
+            for contact in state.take_inbound_peers() {
+                let machine_name = paired_machine_name(&contact.device_id)
+                    .or_else(|| {
+                        peers
+                            .get(&contact.device_id)
+                            .map(|p| p.machine_name.clone())
+                            .filter(|n| !n.trim().is_empty())
+                    })
+                    .unwrap_or_default();
+                if !peers.contains_key(&contact.device_id) {
+                    log::info!(
+                        "LAN discovery: peer {} ({}) odezwał się sam z {}",
+                        machine_name, contact.device_id, contact.ip
+                    );
+                }
+                crate::lan_pairing::remember_peer_ip(&contact.device_id, &contact.ip);
+                let previous = peers.get(&contact.device_id);
+                peers.insert(
+                    contact.device_id.clone(),
+                    PeerInfo {
+                        device_id: contact.device_id.clone(),
+                        machine_name,
+                        ip: contact.ip.clone(),
+                        dashboard_port: DASHBOARD_PORT_DEFAULT,
+                        last_seen: contact.seen_at.clone(),
+                        // Skoro prowadzi z nami sesję sync, jest osiągalny.
+                        dashboard_running: true,
+                        // Inicjuje sync, więc występuje w roli mastera.
+                        role: "master".to_string(),
+                        uptime_secs: 0,
+                        // Negocjacja nie niesie wersji. Pustej NIE nadpisujemy
+                        // nad wersją poznaną wcześniej z beacona lub pingu —
+                        // UI czyta pustą jako „nie wiem", nie jako niezgodność.
+                        timeflow_version: previous
+                            .map(|p| p.timeflow_version.clone())
+                            .filter(|v| !v.trim().is_empty())
+                            .unwrap_or(contact.version),
+                    },
+                );
+                peers_dirty = true;
+            }
+        }
+
         // Sprawdzanie peerów po HTTP. Domyślnie CELOWANE: znani peerzy plus
         // adresy zapamiętane z parowania — kilka pingów co 30 s. Pełny skan
         // 253 hostów jest ostatecznością: tylko gdy żaden kandydat nie

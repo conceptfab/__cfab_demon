@@ -77,6 +77,14 @@ interface UIState {
   sessionsFocusDate: string | null;
   setSessionsFocusDate: (date: string | null) => void;
   clearSessionsFocusDate: () => void;
+  /**
+   * Dzień, na którym ma się otworzyć ekran Zadań — ustawiany z pulpitu
+   * („+N więcej" w pasku terminów), konsumowany i czyszczony przez kontroler
+   * Zadań. Ten sam wzorzec co `sessionsFocusDate`.
+   */
+  todoFocusDate: string | null;
+  setTodoFocusDate: (date: string | null) => void;
+  clearTodoFocusDate: () => void;
   sessionsFocusRange: DateRange | null;
   setSessionsFocusRange: (range: DateRange | null) => void;
   sessionsFocusProject: number | 'unassigned' | null;
@@ -132,6 +140,9 @@ export const useUIStore = create<UIState>((set, get) => ({
   sessionsFocusDate: null,
   setSessionsFocusDate: (date) => set({ sessionsFocusDate: date }),
   clearSessionsFocusDate: () => set({ sessionsFocusDate: null }),
+  todoFocusDate: null,
+  setTodoFocusDate: (date) => set({ todoFocusDate: date }),
+  clearTodoFocusDate: () => set({ todoFocusDate: null }),
   sessionsFocusRange: null,
   setSessionsFocusRange: (range) => set({ sessionsFocusRange: range }),
   sessionsFocusProject: null,

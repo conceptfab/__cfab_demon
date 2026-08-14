@@ -7,6 +7,26 @@ Tracker znanych różnic w zachowaniu i stubów między platformami.
 | Tray — blok sync (widoczność vs wyszarzenie) | Blok sync jest **widoczny** gdy sync skonfigurowany (online `enabled+url+token` LUB LAN `enabled`); **ukrywany** dopiero gdy sync całkiem wyłączony (`Menu::insert`/`remove`). Bez celu (brak LAN-peera i online nie gotowy) → przyciski wyszarzone, status „Sync: niedostępny". | Blok zawsze obecny (nwg nie usuwa pozycji); **wyszarzony** + status „Sync: niedostępny" gdy brak celu. Warunek `syncable` identyczny jak na macOS (`has_target`). | Różnica szczątkowa: gdy sync CAŁKIEM wyłączony macOS chowa blok, Windows pokazuje wyszarzony. TODO: pełne ukrywanie na Windows przez Win32 `RemoveMenu`/`InsertMenuW` + **weryfikacja na realnym buildzie Windows** (cross-compile z macOS pada na `libsqlite3-sys`). |
 | Detekcja statusu demona — zawężenie do zarządzanej binarki (`commands/daemon/mod.rs::query_daemon_process_status`) | `pgrep -f <pełna_ścieżka_z_find_daemon_exe>` zamiast gołej nazwy. Zweryfikowane na macu (demon startuje z absolutną ścieżką jako argv[0]). | `Get-CimInstance Win32_Process` + porównanie pełnej `ExecutablePath`; fallback do `tasklist /FI IMAGENAME` przy każdym błędzie/braku ścieżki. **NIEZWERYFIKOWANE na realnym Windows** (cross-compile pada). Ryzyko: quoting `-Command` w std::process oraz teoretyczny fałszywy „Stopped", gdy PowerShell zwróci sukces z pustym wyjściem. | TODO: zweryfikować scoped query na realnym buildzie Windows; rozważyć `-EncodedCommand` dla pewnego quotingu. |
 
+## Obecność peera z ruchu przychodzącego (2026-08-14)
+- **Objaw:** pasek boczny pokazywał „Brak peerów" minutę po zakończonej sesji LAN sync
+  (`[SLAVE] … synchronizacja zakonczona!`, 2,6 MB scalonych danych od `MICZ_NX`).
+- **Przyczyna:** discovery jest WYCHODZĄCE (broadcast UDP + skan TCP), a sesja sync jako
+  slave jest PRZYCHODZĄCA. Zablokowany ruch wychodzący (uprawnienie „Sieć lokalna" na
+  macOS 15+, zapora na Windows) zeruje discovery, ale nie przeszkadza peerowi puknąć do
+  naszego serwera. Lista peerów znała wyłącznie wynik discovery, więc zaprzeczała
+  synchronizacji, która właśnie się udała.
+- **Rozwiązanie:** `LanSyncState::record_inbound_peer` (negocjacja — jedyny moment, gdy
+  peer podaje `device_id`) i `touch_inbound_peer` (po udanej autoryzacji dowolnego
+  żądania — utrzymuje świeżość przez całą sesję). Pętla discovery opróżnia mapę
+  (`take_inbound_peers`) i scala wpisy ze swoimi, więc `lan_peers.json` ma nadal
+  JEDNEGO pisarza. Adres trafia też do `lan_pairing::remember_peer_ip`, czyli do
+  kandydatów celowanego pingu.
+- **Semantyka:** wpis wygasa normalnym `PEER_EXPIRY`, gdy peer zamilknie — bez ruchu
+  wychodzącego nie mamy jak potwierdzić, że nadal tam jest, a wieczny wpis byłby
+  kłamstwem w drugą stronę. Wersja TIMEFLOW zostaje pusta (negocjacja jej nie niesie)
+  i NIE nadpisuje wersji poznanej z beacona; UI czyta pustą jako „nie wiem", nie jako
+  niezgodność wersji.
+
 ## Status Web UI w trayu — jeden stan dla obu platform (2026-08-13)
 - **Objaw (obie platformy identycznie):** tray meldował „Web UI: zatrzymane", choć serwer
   odpowiadał 200, a zakładka Serwer WWW pokazywała „aktywny".

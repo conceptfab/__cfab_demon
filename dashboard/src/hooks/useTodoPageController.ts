@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/toast-notification';
 import { loadTodoSettings, saveTodoSettings } from '@/lib/user-settings';
 
 import { todoPresetToRange, shiftTodoAnchor } from '@/lib/todo-period';
+import { useUIStore } from '@/store/ui-store';
 import type { TimePreset } from '@/store/data-store';
 
 import { useTranslation } from 'react-i18next';
@@ -56,8 +57,17 @@ export function useTodoPageController() {
   // Okres LOKALNY, nie ze wspólnego store'a: tamten liczy zakresy wstecz i blokuje
   // ruch w przyszłość, a to jest kalendarz do planowania. Pasek i słownik presetów
   // zostają wspólne — różni się tylko arytmetyka i brak blokady „do przodu".
-  const [timePreset, setTimePresetState] = useState<TimePreset>('month');
-  const [anchor, setAnchor] = useState<Date>(() => new Date());
+  // Wejście z pulpitu („+N więcej" w pasku terminów) niesie konkretny dzień.
+  // Czytamy go RAZ, przy montowaniu ekranu, zamiast dostrajać stan efektem —
+  // ekran montuje się świeżo przy każdej zmianie strony, a stan początkowy nie
+  // powoduje dodatkowego renderu ani przeskoku widoku po pierwszym rysowaniu.
+  const focusDateOnMount = useUIStore.getState().todoFocusDate;
+  const [timePreset, setTimePresetState] = useState<TimePreset>(
+    focusDateOnMount ? 'today' : 'month',
+  );
+  const [anchor, setAnchor] = useState<Date>(() =>
+    focusDateOnMount ? new Date(`${focusDateOnMount}T12:00:00`) : new Date(),
+  );
   const dateRange = useMemo(
     () => todoPresetToRange(timePreset, anchor),
     [timePreset, anchor],
@@ -243,6 +253,22 @@ export function useTodoPageController() {
 
   const withoutDate = useMemo(() => undatedTodos(filtered), [filtered]);
 
+  /**
+   * Przełącza widok na konkretny dzień — cel kliknięcia w „+N" w komórce
+   * miesiąca. Ustawia kotwicę na TEN dzień, w odróżnieniu od `setTimePreset`,
+   * które celowo wraca do „teraz".
+   */
+  const showDay = useCallback((date: string) => {
+    setAnchor(new Date(`${date}T12:00:00`));
+    setTimePresetState('today');
+  }, []);
+
+  // Żądanie jest jednorazowe: po skonsumowaniu znika, inaczej każdy powrót na
+  // ekran Zadań przeskakiwałby do tamtego dnia.
+  useEffect(() => {
+    if (focusDateOnMount) useUIStore.getState().clearTodoFocusDate();
+  }, [focusDateOnMount]);
+
   /** Klik w dzień kalendarza — nowe zadanie z wypełnionym terminem. */
   const openCreateForDate = useCallback((date: string) => {
     setEditing(null);
@@ -403,6 +429,7 @@ export function useTodoPageController() {
     dayTodos,
     withoutDate,
     openCreateForDate,
+    showDay,
     hasAnyTodo: todos.length > 0,
     searching,
     shownCount: filtered.length,

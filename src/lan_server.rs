@@ -7,6 +7,7 @@ use crate::config;
 use crate::lan_common::{self, sync_log};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -191,6 +192,31 @@ pub struct LanSyncState {
     pub last_db_ready: std::sync::Mutex<Option<(String, String)>>,
     /// Wynik ostatniego online sync (dla UI; nieblokujący kanał statusu/błędu).
     pub last_online_outcome: std::sync::Mutex<Option<OnlineSyncOutcome>>,
+    /// Peerzy, którzy sami się do nas odezwali — klucz to `device_id`.
+    ///
+    /// Discovery jest WYCHODZĄCE (broadcast + skan), a sesja sync jako slave jest
+    /// PRZYCHODZĄCA. Gdy system blokuje ruch wychodzący (uprawnienie „Sieć
+    /// lokalna" na macOS 15+, zapora na Windows), lista peerów zostaje pusta,
+    /// mimo że drugie urządzenie właśnie z nami zsynchronizowało bazę — UI
+    /// meldował wtedy „Brak peerów" tuż po udanej synchronizacji. Ruch
+    /// przychodzący jest dowodem obecności mocniejszym niż jakikolwiek ping,
+    /// więc go zapisujemy.
+    ///
+    /// Mapę OPRÓŻNIA pętla discovery (`take_inbound_peers`), żeby jedynym
+    /// pisarzem `lan_peers.json` pozostał jeden wątek.
+    pub inbound_peers: std::sync::Mutex<HashMap<String, InboundPeerContact>>,
+}
+
+/// Ślad kontaktu przychodzącego od peera.
+#[derive(Clone, Debug)]
+pub struct InboundPeerContact {
+    pub device_id: String,
+    pub ip: String,
+    /// Wersja TIMEFLOW peera, jeśli ją podał. Pusta = nieznana (UI traktuje
+    /// pustą jako „brak konfliktu wersji", nie jako niezgodność).
+    pub version: String,
+    /// RFC3339 — czas ostatniego kontaktu, wprost do `PeerInfo::last_seen`.
+    pub seen_at: String,
 }
 
 /// Guard that resets sync_in_progress to false on drop (panic-safe).
@@ -225,7 +251,55 @@ impl LanSyncState {
             sync_backoff_until: AtomicU64::new(0),
             last_db_ready: std::sync::Mutex::new(None),
             last_online_outcome: std::sync::Mutex::new(None),
+            inbound_peers: std::sync::Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Zapisuje kontakt od peera, który podał swoje `device_id` (negocjacja sync).
+    pub fn record_inbound_peer(&self, device_id: &str, ip: &str, version: &str) {
+        if device_id.trim().is_empty() || ip.trim().is_empty() {
+            return;
+        }
+        let mut guard = self
+            .inbound_peers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        guard.insert(
+            device_id.to_string(),
+            InboundPeerContact {
+                device_id: device_id.to_string(),
+                ip: ip.to_string(),
+                version: version.trim().to_string(),
+                seen_at: chrono::Utc::now().to_rfc3339(),
+            },
+        );
+    }
+
+    /// Odświeża czas kontaktu dla ZNANEGO już adresu.
+    ///
+    /// Wołane po udanej autoryzacji dowolnego żądania, bo `device_id` niesie
+    /// tylko negocjacja. Bez tego peer wygasałby w trakcie długiej sesji sync,
+    /// mimo że przez cały czas z nami rozmawia.
+    pub fn touch_inbound_peer(&self, ip: &str) {
+        let mut guard = self
+            .inbound_peers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let now = chrono::Utc::now().to_rfc3339();
+        for contact in guard.values_mut() {
+            if contact.ip == ip {
+                contact.seen_at = now.clone();
+            }
+        }
+    }
+
+    /// Zabiera zebrane kontakty (opróżnia mapę) — woła wyłącznie pętla discovery.
+    pub fn take_inbound_peers(&self) -> Vec<InboundPeerContact> {
+        let mut guard = self
+            .inbound_peers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        guard.drain().map(|(_, contact)| contact).collect()
     }
 
     /// Zwróć własny marker z poprzednio ukończonego db-ready dla danego markera
@@ -588,6 +662,12 @@ fn handle_connection(
             stream.write_all(response.as_bytes()).map_err(|e| e.to_string())?;
             return Ok(());
         }
+        // Autoryzacja przeszła, więc po drugiej stronie jest sparowany peer,
+        // a nie przypadkowy host — odświeżamy jego obecność. `device_id` niesie
+        // dopiero negocjacja, dlatego tu dopasowujemy po adresie.
+        if !is_loopback(client_ip) {
+            state.touch_inbound_peer(&client_ip.to_string());
+        }
     }
 
     // Read body as UTF-8 String — reject payloads that exceed the limit with HTTP 413
@@ -619,7 +699,7 @@ fn handle_connection(
         ("GET", "/lan/ping") => handle_ping(&state),
         ("POST", "/lan/preflight") => handle_preflight(&state),
         ("GET", "/lan/sync-progress") => handle_sync_progress(&state),
-        ("POST", "/lan/negotiate") => handle_negotiate(&state, &body),
+        ("POST", "/lan/negotiate") => handle_negotiate(&state, &body, client_ip),
         ("POST", "/lan/freeze-ack") => handle_freeze_ack(&state),
         ("POST", "/lan/upload-db") => handle_upload_db(&state, &body),
         ("POST", "/lan/upload-ack") => (200, json_ok()),
@@ -855,11 +935,18 @@ fn handle_preflight(state: &LanSyncState) -> (u16, String) {
     (200, resp.to_string())
 }
 
-fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
+fn handle_negotiate(state: &LanSyncState, body: &str, client_ip: IpAddr) -> (u16, String) {
     let req: NegotiateRequest = match serde_json::from_str(body) {
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
+
+    // Negocjacja to jedyny moment, w którym peer przedstawia się z device_id —
+    // i zarazem twardy dowód, że jest obecny w sieci. Zapisujemy go, bo
+    // discovery (ruch wychodzący) może być zablokowane i nigdy go nie znajdzie.
+    if !is_loopback(client_ip) {
+        state.record_inbound_peer(&req.master_device_id, &client_ip.to_string(), "");
+    }
 
     // If we're already syncing as master, use device_id tiebreaker
     if state.sync_in_progress.load(Ordering::SeqCst) {
@@ -1847,6 +1934,69 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn inbound_contact_is_remembered_and_drained_once() {
+        // Regresja: peer, który sam z nami zsynchronizował bazę, nie pojawiał
+        // się na liście peerów, bo discovery szuka wyłącznie ruchem wychodzącym.
+        let state = LanSyncState::new();
+        assert!(state.take_inbound_peers().is_empty(), "świeży stan: pusto");
+
+        state.record_inbound_peer("MICZ_NX-abc", "192.168.1.73", "0.1.5762");
+        let drained = state.take_inbound_peers();
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].device_id, "MICZ_NX-abc");
+        assert_eq!(drained[0].ip, "192.168.1.73");
+        assert_eq!(drained[0].version, "0.1.5762");
+
+        // Zabranie opróżnia mapę — pętla discovery ma jedno źródło prawdy.
+        assert!(state.take_inbound_peers().is_empty(), "drugi odczyt: pusto");
+    }
+
+    #[test]
+    fn same_peer_contacting_twice_stays_a_single_entry() {
+        let state = LanSyncState::new();
+        state.record_inbound_peer("peer-1", "192.168.1.73", "");
+        state.record_inbound_peer("peer-1", "192.168.1.73", "");
+        assert_eq!(state.take_inbound_peers().len(), 1);
+    }
+
+    #[test]
+    fn touch_refreshes_only_the_matching_address() {
+        // Długa sesja sync: device_id niesie tylko negocjacja, więc kolejne
+        // żądania odświeżają obecność po adresie. Peer pod innym adresem nie
+        // może przy tym „odmłodnieć".
+        let state = LanSyncState::new();
+        state.record_inbound_peer("peer-a", "192.168.1.73", "");
+        state.record_inbound_peer("peer-b", "192.168.1.90", "");
+        let before: Vec<_> = {
+            let guard = state.inbound_peers.lock().unwrap();
+            let mut v: Vec<_> = guard
+                .values()
+                .map(|c| (c.device_id.clone(), c.seen_at.clone()))
+                .collect();
+            v.sort();
+            v
+        };
+        std::thread::sleep(Duration::from_millis(1100));
+        state.touch_inbound_peer("192.168.1.73");
+        let guard = state.inbound_peers.lock().unwrap();
+        let a = &guard["peer-a"];
+        let b = &guard["peer-b"];
+        let before_a = &before.iter().find(|(id, _)| id == "peer-a").unwrap().1;
+        let before_b = &before.iter().find(|(id, _)| id == "peer-b").unwrap().1;
+        assert_ne!(&a.seen_at, before_a, "dotknięty peer ma świeższy znacznik");
+        assert_eq!(&b.seen_at, before_b, "pozostali bez zmian");
+    }
+
+    #[test]
+    fn contact_without_identity_is_ignored() {
+        // Puste device_id/IP dałyby wpis-widmo bez możliwości połączenia.
+        let state = LanSyncState::new();
+        state.record_inbound_peer("", "192.168.1.73", "");
+        state.record_inbound_peer("peer-1", "", "");
+        assert!(state.take_inbound_peers().is_empty());
+    }
 
     #[test]
     fn pull_rejected_without_active_sync() {
