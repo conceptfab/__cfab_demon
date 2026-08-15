@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-08-15T16:52:36.121Z",
+  "projectRoot": "/Users/micz/__DEV__/__TIMEFLOW/__cfab_demon",
+  "structure": {
+    "hasPackageJson": true,
+    "hasTsConfig": false,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1786812756121
+}
