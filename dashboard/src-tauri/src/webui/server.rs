@@ -186,14 +186,26 @@ fn mime_for(name: &str) -> &'static str {
     }
 }
 
+/// Marker prefiksujący błąd bindowania, gdy port jest już zajęty. Wołający
+/// (UI) rozpoznaje go po stringu zamiast parsować kody OS — WSAEADDRINUSE
+/// (10048) na Windows i EADDRINUSE (48/98) na macOS/Linux to ten sam przypadek.
+pub const PORT_IN_USE: &str = "port_in_use";
+
+fn bind_error(host: std::net::IpAddr, port: u16, e: &std::io::Error) -> String {
+    if e.kind() == std::io::ErrorKind::AddrInUse {
+        format!("{PORT_IN_USE}: bind {host}:{port} failed: {e}")
+    } else {
+        format!("bind {host}:{port} failed: {e}")
+    }
+}
+
 pub fn spawn(app: AppHandle, auth: Arc<AuthState>, port: u16, lan: bool) -> Result<(), String> {
     let host: std::net::IpAddr = if lan {
         std::net::Ipv4Addr::UNSPECIFIED.into() // 0.0.0.0 — reachable from LAN
     } else {
         std::net::Ipv4Addr::LOCALHOST.into() // 127.0.0.1 — loopback only (default)
     };
-    let listener =
-        TcpListener::bind((host, port)).map_err(|e| format!("bind {host}:{port} failed: {e}"))?;
+    let listener = TcpListener::bind((host, port)).map_err(|e| bind_error(host, port, &e))?;
     log::info!("[webui] listening on {host}:{port} (lan_exposure={lan})");
 
     std::thread::spawn(move || {
@@ -580,6 +592,20 @@ mod tests {
         // intentionally keeps 'unsafe-inline' — Radix/Recharts inject inline styles.
         assert!(head.contains("script-src 'self';"));
         assert!(!head.contains("script-src 'self' 'unsafe-inline'"));
+    }
+
+    #[test]
+    fn bind_error_marks_port_conflicts_only() {
+        let host: std::net::IpAddr = std::net::Ipv4Addr::LOCALHOST.into();
+        let in_use = std::io::Error::new(std::io::ErrorKind::AddrInUse, "address in use");
+        let msg = bind_error(host, 47892, &in_use);
+        assert!(msg.starts_with(PORT_IN_USE));
+        assert!(msg.contains("127.0.0.1:47892"));
+
+        let denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let msg = bind_error(host, 47892, &denied);
+        assert!(!msg.contains(PORT_IN_USE));
+        assert!(msg.contains("denied"));
     }
 
     #[test]

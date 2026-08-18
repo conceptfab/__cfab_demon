@@ -1521,6 +1521,8 @@
       "active_sessions": "Aktywne sesje: {{count}}",
       "saved": "Ustawienia MCP zapisane",
       "save_failed": "Nie udało się zapisać ustawień MCP",
+      "save_failed_reason": "Nie udało się zapisać ustawień MCP: {{reason}}",
+      "port_in_use": "Port {{port}} jest zajęty — najprawdopodobniej działa już druga instancja TIMEFLOW. Zamknij ją i spróbuj ponownie. Ustawienia nie zostały zmienione.",
       "token_regenerated": "Wygenerowano nowy token",
       "copied": "Skopiowano do schowka",
       "copy_failed": "Kopiowanie nie powiodło się",
@@ -1628,6 +1630,8 @@
       "setting_enable": "Włącz serwer MCP — włącza lub wyłącza lokalny endpoint.",
       "setting_permissions": "Zezwól na zapis — domyślnie wyłączone; agenci mogą tylko czytać. Włącz, by mogli tworzyć projekty/klientów i przypisywać sesje.",
       "setting_token": "Token dostępu — wymagany przez każdego klienta. Wygenerowanie nowego natychmiast odcina podłączonych agentów.",
+      "troubleshoot_title": "Gdy serwer nie chce się włączyć",
+      "troubleshoot": "Jeśli po włączeniu MCP pojawia się komunikat o zajętym porcie, port trzyma inny program — zwykle druga, wciąż działająca instancja TIMEFLOW. Zamknij ją (albo zmień port w ustawieniach Web Server) i włącz MCP ponownie. W takiej sytuacji ustawienia MCP nie są zapisywane, więc przełącznik wraca do poprzedniego stanu.",
       "limits_title": "Bezpieczeństwo i ograniczenia",
       "limits": "Przed każdą nową sesją agenta TIMEFLOW automatycznie zapisuje kopię bazy (folder mcp_backups, 20 najnowszych kopii). Jeśli backup się nie powiedzie, sesja zostaje odrzucona. Serwer przyjmuje wyłącznie połączenia lokalne i zawsze wymaga tokenu."
     }

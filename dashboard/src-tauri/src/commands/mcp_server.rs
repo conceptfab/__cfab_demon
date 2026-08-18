@@ -35,13 +35,23 @@ pub async fn mcp_set_config(
     cfg.enabled = enabled;
     cfg.read_write = read_write;
     cfg.ensure_token(webui::auth::random_token);
-    mcp::config::save(&cfg).map_err(CommandError::Other)?;
 
+    // Serwer startuje PRZED zapisem configu: gdy bind padnie (np. port trzyma
+    // druga instancja TIMEFLOW), na dysku zostaje poprzedni stan i UI nie
+    // rozjeżdża się z rzeczywistością ("zapisane, ale wyłączone").
     if enabled {
         let web_cfg = webui::config::load();
         let lan = web_cfg.enabled && web_cfg.lan_exposure;
-        webui::ensure_started(&app, web_cfg.port, lan).map_err(CommandError::Other)?;
+        if let Err(e) = webui::ensure_started(&app, web_cfg.port, lan) {
+            log::error!("[mcp] enable failed — server did not start: {e}");
+            return Err(if e.starts_with(webui::server::PORT_IN_USE) {
+                CommandError::Conflict(e)
+            } else {
+                CommandError::Other(e)
+            });
+        }
     }
+    mcp::config::save(&cfg).map_err(CommandError::Other)?;
     log::info!("[mcp] config updated: enabled={enabled}, read_write={read_write}");
     mcp_status(app).await
 }

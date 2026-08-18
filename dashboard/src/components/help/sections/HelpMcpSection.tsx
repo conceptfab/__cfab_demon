@@ -20,6 +20,8 @@ export function HelpMcpSection() {
         <li>{t('help.mcp.setting_permissions')}</li>
         <li>{t('help.mcp.setting_token')}</li>
       </ul>
+      <h3 className="font-medium">{t('help.mcp.troubleshoot_title')}</h3>
+      <p>{t('help.mcp.troubleshoot')}</p>
       <h3 className="font-medium">{t('help.mcp.limits_title')}</h3>
       <p>{t('help.mcp.limits')}</p>
     </div>

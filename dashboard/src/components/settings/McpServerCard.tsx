@@ -12,6 +12,7 @@ import {
   buildCodexConfig,
   buildMcpUrl,
 } from '@/lib/mcp-snippets';
+import { describeMcpError } from '@/lib/mcp-errors';
 import { logTauriError } from '@/lib/utils';
 
 interface McpServerCardProps {
@@ -36,14 +37,22 @@ export function McpServerCard({ title, description }: McpServerCardProps) {
     refresh();
   }, [refresh]);
 
+  const reportError = (action: string, e: unknown) => {
+    logTauriError(action, e);
+    const { key, params } = describeMcpError(e, status?.port ?? 0);
+    showError(t(key, params));
+  };
+
   const applyConfig = async (enabled: boolean, readWrite: boolean) => {
     setSaving(true);
     try {
       setStatus(await mcpApi.setConfig(enabled, readWrite));
       showInfo(t('settings.mcp.saved'));
     } catch (e) {
-      logTauriError('save MCP config', e);
-      showError(t('settings.mcp.save_failed'));
+      reportError('save MCP config', e);
+      // Backend nie zapisał zmiany — odśwież, żeby przełącznik wrócił do stanu
+      // faktycznie utrwalonego na dysku.
+      refresh();
     } finally {
       setSaving(false);
     }
@@ -55,8 +64,7 @@ export function McpServerCard({ title, description }: McpServerCardProps) {
       setStatus(await mcpApi.regenerateToken());
       showInfo(t('settings.mcp.token_regenerated'));
     } catch (e) {
-      logTauriError('regenerate MCP token', e);
-      showError(t('settings.mcp.save_failed'));
+      reportError('regenerate MCP token', e);
     } finally {
       setSaving(false);
     }

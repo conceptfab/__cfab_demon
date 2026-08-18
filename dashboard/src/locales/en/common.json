@@ -1521,6 +1521,8 @@
       "active_sessions": "Active sessions: {{count}}",
       "saved": "MCP settings saved",
       "save_failed": "Failed to save MCP settings",
+      "save_failed_reason": "Failed to save MCP settings: {{reason}}",
+      "port_in_use": "Port {{port}} is already in use — most likely another TIMEFLOW instance is still running. Close it and try again. Your settings were left unchanged.",
       "token_regenerated": "Token regenerated",
       "copied": "Copied to clipboard",
       "copy_failed": "Copy failed",
@@ -1628,6 +1630,8 @@
       "setting_enable": "Enable MCP server — turns the local endpoint on or off.",
       "setting_permissions": "Allow write access — off by default; agents can only read. Turn on to let them create projects/clients and assign sessions.",
       "setting_token": "Access token — required by every client. Regenerate it to instantly cut off all connected agents.",
+      "troubleshoot_title": "When the server will not start",
+      "troubleshoot": "If enabling MCP reports that the port is in use, another program is holding it — usually a second, still-running TIMEFLOW instance. Close it (or change the port in Web Server settings) and enable MCP again. In that case MCP settings are not saved, so the switch returns to its previous state.",
       "limits_title": "Safety and limits",
       "limits": "Before every new agent session TIMEFLOW automatically saves a database backup (folder mcp_backups, 20 most recent copies). If the backup fails, the session is refused. The server accepts local connections only and always requires the token."
     }
