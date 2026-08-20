@@ -22,6 +22,8 @@ export function HelpMcpSection() {
       </ul>
       <h3 className="font-medium">{t('help.mcp.troubleshoot_title')}</h3>
       <p>{t('help.mcp.troubleshoot')}</p>
+      <h3 className="font-medium">{t('help.mcp.sessions_title')}</h3>
+      <p>{t('help.mcp.sessions')}</p>
       <h3 className="font-medium">{t('help.mcp.limits_title')}</h3>
       <p>{t('help.mcp.limits')}</p>
     </div>

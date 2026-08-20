@@ -1510,11 +1510,13 @@
       "enable_hint": "Endpoint http://127.0.0.1:{{port}}/mcp — tylko połączenia lokalne.",
       "read_write": "Zezwól na zapis",
       "read_write_hint": "Wył. = agenci mogą tylko odczytywać projekty, klientów i sesje. Wł. = mogą je też tworzyć i modyfikować.",
-      "backup_note": "Przed każdą nową sesją agenta TIMEFLOW automatycznie tworzy kopię bazy w folderze mcp_backups (przechowywanych jest 20 najnowszych kopii). Sesja nie wystartuje, jeśli backup się nie powiedzie.",
+      "backup_note": "Przed pierwszym zapisem w sesji agenta TIMEFLOW automatycznie tworzy kopię bazy w folderze mcp_backups (przechowywanych jest 20 najnowszych kopii). Sesje tylko do odczytu nie tworzą kopii; gdy backup się nie powiedzie, blokowany jest wyłącznie zapis — odczyt działa dalej.",
       "token": "Token dostępu",
       "token_hint": "Wymagany przy każdym żądaniu. Wygenerowanie nowego odłącza istniejących klientów.",
       "token_missing": "Token zostanie wygenerowany po włączeniu serwera.",
       "claude_snippet": "Claude Code — dodaj serwer",
+      "claude_desktop_snippet": "Claude Desktop / Cowork — wpis w claude_desktop_config.json",
+      "claude_desktop_hint": "Wklej do claude_desktop_config.json i uruchom Claude Desktop ponownie. Pośrednik mcp-remote jest zbędny — TIMEFLOW mówi natywnym HTTP.",
       "codex_snippet": "Codex — wpis w config.toml",
       "codex_hint": "Dodaj do ~/.codex/config.toml (wsparcie HTTP MCP może się różnić między wersjami Codex).",
       "endpoint": "Endpoint: {{url}}",
@@ -1624,7 +1626,7 @@
       "when": "Użyj, gdy chcesz, by asystent AI przeanalizował Twój czas pracy, przygotował podsumowania, uporządkował przypisania projektów/klientów albo uzupełnił brakujące wpisy.",
       "setup_title": "Jak podłączyć agenta",
       "setup_1": "Otwórz Ustawienia → MCP i włącz serwer. Prywatny token dostępu wygeneruje się automatycznie.",
-      "setup_2": "Skopiuj gotowy snippet dla Claude Code lub Codex i uruchom/wklej go na swoim komputerze.",
+      "setup_2": "Skopiuj gotowy snippet dla Claude Code, Claude Desktop / Cowork albo Codex i uruchom/wklej go na swoim komputerze.",
       "setup_3": "Rozpocznij rozmowę z agentem — narzędzia TIMEFLOW pojawią się automatycznie. Pasek boczny pokazuje aktywne sesje MCP.",
       "settings_title": "Ustawienia",
       "setting_enable": "Włącz serwer MCP — włącza lub wyłącza lokalny endpoint.",
@@ -1632,8 +1634,10 @@
       "setting_token": "Token dostępu — wymagany przez każdego klienta. Wygenerowanie nowego natychmiast odcina podłączonych agentów.",
       "troubleshoot_title": "Gdy serwer nie chce się włączyć",
       "troubleshoot": "Jeśli po włączeniu MCP pojawia się komunikat o zajętym porcie, port trzyma inny program — zwykle druga, wciąż działająca instancja TIMEFLOW. Zamknij ją (albo zmień port w ustawieniach Web Server) i włącz MCP ponownie. W takiej sytuacji ustawienia MCP nie są zapisywane, więc przełącznik wraca do poprzedniego stanu.",
+      "sessions_title": "Licznik aktywnych sesji",
+      "sessions": "Claude Desktop uruchamia ten sam wpis serwera kilka razy (aplikacja główna, sesje Cowork i Code), więc jeden skonfigurowany klient potrafi pokazać się jako kilka aktywnych sesji — to normalne. Sesja bezczynna przez 15 minut przestaje być liczona. Stan serwera sprawdzisz bez zaglądania do logów pod adresem http://127.0.0.1:PORT/health na tym komputerze.",
       "limits_title": "Bezpieczeństwo i ograniczenia",
-      "limits": "Przed każdą nową sesją agenta TIMEFLOW automatycznie zapisuje kopię bazy (folder mcp_backups, 20 najnowszych kopii). Jeśli backup się nie powiedzie, sesja zostaje odrzucona. Serwer przyjmuje wyłącznie połączenia lokalne i zawsze wymaga tokenu."
+      "limits": "TIMEFLOW zapisuje kopię bazy (folder mcp_backups, 20 najnowszych kopii) przed pierwszym zapisem w sesji agenta — sesje tylko do odczytu nie tworzą kopii w ogóle. Jeśli backup się nie powiedzie, narzędzia zapisu są odrzucane, a odczyt działa dalej. Serwer przyjmuje wyłącznie połączenia lokalne i zawsze wymaga tokenu."
     }
   },
   "webserver": {

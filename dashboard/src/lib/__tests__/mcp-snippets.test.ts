@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildClaudeCodeCommand,
+  buildClaudeDesktopConfig,
   buildCodexConfig,
   buildMcpUrl,
 } from '@/lib/mcp-snippets';
@@ -16,6 +17,20 @@ describe('mcp-snippets', () => {
     expect(cmd).toBe(
       'claude mcp add --transport http timeflow http://127.0.0.1:47892/mcp --header "Authorization: Bearer tok123"',
     );
+  });
+
+  it('builds a claude_desktop_config.json entry without mcp-remote', () => {
+    const raw = buildClaudeDesktopConfig(47892, 'tok123');
+    expect(raw).not.toContain('mcp-remote');
+    expect(JSON.parse(raw)).toEqual({
+      mcpServers: {
+        timeflow: {
+          type: 'http',
+          url: 'http://127.0.0.1:47892/mcp',
+          headers: { Authorization: 'Bearer tok123' },
+        },
+      },
+    });
   });
 
   it('builds a codex config.toml block', () => {

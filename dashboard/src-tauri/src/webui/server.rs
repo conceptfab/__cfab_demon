@@ -251,7 +251,7 @@ fn handle(app: &AppHandle, auth: &Arc<AuthState>, raw: &str, is_loopback: bool) 
     // Web Server wyłączony → tylko /mcp i /healthz są dostępne (serwer mógł
     // wystartować wyłącznie dla MCP).
     if !crate::webui::config::load().enabled
-        && !matches!(request.path.as_str(), "/mcp" | "/healthz")
+        && !matches!(request.path.as_str(), "/mcp" | "/healthz" | "/health")
     {
         return json_response(
             "403 Forbidden",
@@ -260,7 +260,7 @@ fn handle(app: &AppHandle, auth: &Arc<AuthState>, raw: &str, is_loopback: bool) 
     }
 
     match (request.method.as_str(), request.path.as_str()) {
-        ("GET", "/healthz") => json_response("200 OK", r#"{"ok":true}"#),
+        ("GET", "/healthz") | ("GET", "/health") => handle_health(app, is_loopback),
         ("POST", "/auth/pair") => handle_pair(auth, &request.body),
         ("POST", "/rpc") => handle_rpc(app, auth, &request, is_loopback),
         ("POST", "/mcp") => handle_mcp(app, &request),
@@ -272,6 +272,25 @@ fn handle(app: &AppHandle, auth: &Arc<AuthState>, raw: &str, is_loopback: bool) 
         ("GET", _) => serve_spa(&request.path, is_loopback),
         _ => json_response("404 Not Found", r#"{"ok":false,"error":"not_found"}"#),
     }
+}
+
+/// Z loopbacku zwraca diagnostykę bez tokenu — pozwala odróżnić „TIMEFLOW nie
+/// działa" od „TIMEFLOW odmawia" bez czytania logów klienta MCP. Z sieci tylko
+/// `ok`, żeby nie wystawiać stanu konfiguracji na zewnątrz.
+fn handle_health(app: &AppHandle, is_loopback: bool) -> Vec<u8> {
+    if !is_loopback {
+        return json_response("200 OK", r#"{"ok":true}"#);
+    }
+    let cfg = crate::mcp::config::load();
+    let body = serde_json::json!({
+        "ok": true,
+        "version": app.package_info().version.to_string(),
+        "mcp_enabled": cfg.enabled,
+        "write_enabled": cfg.read_write,
+        "sessions": crate::mcp::sessions().active_count(now_secs()),
+        "last_backup": crate::mcp::backup::last_backup_at(),
+    });
+    json_response("200 OK", &body.to_string())
 }
 
 fn handle_pair(auth: &Arc<AuthState>, body: &str) -> Vec<u8> {
@@ -441,15 +460,14 @@ fn mcp_json(status: &str, body: &serde_json::Value, session_id: Option<&str>) ->
     out
 }
 
-fn require_active_mcp_session(request: &ParsedRequest, now: u64) -> Result<(), &'static str> {
+fn require_active_mcp_session(request: &ParsedRequest, now: u64) -> Result<String, &'static str> {
     let Some(session_id) = request.mcp_session.as_deref() else {
         return Err("mcp_session_required");
     };
-    if crate::mcp::sessions().touch(session_id, now) {
-        Ok(())
-    } else {
-        Err("mcp_session_required")
-    }
+    // Nieznane/wygasłe ID rejestrujemy ponownie zamiast odrzucać — patrz
+    // McpSessions::touch_or_revive. Token jest weryfikowany osobno wyżej.
+    crate::mcp::sessions().touch_or_revive(session_id, now);
+    Ok(session_id.to_string())
 }
 
 fn handle_mcp(app: &AppHandle, request: &ParsedRequest) -> Vec<u8> {
@@ -483,23 +501,13 @@ fn handle_mcp(app: &AppHandle, request: &ParsedRequest) -> Vec<u8> {
     }
 
     let now = now_secs();
+    mcp::sessions().gc(now);
     match msg.method.as_str() {
         "initialize" => {
-            // Backup przed każdą sesją — FAIL-CLOSED: bez backupu nie ma sesji.
-            let backup_path = match tauri::async_runtime::block_on(mcp::backup::perform_mcp_backup(
-                app.clone(),
-            )) {
-                Ok(path) => path,
-                Err(e) => {
-                    log::error!("[mcp] pre-session backup failed: {e}");
-                    let body = protocol::error_response(
-                        &msg.id,
-                        protocol::INTERNAL_ERROR,
-                        &format!("backup_failed: {e}"),
-                    );
-                    return mcp_json("200 OK", &body, None);
-                }
-            };
+            // `initialize` nie wykonuje ŻADNEJ operacji, która może paść:
+            // Claude Desktop uruchamia ten sam wpis MCP w kilku kopiach naraz
+            // i dowolny błąd tutaj zabija całą integrację. Backup jest leniwy —
+            // powstaje dopiero przed pierwszym narzędziem zapisującym.
             let client_protocol = msg.params["protocolVersion"].as_str();
             let client_name = msg.params["clientInfo"]["name"]
                 .as_str()
@@ -511,14 +519,14 @@ fn handle_mcp(app: &AppHandle, request: &ParsedRequest) -> Vec<u8> {
                 client_name,
                 created_at: now,
                 last_seen: now,
-                backup_path,
+                backup_path: String::new(),
             });
             let version = app.package_info().version.to_string();
             let body = protocol::result_response(
                 &msg.id,
                 protocol::initialize_result(client_protocol, &version),
             );
-            log::info!("[mcp] session {session_id} initialized (backup done)");
+            log::info!("[mcp] session {session_id} initialized");
             mcp_json("200 OK", &body, Some(&session_id))
         }
         "ping" => mcp_json(
@@ -538,19 +546,57 @@ fn handle_mcp(app: &AppHandle, request: &ParsedRequest) -> Vec<u8> {
             mcp_json("200 OK", &body, None)
         }
         "tools/call" => {
-            if let Err(e) = require_active_mcp_session(request, now) {
-                let body = protocol::error_response(&msg.id, protocol::INVALID_PARAMS, e);
-                return mcp_json("200 OK", &body, None);
-            }
+            let session_id = match require_active_mcp_session(request, now) {
+                Ok(id) => id,
+                Err(e) => {
+                    let body = protocol::error_response(&msg.id, protocol::INVALID_PARAMS, e);
+                    return mcp_json("200 OK", &body, None);
+                }
+            };
             let name = msg.params["name"].as_str().unwrap_or_default().to_string();
             let args = msg
                 .params
                 .get("arguments")
                 .cloned()
                 .unwrap_or(serde_json::json!({}));
+
+            // Backup dokładnie wtedy, gdy ma sens: przed pierwszym zapisem sesji.
+            // Sesje czytające nie tworzą ani jednego pliku, a nieudany backup
+            // blokuje wyłącznie zapis — odczyt działa dalej.
+            if tools::is_write_tool(&name)
+                && cfg.read_write
+                && !mcp::sessions().backup_done(&session_id)
+            {
+                match tauri::async_runtime::block_on(mcp::backup::ensure_recent_backup(app.clone()))
+                {
+                    Ok(path) => {
+                        log::info!("[mcp] session {session_id} backup ready: {path}");
+                        mcp::sessions().mark_backup(&session_id, &path);
+                    }
+                    Err(e) => {
+                        log::error!("[mcp] write blocked — backup failed: {e}");
+                        let payload = protocol::tool_call_error_with_reason(
+                            &e,
+                            "write_blocked",
+                            "Reads still work. Free disk space or clear the mcp_backups folder, then retry.",
+                        );
+                        return mcp_json(
+                            "200 OK",
+                            &protocol::result_response(&msg.id, payload),
+                            None,
+                        );
+                    }
+                }
+            }
+
             let result = tools::call_tool(app, &name, args, cfg.read_write);
             let payload = match result {
                 Ok(data) => protocol::tool_call_result(&data),
+                Err(e) if e == "read_only_mode" => protocol::tool_call_error_with_reason(
+                    &format!("write_disabled: {name} needs write access"),
+                    "write_disabled",
+                    "Enable 'Allow write access' in TIMEFLOW Settings → MCP.",
+                ),
                 Err(e) => protocol::tool_call_error(&e),
             };
             mcp_json("200 OK", &protocol::result_response(&msg.id, payload), None)
@@ -733,21 +779,25 @@ mod tests {
     }
 
     #[test]
-    fn mcp_requires_known_session_for_post_initialize_methods() {
+    fn mcp_requires_session_header_but_revives_unknown_ids() {
         let missing = parse_request("POST /mcp HTTP/1.1\r\nHost: x\r\n\r\n{}").unwrap();
         assert_eq!(
             require_active_mcp_session(&missing, 100),
             Err("mcp_session_required")
         );
 
-        let stale = parse_request(concat!(
-            "POST /mcp HTTP/1.1\r\nHost: x\r\nMcp-Session-Id: stale-session\r\n\r\n{}"
+        // Wygasłe/nieznane ID nie może wywracać rozmowy — sesja wraca do rejestru.
+        let stale_id = format!("stale-session-{}", std::process::id());
+        let stale = parse_request(&format!(
+            "POST /mcp HTTP/1.1\r\nHost: x\r\nMcp-Session-Id: {stale_id}\r\n\r\n{{}}"
         ))
         .unwrap();
         assert_eq!(
             require_active_mcp_session(&stale, 100),
-            Err("mcp_session_required")
+            Ok(stale_id.clone())
         );
+        assert!(crate::mcp::sessions().touch(&stale_id, 100));
+        crate::mcp::sessions().remove(&stale_id);
 
         let id = format!("test-session-{}", std::process::id());
         crate::mcp::sessions().insert(crate::mcp::McpSessionInfo {

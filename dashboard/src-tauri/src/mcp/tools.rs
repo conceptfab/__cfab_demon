@@ -592,6 +592,12 @@ pub fn find_tool(name: &str) -> Option<&'static ToolDef> {
     TOOLS.iter().find(|t| t.name == name)
 }
 
+/// Czy narzędzie modyfikuje bazę (decyduje o backupie przed pierwszym zapisem).
+/// Nieznana nazwa nie jest zapisem — odrzuci ją `call_tool`.
+pub fn is_write_tool(name: &str) -> bool {
+    find_tool(name).map(|t| t.write).unwrap_or(false)
+}
+
 pub fn check_permission(def: &ToolDef, read_write: bool) -> Result<(), String> {
     if def.write && !read_write {
         return Err("read_only_mode".to_string());
@@ -648,6 +654,14 @@ mod tests {
             .collect();
         assert!(names.contains(&"list_projects"));
         assert!(!names.contains(&"create_project"));
+    }
+
+    #[test]
+    fn is_write_tool_flags_only_mutating_tools() {
+        assert!(is_write_tool("create_project"));
+        assert!(!is_write_tool("list_projects"));
+        // Nieznana nazwa nie może wymuszać backupu — odrzuci ją call_tool.
+        assert!(!is_write_tool("definitely_not_a_tool"));
     }
 
     #[test]

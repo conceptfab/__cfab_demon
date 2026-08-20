@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/toast-notification';
 import { mcpApi, type McpStatus } from '@/lib/tauri';
 import {
   buildClaudeCodeCommand,
+  buildClaudeDesktopConfig,
   buildCodexConfig,
   buildMcpUrl,
 } from '@/lib/mcp-snippets';
@@ -183,6 +184,30 @@ export function McpServerCard({ title, description }: McpServerCardProps) {
                   <Copy className="size-3.5" />
                 </Button>
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-sm font-medium">
+                {t('settings.mcp.claude_desktop_snippet')}
+              </p>
+              <div className="flex items-start gap-2">
+                <code className="flex-1 whitespace-pre-wrap break-all rounded bg-muted px-2 py-1 font-mono text-xs">
+                  {buildClaudeDesktopConfig(status.port, status.token)}
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    copy(buildClaudeDesktopConfig(status.port, status.token))
+                  }
+                  aria-label={t('settings.mcp.copy_snippet')}
+                >
+                  <Copy className="size-3.5" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t('settings.mcp.claude_desktop_hint')}
+              </p>
             </div>
 
             <div className="space-y-1">

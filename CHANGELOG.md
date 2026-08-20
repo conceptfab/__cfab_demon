@@ -58,6 +58,23 @@ P4 = cleanup, P5 = docs/tests.
 
 ### P1 — Critical fixes
 
+- **MCP: `initialize` odrzucał sesję przez kolizję nazwy backupu.** Claude
+  Desktop uruchamia ten sam wpis MCP w kilku kopiach naraz (aplikacja główna +
+  pula Cowork/Code); nazwa kopii miała rozdzielczość sekundy, więc drugi
+  `VACUUM INTO` padał na „output file already exists" i cała integracja
+  kończyła się na `Server disconnected`. Nazwa niesie teraz milisekundy, PID
+  i licznik kolizji, zapis idzie do `.part` publikowanego atomowym `rename`,
+  a kolizja jest ponawiana zamiast zgłaszana. Dodatkowo backup jest **leniwy** —
+  powstaje przed pierwszym narzędziem zapisującym, a nie przy `initialize`,
+  więc handshake nie ma już prawa paść i sesje czytające nie tworzą kopii.
+  Nieudany backup blokuje wyłącznie zapis (`write_blocked`), odczyt działa dalej.
+  Komunikaty błędów podają plik, katalog, PID i liczbę istniejących kopii;
+  rotacja i sprzątanie osieroconych `.part` nigdy nie eskalują błędu.
+  Sesje bezczynne 15 minut są sprzątane, a nieznane `Mcp-Session-Id` jest
+  rejestrowane ponownie zamiast zrywać rozmowę. `initialize` zwraca
+  `instructions` z regułami pracy na danych, doszedł `GET /health` (loopback,
+  bez tokenu) i gotowiec konfiguracyjny dla Claude Desktop / Cowork w UI.
+
 - **Sessions: lista pokazywała sesje z poprzedniego dnia przy nawigacji
   na dzień bez sesji.** Efekt przeładowania zerował `sessionsRef` bez
   `setSessions`, więc gdy nowy zakres dat zwracał pustą listę,

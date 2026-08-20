@@ -48,6 +48,19 @@ pub fn error_response(id: &Option<Value>, code: i64, message: &str) -> Value {
     })
 }
 
+/// Reguły pracy z danymi TIMEFLOW podawane agentowi automatycznie przy
+/// `initialize` — dzięki temu nie trzeba ich utrzymywać wyłącznie w skillu.
+pub const SERVER_INSTRUCTIONS: &str = concat!(
+    "TIMEFLOW exposes local time-tracking data (projects, clients, work sessions). ",
+    "Rules: always pass an explicit `limit` in list_sessions/list_manual_sessions filters — ",
+    "the database can hold years of data. Dates are local and formatted YYYY-MM-DD; ",
+    "durations are in seconds. Before assigning or creating anything, verify the target ",
+    "project/client exists (list_projects, list_clients) instead of creating a duplicate. ",
+    "Write tools are available only when 'Allow write access' is enabled in TIMEFLOW settings; ",
+    "the first write of a session automatically creates a database backup, and the write is ",
+    "refused if that backup fails."
+);
+
 pub fn initialize_result(client_protocol: Option<&str>, server_version: &str) -> Value {
     let protocol = client_protocol
         .filter(|v| SUPPORTED_PROTOCOL_VERSIONS.contains(v))
@@ -55,7 +68,8 @@ pub fn initialize_result(client_protocol: Option<&str>, server_version: &str) ->
     json!({
         "protocolVersion": protocol,
         "capabilities": { "tools": {} },
-        "serverInfo": { "name": "TIMEFLOW", "version": server_version }
+        "serverInfo": { "name": "TIMEFLOW", "version": server_version },
+        "instructions": SERVER_INSTRUCTIONS
     })
 }
 
@@ -67,6 +81,16 @@ pub fn tool_call_result(payload: &Value) -> Value {
 
 pub fn tool_call_error(message: &str) -> Value {
     json!({ "content": [{ "type": "text", "text": message }], "isError": true })
+}
+
+/// Błąd narzędzia z powodem możliwym do rozpoznania maszynowo. Sam tekst
+/// („backup failed") nie mówi agentowi ani użytkownikowi, co zrobić dalej.
+pub fn tool_call_error_with_reason(message: &str, reason: &str, hint: &str) -> Value {
+    json!({
+        "content": [{ "type": "text", "text": format!("{message} — {hint}") }],
+        "structuredContent": { "reason": reason, "detail": message, "hint": hint },
+        "isError": true
+    })
 }
 
 #[cfg(test)]
@@ -124,6 +148,25 @@ mod tests {
         assert_eq!(unknown["serverInfo"]["name"], "TIMEFLOW");
         assert_eq!(unknown["serverInfo"]["version"], "9.9.9");
         assert!(unknown["capabilities"]["tools"].is_object());
+    }
+
+    #[test]
+    fn initialize_result_carries_agent_instructions() {
+        let out = initialize_result(None, "1.0.0");
+        let instructions = out["instructions"].as_str().expect("instructions");
+        assert!(instructions.contains("limit"));
+        assert!(instructions.contains("YYYY-MM-DD"));
+    }
+
+    #[test]
+    fn tool_error_with_reason_is_machine_readable() {
+        let out = tool_call_error_with_reason("backup unavailable", "write_blocked", "free disk");
+        assert_eq!(out["isError"], true);
+        assert_eq!(out["structuredContent"]["reason"], "write_blocked");
+        assert!(out["content"][0]["text"]
+            .as_str()
+            .expect("text")
+            .contains("free disk"));
     }
 
     #[test]

@@ -470,6 +470,11 @@ pub fn is_demo_mode_enabled(app: &AppHandle) -> Result<bool, String> {
     current_demo_mode_enabled(app)
 }
 
+/// Ścieżka bazy aktualnie używanej przez aplikację (uwzględnia tryb demo).
+pub fn active_db_path(app: &AppHandle) -> Result<String, String> {
+    current_active_db_path_string(app)
+}
+
 fn current_active_db_path_string(app: &AppHandle) -> Result<String, String> {
     let state = app
         .try_state::<DbPath>()
