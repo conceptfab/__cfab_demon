@@ -4896,7 +4896,7 @@ dependencies = [
 
 [[package]]
 name = "timeflow-dashboard"
-version = "0.1.5766"
+version = "0.1.5767"
 dependencies = [
  "chrono",
  "dotenvy",
@@ -4926,7 +4926,7 @@ dependencies = [
 
 [[package]]
 name = "timeflow-demon"
-version = "0.1.5766"
+version = "0.1.5767"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -4962,7 +4962,7 @@ dependencies = [
 
 [[package]]
 name = "timeflow-shared"
-version = "0.1.5766"
+version = "0.1.5767"
 dependencies = [
  "chrono",
  "log",
