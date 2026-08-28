@@ -1,25 +1,24 @@
-import { format, parseISO } from 'date-fns';
-
 import type { ReportViewController } from '@/hooks/useReportViewController';
 
 type ReportViewCommentsSectionProps = Pick<
   ReportViewController,
-  'has' | 'screenLimit' | 'sessionStats' | 'setShowAll' | 'showAll' | 't'
+  'commentRows' | 'has' | 'screenLimit' | 'setShowAll' | 'showAll' | 't'
 >;
 
 export function ReportViewCommentsSection({
+  commentRows,
   has,
   screenLimit,
-  sessionStats,
   setShowAll,
   showAll,
   t,
 }: ReportViewCommentsSectionProps) {
-  if (!sessionStats || !has('comments') || sessionStats.sessionsWithComments.length === 0) {
+  if (!commentRows || !has('comments') || commentRows.length === 0) {
     return null;
   }
 
-  const comments = sessionStats.sessionsWithComments;
+  // Przy scalaniu ten sam komentarz z jednego dnia pojawia się raz (z licznikiem).
+  const comments = commentRows;
   const visibleComments = showAll ? comments : comments.slice(0, screenLimit);
 
   return (
@@ -28,12 +27,19 @@ export function ReportViewCommentsSection({
         {t('report_view.comments')} ({comments.length})
       </h2>
       <div className="space-y-1.5">
-        {visibleComments.map((s) => (
-          <div key={s.id} className="flex gap-3 text-xs print:text-black">
+        {visibleComments.map((row) => (
+          <div key={row.key} className="flex gap-3 text-xs print:text-black">
             <span className="text-muted-foreground/40 font-mono shrink-0 print:text-gray-500">
-              {format(parseISO(s.start_time), 'yyyy-MM-dd')}
+              {row.date}
             </span>
-            <span>{s.comment}</span>
+            <span>
+              {row.comment}
+              {row.mergedCount > 1 && (
+                <span className="ml-1 font-mono text-muted-foreground/40 print:text-gray-500">
+                  ×{row.mergedCount}
+                </span>
+              )}
+            </span>
           </div>
         ))}
         {!showAll && comments.length > screenLimit && (

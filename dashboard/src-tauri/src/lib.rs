@@ -223,6 +223,7 @@ pub fn run() {
             commands::unfreeze_project,
             commands::get_project_extra_info,
             commands::get_project_report_data,
+            commands::get_project_date_bounds,
             commands::print_report,
             commands::compact_project_data,
             commands::auto_freeze_projects,

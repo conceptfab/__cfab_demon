@@ -2,18 +2,21 @@ import { useState } from 'react';
 import { FileText, Check, Edit2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ReportPeriodPicker } from '@/components/reports/ReportPeriodPicker';
+import { useProjectDateBounds } from '@/hooks/useProjectDateBounds';
 import { loadProjectTemplates, getProjectTemplate, getSelectedTemplateId, setSelectedTemplateId } from '@/lib/report-templates';
 import type { ReportTemplate } from '@/lib/report-templates';
 import { ALL_TIME_PERIOD, type ReportPeriod } from '@/lib/report-period';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
+  /** Projekt, dla którego generujemy raport — z niego bierzemy faktyczny zakres dat. */
+  projectId: number;
   onSelect: (templateId: string, period: ReportPeriod) => void;
   onCancel: () => void;
   onEditTemplates: () => void;
 }
 
-export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: Props) {
+export function ReportTemplateSelector({ projectId, onSelect, onCancel, onEditTemplates }: Props) {
   const { t } = useTranslation();
   // Selektor jest otwierany tylko z karty projektu → pokazujemy wyłącznie
   // szablony projektowe. Szablon estymacji dałby pusty raport (sekcje `est_*`
@@ -27,6 +30,8 @@ export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: 
   // Okres celowo NIE jest zapamiętywany między raportami — start zawsze od całego
   // okresu, żeby nie wystawić dokumentu za miesiąc wybrany poprzednim razem.
   const [period, setPeriod] = useState<ReportPeriod>(ALL_TIME_PERIOD);
+  // Realne granice projektu; picker podmienia nimi wartownik 2020..2100, gdy dojadą.
+  const bounds = useProjectDateBounds(projectId);
 
   const handleSelect = () => {
     setSelectedTemplateId(selectedId);
@@ -69,7 +74,11 @@ export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: 
         </div>
 
         <div className="border-t border-border/30 pt-3">
-          <ReportPeriodPicker period={period} onChange={setPeriod} />
+          <ReportPeriodPicker
+            period={period}
+            onChange={setPeriod}
+            bounds={bounds}
+          />
         </div>
 
         <div className="flex justify-between pt-1">

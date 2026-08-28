@@ -6,6 +6,7 @@ import {
   buildReportPeriod,
   formatPeriodLabel,
   isAllTimePeriod,
+  isOpenEndedRange,
 } from '@/lib/report-period';
 
 const NOW = new Date('2026-07-15T12:00:00');
@@ -34,6 +35,29 @@ describe('report period', () => {
     const period = buildReportPeriod('all_time');
     expect(period.range).toEqual(ALL_TIME_DATE_RANGE);
     expect(isAllTimePeriod(period)).toBe(true);
+  });
+
+  it('cały okres z granicami projektu używa faktycznych dat', () => {
+    const bounds = { start: '2026-02-11', end: '2026-08-28' };
+    const period = buildReportPeriod('all_time', bounds);
+    expect(period.preset).toBe('all_time');
+    expect(period.range).toEqual(bounds);
+    expect(isAllTimePeriod(period)).toBe(true);
+    expect(isOpenEndedRange(period.range)).toBe(false);
+    // Etykieta ma pokazywać realny okres projektu, nie 2020–2100.
+    expect(formatPeriodLabel(period)).toBe('2026-02-11 – 2026-08-28');
+  });
+
+  it('cały okres bez granic zostaje przy wartowniku', () => {
+    expect(isOpenEndedRange(buildReportPeriod('all_time').range)).toBe(true);
+  });
+
+  it('cały okres z granicami nadal nie dokłada sufiksu do nazwy pliku', () => {
+    const period = buildReportPeriod('all_time', {
+      start: '2026-02-11',
+      end: '2026-08-28',
+    });
+    expect(buildPeriodFileSuffix(period)).toBe('');
   });
 
   it('własny zakres zachowuje podane granice', () => {

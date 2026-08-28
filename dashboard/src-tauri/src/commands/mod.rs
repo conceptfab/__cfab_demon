@@ -108,7 +108,7 @@ pub(crate) use types::{DateRange, ManualSessionFilters};
 //                     remove_project_folder, restore_project, sync_projects_from_folders,
 //                     unfreeze_project, unmerge_project, update_project,
 //                     update_project_folder_meta
-// report (2):         get_project_report_data, print_report
+// report (3):         get_project_report_data, get_project_date_bounds, print_report
 // secure_store (2):   get_secure_token, set_secure_token
 // sessions (15):      analyze_session_projects, analyze_sessions_splittable,
 //                     assign_session_to_project, assign_sessions_to_project, delete_session,

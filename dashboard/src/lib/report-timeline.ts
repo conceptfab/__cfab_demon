@@ -12,6 +12,8 @@ export interface TimelineEntry {
   comment: string | null;
   /** Typ sesji manualnej (np. 'meeting') — null dla sesji automatycznych. */
   sessionType: string | null;
+  /** Ile sesji złożyło się na ten wpis (1 = wpis niescalony). Patrz `report-merge`. */
+  mergedCount: number;
 }
 
 export interface TimelineDay {
@@ -34,6 +36,7 @@ export function buildTimelineDays(
       durationSeconds: s.effective_seconds ?? s.duration_seconds,
       comment: s.comment?.trim() ? s.comment.trim() : null,
       sessionType: null,
+      mergedCount: 1,
     })),
     ...manualSessions.map((s) => ({
       key: `manual-${s.id}`,
@@ -43,6 +46,7 @@ export function buildTimelineDays(
       durationSeconds: s.effective_seconds ?? s.duration_seconds,
       comment: null,
       sessionType: s.session_type,
+      mergedCount: 1,
     })),
   ].sort(
     (a, b) => parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime(),

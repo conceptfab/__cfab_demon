@@ -1,10 +1,12 @@
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { DateRangePicker } from '@/components/ui/DateRangePicker';
+import type { DateRange } from '@/lib/db-types';
 import {
   buildReportPeriod,
   formatPeriodLabel,
-  isAllTimePeriod,
+  isOpenEndedRange,
   type ReportPeriod,
   type ReportPeriodPreset,
 } from '@/lib/report-period';
@@ -18,6 +20,12 @@ const PRESETS: { id: ReportPeriodPreset; labelKey: string }[] = [
 interface ReportPeriodPickerProps {
   period: ReportPeriod;
   onChange: (period: ReportPeriod) => void;
+  /**
+   * Faktyczne granice danych projektu — preset „cały okres" i wstępne wartości
+   * własnego zakresu biorą się stąd. `null` = nieznane (projekt bez danych albo
+   * jeszcze nie wczytane); wtedy zostaje otwarty zakres-wartownik.
+   */
+  bounds?: DateRange | null;
   /** `compact` = wariant do toolbara podglądu (bez etykiety nad kontrolką). */
   compact?: boolean;
 }
@@ -30,9 +38,20 @@ interface ReportPeriodPickerProps {
 export function ReportPeriodPicker({
   period,
   onChange,
+  bounds = null,
   compact = false,
 }: ReportPeriodPickerProps) {
   const { t } = useTranslation();
+
+  // Granice dojeżdżają asynchronicznie — gdy okres wciąż stoi na wartowniku,
+  // podmieniamy go na realny zakres projektu (ten sam wynik raportu, czytelna data).
+  useEffect(() => {
+    if (!bounds) return;
+    if (period.preset !== 'all_time' || !isOpenEndedRange(period.range)) return;
+    onChange(buildReportPeriod('all_time', bounds));
+  }, [bounds, period, onChange]);
+
+  const showLabel = !isOpenEndedRange(period.range);
 
   return (
     <div className={compact ? 'flex items-center gap-2' : 'space-y-2'}>
@@ -53,7 +72,14 @@ export function ReportPeriodPicker({
               key={preset.id}
               type="button"
               aria-pressed={period.preset === preset.id}
-              onClick={() => onChange(buildReportPeriod(preset.id))}
+              onClick={() =>
+                onChange(
+                  buildReportPeriod(
+                    preset.id,
+                    preset.id === 'all_time' ? (bounds ?? undefined) : undefined,
+                  ),
+                )
+              }
               className={`px-2.5 py-1 font-medium transition-colors ${
                 period.preset === preset.id
                   ? 'bg-sky-600 text-white'
@@ -71,14 +97,14 @@ export function ReportPeriodPicker({
           onApply={(range) => onChange(buildReportPeriod('custom', range))}
         />
 
-        {compact && !isAllTimePeriod(period) && (
+        {compact && showLabel && (
           <span className="whitespace-nowrap text-[10px] text-muted-foreground/60">
             {formatPeriodLabel(period)}
           </span>
         )}
       </div>
 
-      {!compact && !isAllTimePeriod(period) && (
+      {!compact && showLabel && (
         <p className="text-[10px] text-muted-foreground/60">
           {formatPeriodLabel(period)}
         </p>

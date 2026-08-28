@@ -111,6 +111,11 @@ export function ReportViewTimelineSection({
                         className="py-1 pr-2 truncate max-w-[200px] print:text-black"
                       >
                         {entry.label}
+                        {entry.mergedCount > 1 && (
+                          <span className="ml-1 font-mono text-muted-foreground/50 print:text-gray-600">
+                            ×{entry.mergedCount}
+                          </span>
+                        )}
                         {entry.sessionType ? (
                           <span className="text-muted-foreground/50 print:text-gray-600">
                             {' '}

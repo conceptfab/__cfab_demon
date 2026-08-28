@@ -13,6 +13,12 @@ export type ReportPeriodPreset =
   | 'last_month'
   | 'custom';
 
+/**
+ * `range` dla presetu `all_time` to faktyczne granice danych projektu (pierwszy
+ * i ostatni dzień z sesją / kosztem), a nie sztywne `2020-01-01 .. 2100-01-01` —
+ * dzięki temu nagłówek raportu podaje realny okres projektu. Wartownik zostaje
+ * tylko wtedy, gdy granic nie udało się ustalić (brak danych / błąd zapytania).
+ */
 export interface ReportPeriod {
   preset: ReportPeriodPreset;
   range: DateRange;
@@ -34,7 +40,9 @@ function monthRange(date: Date): DateRange {
 
 /**
  * Buduje okres dla presetu. `custom` bez podanego zakresu spada na bieżący miesiąc —
- * daje sensowny punkt startowy w pickerze zamiast pustych pól.
+ * daje sensowny punkt startowy w pickerze zamiast pustych pól. `all_time` z podanym
+ * zakresem przyjmuje FAKTYCZNE granice projektu (patrz {@link ReportPeriod}); bez
+ * nich spada na otwarty zakres-wartownik, który nie gubi żadnych danych.
  */
 export function buildReportPeriod(
   preset: ReportPeriodPreset,
@@ -50,12 +58,23 @@ export function buildReportPeriod(
       return { preset, range: range ?? monthRange(now) };
     case 'all_time':
     default:
-      return ALL_TIME_PERIOD;
+      return range ? { preset: 'all_time', range } : ALL_TIME_PERIOD;
   }
 }
 
 export function isAllTimePeriod(period: ReportPeriod): boolean {
   return period.preset === 'all_time';
+}
+
+/**
+ * Czy zakres to otwarty wartownik `2020-01-01 .. 2100-01-01` (brak realnych granic).
+ * Takiego zakresu NIE pokazujemy użytkownikowi — nic nie mówi o projekcie.
+ */
+export function isOpenEndedRange(range: DateRange): boolean {
+  return (
+    range.start === ALL_TIME_DATE_RANGE.start &&
+    range.end === ALL_TIME_DATE_RANGE.end
+  );
 }
 
 /** Etykieta okresu do nagłówka/stopki dokumentu i nazwy pliku PDF. */

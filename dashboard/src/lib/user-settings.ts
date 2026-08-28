@@ -294,6 +294,31 @@ const appearanceManager = createSettingsManager<AppearanceSettings>({
 export const loadAppearanceSettings = appearanceManager.load;
 export const saveAppearanceSettings = appearanceManager.save;
 
+export interface ReportViewSettings {
+  /**
+   * Scalanie powtarzających się wpisów raportu (ta sama aplikacja + ten sam komentarz
+   * w tym samym dniu) w jeden wiersz z sumą czasu. Domyślnie włączone — surowa lista
+   * potrafi powtórzyć ten sam wiersz kilkanaście razy i nic to odbiorcy nie mówi.
+   */
+  mergeIdenticalEntries: boolean;
+}
+const REPORT_VIEW_STORAGE_KEY = 'timeflow.settings.report-view';
+export const DEFAULT_REPORT_VIEW_SETTINGS: ReportViewSettings = {
+  mergeIdenticalEntries: true,
+};
+const reportViewManager = createSettingsManager<ReportViewSettings>({
+  key: REPORT_VIEW_STORAGE_KEY,
+  defaults: DEFAULT_REPORT_VIEW_SETTINGS,
+  normalize: (parsed) => ({
+    mergeIdenticalEntries:
+      typeof parsed.mergeIdenticalEntries === 'boolean'
+        ? parsed.mergeIdenticalEntries
+        : DEFAULT_REPORT_VIEW_SETTINGS.mergeIdenticalEntries,
+  }),
+});
+export const loadReportViewSettings = reportViewManager.load;
+export const saveReportViewSettings = reportViewManager.save;
+
 export interface SidebarSettings {
   collapsed: boolean;
 }

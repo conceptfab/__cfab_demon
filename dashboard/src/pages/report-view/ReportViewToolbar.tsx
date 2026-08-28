@@ -9,8 +9,11 @@ type ReportViewToolbarProps = Pick<
   | 'displayValues'
   | 'goToProject'
   | 'handlePrint'
+  | 'merged'
   | 'period'
+  | 'projectDateBounds'
   | 'rounded'
+  | 'setMerged'
   | 'setPeriod'
   | 'setRounded'
   | 't'
@@ -20,8 +23,11 @@ export function ReportViewToolbar({
   displayValues,
   goToProject,
   handlePrint,
+  merged,
   period,
+  projectDateBounds,
   rounded,
+  setMerged,
   setPeriod,
   setRounded,
   t,
@@ -37,7 +43,43 @@ export function ReportViewToolbar({
         </Button>
 
         <div className="flex flex-wrap items-center gap-2">
-          <ReportPeriodPicker period={period} onChange={setPeriod} compact />
+          <ReportPeriodPicker
+            period={period}
+            onChange={setPeriod}
+            bounds={projectDateBounds}
+            compact
+          />
+
+          <fieldset
+            className="m-0 flex overflow-hidden rounded-md border border-border/60 p-0 text-xs"
+            aria-label={t('report_view.entries_mode')}
+          >
+            <legend className="sr-only">{t('report_view.entries_mode')}</legend>
+            <button
+              type="button"
+              aria-pressed={merged}
+              onClick={() => setMerged(true)}
+              className={`px-2.5 py-1 font-medium transition-colors ${
+                merged
+                  ? 'bg-sky-600 text-white'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t('report_view.view_merged')}
+            </button>
+            <button
+              type="button"
+              aria-pressed={!merged}
+              onClick={() => setMerged(false)}
+              className={`px-2.5 py-1 font-medium transition-colors ${
+                !merged
+                  ? 'bg-sky-600 text-white'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t('report_view.view_separate')}
+            </button>
+          </fieldset>
 
           <fieldset
             className="m-0 flex overflow-hidden rounded-md border border-border/60 p-0 text-xs"

@@ -7,7 +7,7 @@ import type { ProjectReportData } from '@/lib/db-types';
 import {
   buildPeriodFileSuffix,
   formatPeriodLabel,
-  isAllTimePeriod,
+  isOpenEndedRange,
 } from '@/lib/report-period';
 import { logger } from '@/lib/logger';
 import {
@@ -16,11 +16,17 @@ import {
   scaleAppSecondsToRounded,
 } from '@/lib/report-view-formatting';
 import { getProjectTemplate } from '@/lib/report-templates';
+import {
+  buildReportCommentRows,
+  buildReportSessionRows,
+  mergeTimelineDays,
+} from '@/lib/report-merge';
 import { buildTimelineDays } from '@/lib/report-timeline';
 import { distributeReportRounding, roundSeconds } from '@/lib/rounding';
 import { formatDurationRaw, formatDurationSlimRaw } from '@/lib/utils';
 import { printCurrentView } from '@/lib/print';
 import { getDaemonRuntimeStatus, getProjectReportData } from '@/lib/tauri';
+import { useProjectDateBounds } from '@/hooks/useProjectDateBounds';
 import { REPORT_VIEW_SCREEN_LIMIT } from '@/pages/report-view/report-view-constants';
 import { useSettingsStore } from '@/store/settings-store';
 import { useUIStore } from '@/store/ui-store';
@@ -32,9 +38,20 @@ export function useReportViewController() {
   const reportTemplateId = useUIStore((s) => s.reportTemplateId);
   const period = useUIStore((s) => s.reportPeriod);
   const setPeriod = useUIStore((s) => s.setReportPeriod);
+  // Faktyczne granice projektu — picker okresu podmienia nimi wartownik 2020..2100.
+  const projectDateBounds = useProjectDateBounds(projectPageId ?? null);
   const currencyCode = useSettingsStore((s) => s.currencyCode);
   const roundingSettings = useSettingsStore((s) => s.roundingSettings);
+  const reportViewSettings = useSettingsStore((s) => s.reportViewSettings);
+  const setReportViewSettings = useSettingsStore((s) => s.setReportViewSettings);
   const [rounded, setRounded] = useState(roundingSettings.enabled);
+  // Scalanie powtórzeń: start z zapamiętanego ustawienia, przełącznik w toolbarze
+  // od razu je utrwala — kolejne raporty mają tę samą postać co ostatnio wybrana.
+  const merged = reportViewSettings.mergeIdenticalEntries;
+  const setMerged = useCallback(
+    (next: boolean) => setReportViewSettings({ mergeIdenticalEntries: next }),
+    [setReportViewSettings],
+  );
   const runReportRequest = useCancellableAsync();
   const runDaemonRequest = useCancellableAsync();
 
@@ -132,8 +149,16 @@ export function useReportViewController() {
 
   const timelineDays = useMemo(() => {
     if (!report) return null;
-    return buildTimelineDays(report.sessions, report.manual_sessions);
-  }, [report]);
+    const days = buildTimelineDays(report.sessions, report.manual_sessions);
+    // Scalamy PRZED zaokrąglaniem, żeby `reportRounding.entrySeconds` trzymało się
+    // wierszy widocznych w dokumencie (indeksy muszą się zgadzać).
+    return merged ? mergeTimelineDays(days) : days;
+  }, [report, merged]);
+
+  const sessionRows = useMemo(() => {
+    if (!report) return null;
+    return buildReportSessionRows(report.sessions, merged);
+  }, [report, merged]);
 
   const reportRounding = useMemo(() => {
     if (!timelineDays) return null;
@@ -219,6 +244,14 @@ export function useReportViewController() {
     [rounded, displayValues, report, appShareBase],
   );
 
+  const commentRows = useMemo(() => {
+    if (!report) return null;
+    return buildReportCommentRows(
+      report.sessions.filter((s) => s.comment?.trim()),
+      merged,
+    );
+  }, [report, merged]);
+
   const sessionStats = useMemo(() => {
     if (!report) return null;
     return {
@@ -226,7 +259,6 @@ export function useReportViewController() {
       sessionsWithAI: report.sessions.filter((s) => s.suggested_project_id)
         .length,
       sessionsAIAssigned: report.sessions.filter((s) => s.ai_assigned).length,
-      sessionsWithComments: report.sessions.filter((s) => s.comment?.trim()),
       boostedSessions: report.sessions.filter(
         (s) => (s.rate_multiplier ?? 1) > 1,
       ),
@@ -247,8 +279,14 @@ export function useReportViewController() {
     handlePrint,
     has,
     loadedProjectId,
+    merged,
+    setMerged,
+    commentRows,
+    sessionRows,
     period,
-    periodLabel: isAllTimePeriod(period) ? null : formatPeriodLabel(period),
+    // Wartownik 2020..2100 nic nie mówi o projekcie — takiej etykiety nie drukujemy.
+    periodLabel: isOpenEndedRange(period.range) ? null : formatPeriodLabel(period),
+    projectDateBounds,
     projectPageId,
     report,
     setPeriod,

@@ -108,6 +108,13 @@ export const getProjectReportData = (
     dateRange,
   });
 
+/**
+ * Faktyczne granice danych projektu (pierwszy/ostatni dzień z sesji, sesji
+ * ręcznych lub kosztów). `null` = projekt nie ma jeszcze żadnych danych.
+ */
+export const getProjectDateBounds = (projectId: number) =>
+  invoke<DateRange | null>('get_project_date_bounds', { projectId });
+
 export const compactProjectData = (id: number) =>
   invokeMutation<void>('compact_project_data', { id });
 
@@ -193,6 +200,7 @@ export const projectsApi = {
   assignSessionsToProjectBatch,
   getProjectExtraInfo,
   getProjectReportData,
+  getProjectDateBounds,
   compactProjectData,
   getProjectFolders,
   addProjectFolder,

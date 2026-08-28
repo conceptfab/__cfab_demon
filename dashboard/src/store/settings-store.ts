@@ -11,12 +11,15 @@ import {
   saveSplitSettings,
   loadRoundingSettings,
   saveRoundingSettings,
+  loadReportViewSettings,
+  saveReportViewSettings,
   loadSidebarSettings,
   saveSidebarSettings,
   type WorkingHoursSettings,
   type AppLanguageCode,
   type SplitSettings,
   type RoundingSettings,
+  type ReportViewSettings,
 } from '@/lib/user-settings';
 
 interface SettingsState {
@@ -32,6 +35,8 @@ interface SettingsState {
   setSplitSettings: (next: SplitSettings) => void;
   roundingSettings: RoundingSettings;
   setRoundingSettings: (next: RoundingSettings) => void;
+  reportViewSettings: ReportViewSettings;
+  setReportViewSettings: (next: ReportViewSettings) => void;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebarCollapsed: () => void;
@@ -64,6 +69,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setRoundingSettings: (next) => {
     saveRoundingSettings(next);
     set({ roundingSettings: next });
+  },
+  reportViewSettings: loadReportViewSettings(),
+  setReportViewSettings: (next) => {
+    saveReportViewSettings(next);
+    set({ reportViewSettings: next });
   },
   // Stan zwinięcia sidebara — utrwalany we wspólnym user_settings.json (write-through),
   // by ta sama preferencja obowiązywała w oknie pulpitu i web UI.

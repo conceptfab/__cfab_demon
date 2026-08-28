@@ -6,7 +6,9 @@ use super::daemon::load_persisted_session_min_duration;
 use super::helpers::run_db_blocking;
 use super::manual_sessions::get_manual_sessions;
 use super::projects::{query_active_project_with_stats_in_range, query_project_extra_info};
-use super::sql_fragments::{ensure_session_project_cache, SESSION_PROJECT_CTE};
+use super::sql_fragments::{
+    ensure_session_project_cache, ensure_session_project_cache_all, SESSION_PROJECT_CTE,
+};
 use super::time_algorithm::{compute_project_activity_unique, source_key};
 use super::types::{
     CostRow, DateRange, ManualSessionFilters, ManualSessionWithProject, ProjectExtraInfo,
@@ -182,6 +184,72 @@ fn attach_effective_seconds(
             .unwrap_or(0.0)
             .round() as i64;
     }
+}
+
+/// Faktyczne granice danych projektu: najwcześniejszy i najpóźniejszy dzień,
+/// w którym projekt ma cokolwiek do pokazania w raporcie — sesję automatyczną
+/// (po EFEKTYWNYM przypisaniu, czyli z `session_project_cache`), sesję ręczną
+/// lub pozycję kosztową. `None` = projekt nie ma jeszcze żadnych danych.
+///
+/// Preset „cały okres" w raporcie używa tego zakresu zamiast sztywnego
+/// `2020-01-01 .. 2100-01-01`, żeby nagłówek dokumentu pokazywał realny okres
+/// projektu. Granice są celowo SZERSZE niż zawartość raportu (bez filtra
+/// `min_duration`) — szerszy zakres nigdy nie gubi danych, węższy by gubił.
+pub(crate) fn query_project_date_bounds(
+    conn: &rusqlite::Connection,
+    project_id: i64,
+) -> Result<Option<DateRange>, String> {
+    ensure_session_project_cache_all(conn)?;
+
+    let mut bounds: Option<(String, String)> = None;
+    let mut merge = |min: Option<String>, max: Option<String>| {
+        if let (Some(min), Some(max)) = (min, max) {
+            bounds = Some(match bounds.take() {
+                Some((lo, hi)) => (lo.min(min), hi.max(max)),
+                None => (min, max),
+            });
+        }
+    };
+
+    let read = |sql: &str, params: &[&dyn rusqlite::ToSql]| -> Result<(Option<String>, Option<String>), String> {
+        conn.query_row(sql, params, |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| e.to_string())
+    };
+
+    let (s_min, s_max) = read(
+        "SELECT MIN(session_date), MAX(session_date) \
+         FROM session_project_cache WHERE project_id = ?1",
+        &[&project_id],
+    )?;
+    merge(s_min, s_max);
+
+    let (m_min, m_max) = read(
+        "SELECT MIN(date), MAX(date) FROM manual_sessions WHERE project_id = ?1",
+        &[&project_id],
+    )?;
+    merge(m_min, m_max);
+
+    // Koszty linkują się NAZWĄ projektu (brak FK) — tak samo jak w raporcie.
+    let (c_min, c_max) = read(
+        "SELECT MIN(cost_date), MAX(cost_date) FROM project_costs \
+         WHERE project_name = (SELECT name FROM projects WHERE id = ?1)",
+        &[&project_id],
+    )?;
+    merge(c_min, c_max);
+
+    Ok(bounds.map(|(start, end)| DateRange { start, end }))
+}
+
+/// Zakres dat projektu dla pickera okresu raportu. `null` = brak danych.
+#[tauri::command]
+pub async fn get_project_date_bounds(
+    app: AppHandle,
+    project_id: i64,
+) -> Result<Option<DateRange>, CommandError> {
+    Ok(run_db_blocking(app, move |conn| {
+        query_project_date_bounds(conn, project_id)
+    })
+    .await?)
 }
 
 #[tauri::command]
@@ -410,7 +478,8 @@ pub fn print_report(window: tauri::WebviewWindow) -> Result<(), CommandError> {
 mod tests {
     use super::{
         attach_effective_seconds, compute_effective_by_source,
-        query_active_project_with_stats_in_range, query_project_extra_info, query_report_sessions,
+        query_active_project_with_stats_in_range, query_project_date_bounds,
+        query_project_extra_info, query_report_sessions,
         DateRange,
     };
 
@@ -446,6 +515,43 @@ mod tests {
         let sum_eff: i64 = sessions.iter().map(|s| s.effective_seconds).sum();
         assert_eq!(sum_eff, 3600, "Σ effective == total raportu");
         assert_eq!(sessions.iter().find(|s| s.id == 1).unwrap().effective_seconds, 2700);
+    }
+
+    /// Zakres „cały okres" ma pokazywać FAKTYCZNE granice projektu — od pierwszej
+    /// sesji do ostatniej pozycji kosztowej — a nie sztywne 2020-01-01 .. 2100-01-01.
+    #[test]
+    fn project_date_bounds_span_sessions_manual_and_costs() {
+        let conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, created_at) VALUES (1, 'P', datetime('now'));
+             INSERT INTO applications (id, executable_name, display_name, project_id)
+             VALUES (1, 'code', 'Code', 1);
+             INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id)
+               VALUES (1, 1, '2026-03-10T10:00:00', '2026-03-10T11:00:00', 3600, '2026-03-10', 1),
+                      (2, 1, '2026-05-02T10:00:00', '2026-05-02T11:00:00', 3600, '2026-05-02', 1);
+             INSERT INTO manual_sessions (title, session_type, project_id, app_id, start_time, end_time, duration_seconds, date)
+               VALUES ('m', 'meeting', 1, 1, '2026-02-11T10:00:00', '2026-02-11T11:00:00', 3600, '2026-02-11');
+             INSERT INTO project_costs (uid, project_name, cost_date, amount)
+               VALUES ('c1', 'P', '2026-06-30', 100.0);",
+        )
+        .unwrap();
+
+        let bounds = query_project_date_bounds(&conn, 1).unwrap().expect("granice");
+        assert_eq!(bounds.start, "2026-02-11", "najwcześniejsza jest sesja ręczna");
+        assert_eq!(bounds.end, "2026-06-30", "najpóźniejszy jest koszt");
+    }
+
+    /// Projekt bez danych nie ma granic — front zostaje wtedy przy otwartym zakresie.
+    #[test]
+    fn project_date_bounds_none_without_data() {
+        let conn = test_conn();
+        conn.execute(
+            "INSERT INTO projects (id, name, created_at) VALUES (1, 'P', datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        assert!(query_project_date_bounds(&conn, 1).unwrap().is_none());
     }
 
     /// Raport za okres: sesje, suma godzin i wartość ($) muszą pochodzić z TEGO SAMEGO
