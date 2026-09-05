@@ -49,6 +49,7 @@ import type {
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import { useProjectCosts } from '@/hooks/useProjectCosts';
+import { useProjectLimit } from '@/hooks/useProjectLimit';
 
 export function useProjectPageController() {
   const { t, i18n } = useTranslation();
@@ -94,6 +95,9 @@ export function useProjectPageController() {
   // Koszty dodatkowe (m26) — osobny hook, bo są niezależne od sesji i timeline'u.
   // Linkują się NAZWĄ projektu, nie `id`, więc taki jest klucz przeładowania.
   const costs = useProjectCosts(project?.name);
+  // Limit godzin (m28) — osobny hook z tego samego powodu co koszty; klucz to `id`,
+  // bo limit jest atrybutem projektu, nie jego nazwy.
+  const limit = useProjectLimit(project?.id);
   const autoSessionsById = useMemo(
     () => buildAutoSessionsById(recentSessions),
     [recentSessions],
@@ -644,6 +648,7 @@ export function useProjectPageController() {
     handleSetRateMultiplier,
     i18n,
     loading,
+    limit,
     manualSessions,
     mergedChildren,
     project,

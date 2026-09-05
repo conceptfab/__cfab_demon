@@ -130,7 +130,7 @@ fn assign_session_to_project_tx(
     Ok(())
 }
 
-fn update_session_rate_multiplier_tx(
+pub(crate) fn update_session_rate_multiplier_tx(
     tx: &Transaction<'_>,
     session_id: i64,
     multiplier: f64,
@@ -179,7 +179,7 @@ fn delete_session_tx(tx: &Transaction<'_>, session_id: i64) -> Result<(), String
     Ok(())
 }
 
-fn update_session_comment_tx(
+pub(crate) fn update_session_comment_tx(
     tx: &Transaction<'_>,
     session_id: i64,
     comment: &Option<String>,

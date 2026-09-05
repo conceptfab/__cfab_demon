@@ -7,13 +7,17 @@ pub const PROJECT_COLUMNS: &[&str] = &[
     "id", "name", "color", "hourly_rate", "created_at", "excluded_at",
     "assigned_folder_path", "is_imported", "frozen_at", "merged_into",
     "merged_at", "updated_at", "client_name", "status",
+    // m28: limit godzin na okres rozliczeniowy + parametry boostu ponad limit.
+    "monthly_hours_limit", "limit_cycle_start_day", "over_limit_multiplier",
+    "over_limit_comment",
 ];
 
 /// SELECT projektów do eksportu/merge (status z domyślką dla pre-m24 wierszy).
 pub const PROJECT_SELECT: &str =
     "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, \
      is_imported, frozen_at, merged_into, merged_at, updated_at, client_name, \
-     COALESCE(status, 'active') FROM projects";
+     COALESCE(status, 'active'), monthly_hours_limit, limit_cycle_start_day, \
+     over_limit_multiplier, over_limit_comment FROM projects";
 
 #[cfg(test)]
 mod tests {

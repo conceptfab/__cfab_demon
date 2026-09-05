@@ -1542,6 +1542,10 @@ mod tests {
             updated_at: updated_at.into(),
             client_name: client_name.map(|s| s.to_string()),
             status: status.into(),
+            monthly_hours_limit: None,
+            limit_cycle_start_day: None,
+            over_limit_multiplier: None,
+            over_limit_comment: None,
         }
     }
 

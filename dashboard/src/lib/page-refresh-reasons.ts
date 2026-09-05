@@ -118,6 +118,8 @@ const PROJECT_PAGE_LOCAL_REASON_SET = new Set([
   'rename_application',
   'update_project',
   'update_project_hourly_rate',
+  'update_project_limit',
+  'apply_project_limit_boost',
   'update_session_comment',
   'update_session_comments',
 ]);

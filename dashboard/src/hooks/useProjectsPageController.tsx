@@ -13,6 +13,7 @@ import { ProjectCard } from '@/components/project/ProjectCard';
 import type { ProjectsListSlotDeps } from '@/components/projects/ProjectsListSlot';
 import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import { PROJECT_FOLDERS_LOAD_ERROR, useProjectsData } from '@/hooks/useProjectsData';
+import { useProjectsLimitOverview } from '@/hooks/useProjectsLimitOverview';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
 import type { ProjectWithStats } from '@/lib/db-types';
 import { findFolderByBasenameInName } from '@/lib/project-folder-match';
@@ -103,6 +104,9 @@ export function useProjectsPageController() {
     projectsAllTimeLoading,
     setFolderError,
   } = useProjectsData(projectDialogId);
+  // Limity godzin (m28) — lekkie, osobne zapytanie, żeby nie dokładać kolumn
+  // do i tak ciężkiego zapytania listy projektów.
+  const limitBadges = useProjectsLimitOverview();
   const { thresholdDays: newProjectThresholdDays } = loadFreezeSettings();
   const newProjectMaxAgeMs =
     Math.max(1, newProjectThresholdDays) * 24 * 60 * 60 * 1000;
@@ -672,6 +676,7 @@ export function useProjectsPageController() {
         project={p}
         currencyCode={currencyCode}
         estimateValue={estimates[p.id] || 0}
+        limitBadge={limitBadges.get(p.id) ?? null}
         flags={{
           isNew: isRecentProject(p, newProjectMaxAgeMs, {
             useLastActivity: true,
@@ -756,6 +761,7 @@ export function useProjectsPageController() {
     handleResetProjectTime,
     handleUnfreeze,
     handleUpdateProjectColor,
+    limitBadges,
     loadingExtra,
     newProjectMaxAgeMs,
     pendingColor,

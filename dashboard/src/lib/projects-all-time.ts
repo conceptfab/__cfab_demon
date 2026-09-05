@@ -30,6 +30,9 @@ const PROJECTS_ALL_TIME_REFRESH_REASON_SET = new Set([
   'update_manual_session',
   'update_session_rate_multiplier',
   'update_session_rate_multipliers',
+  // m28: boost ponad limit zmienia mnożniki sesji — lista projektów, karty i badge
+  // limitu muszą to zobaczyć bez ręcznego odświeżania.
+  'apply_project_limit_boost',
 ]);
 
 const PROJECTS_EXTRA_INFO_INVALIDATION_REASON_SET = new Set([
@@ -50,6 +53,7 @@ const PROJECTS_CACHE_REFRESH_REASON_SET = new Set([
   ...PROJECTS_EXTRA_INFO_INVALIDATION_REASON_SET,
   'update_project',
   'update_project_hourly_rate',
+  'update_project_limit',
 ]);
 
 export function shouldRefreshProjectsAllTime(reason: string): boolean {

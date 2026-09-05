@@ -29,6 +29,7 @@ export function HelpReportsSection() {
         t18n('help_page.preview_loading_state_when_switching_templates_or_rebuild'),
         t18n('help_page.empty_templates_state_if_no_report_templates_are_availab'),
         t18n('help_page.reports_how_to_open'),
+        t18n('help_page.limit_report_feature'),
       ]}
     >
       <HelpDetailsBlock
@@ -61,6 +62,14 @@ export function HelpReportsSection() {
       <HelpDetailsBlock
         title={t18n('costs.help_title')}
         items={[t18n('costs.help_reports'), t18n('costs.help_limits')]}
+      />
+      <HelpDetailsBlock
+        title={t18n('help_page.limit_report_detail_title')}
+        items={[
+          t18n('help_page.limit_report_detail_what_it_does'),
+          t18n('help_page.limit_report_detail_when_to_use'),
+          t18n('help_page.limit_report_detail_limitations'),
+        ]}
       />
     </SectionHelp>
   );

@@ -1089,6 +1089,10 @@ pub async fn create_project(
             updated_at: chrono::Local::now().to_rfc3339(),
             client_name: None,
             status: "active".to_string(),
+            monthly_hours_limit: None,
+            limit_cycle_start_day: None,
+            over_limit_multiplier: None,
+            over_limit_comment: None,
         })
     })
     .await
@@ -1554,6 +1558,10 @@ pub async fn create_project_from_folder(
             updated_at: chrono::Local::now().to_rfc3339(),
             client_name: None,
             status: "active".to_string(),
+            monthly_hours_limit: None,
+            limit_cycle_start_day: None,
+            over_limit_multiplier: None,
+            over_limit_comment: None,
         })
     })
     .await

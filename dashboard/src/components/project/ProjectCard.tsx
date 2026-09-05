@@ -12,6 +12,8 @@ import {
 
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { Badge } from '@/components/ui/badge';
+import { ProjectLimitBadge } from '@/components/project/ProjectLimitBadge';
+import type { ProjectLimitBadge as ProjectLimitBadgeData } from '@/lib/tauri/project-limits';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type {
@@ -43,6 +45,8 @@ export type ProjectCardProps = {
   project: ProjectWithStats;
   currencyCode: string;
   estimateValue: number;
+  /** Stan limitu godzin; null = projekt nie ma limitu. */
+  limitBadge?: ProjectLimitBadgeData | null;
   flags: ProjectCardFlags;
   duplicateInfo?: DuplicateInfo | null;
   extraInfo: ProjectExtraInfo | null;
@@ -69,6 +73,7 @@ function ProjectCardComponent({
   project,
   currencyCode,
   estimateValue,
+  limitBadge,
   flags,
   duplicateInfo,
   extraInfo,
@@ -207,6 +212,7 @@ function ProjectCardComponent({
                 {formatMoney(estimateValue, currencyCode)}
               </span>
               <span className="ml-1 flex items-center gap-2">
+                {limitBadge ? <ProjectLimitBadge badge={limitBadge} /> : null}
                 {isHotProject && (
                   <AppTooltip content={t('projects.labels.hot_project')}>
                     <span>

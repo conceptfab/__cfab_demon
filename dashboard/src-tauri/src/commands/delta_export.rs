@@ -178,6 +178,10 @@ pub fn build_delta_archive(
                 updated_at: row.get(11)?,
                 client_name: row.get(12)?,
                 status: row.get(13)?,
+                monthly_hours_limit: row.get(14)?,
+                limit_cycle_start_day: row.get(15)?,
+                over_limit_multiplier: row.get(16)?,
+                over_limit_comment: row.get(17)?,
             })
         })
         .map_err(|e| CommandError::Other(e.to_string()))?

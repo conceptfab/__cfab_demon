@@ -35,6 +35,7 @@ export function HelpProjectsSection() {
         t18n('help_page.chart_context_menu_right_click_on_a_day_in_the_project_t'),
         t18n('help_page.project_timeline_states_loading_empty_and_error_messages'),
         t18n('costs.help_feature'),
+        t18n('help_page.limit_feature'),
       ]}
     >
       <HelpDetailsBlock
@@ -59,6 +60,15 @@ export function HelpProjectsSection() {
           t18n('costs.help_what'),
           t18n('costs.help_when'),
           t18n('costs.help_limits'),
+        ]}
+      />
+      <HelpDetailsBlock
+        title={t18n('help_page.limit_detail_title')}
+        items={[
+          t18n('help_page.limit_detail_what_it_does'),
+          t18n('help_page.limit_detail_when_to_use'),
+          t18n('help_page.limit_detail_how_to_use'),
+          t18n('help_page.limit_detail_limitations'),
         ]}
       />
     </SectionHelp>

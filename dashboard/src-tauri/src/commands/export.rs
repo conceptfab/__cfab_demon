@@ -100,6 +100,10 @@ fn build_export_archive(
                     updated_at: row.get(11)?,
                     client_name: row.get(12)?,
                     status: row.get(13)?,
+                    monthly_hours_limit: row.get(14)?,
+                    limit_cycle_start_day: row.get(15)?,
+                    over_limit_multiplier: row.get(16)?,
+                    over_limit_comment: row.get(17)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -122,6 +126,10 @@ fn build_export_archive(
                     updated_at: row.get(11)?,
                     client_name: row.get(12)?,
                     status: row.get(13)?,
+                    monthly_hours_limit: row.get(14)?,
+                    limit_cycle_start_day: row.get(15)?,
+                    over_limit_multiplier: row.get(16)?,
+                    over_limit_comment: row.get(17)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -531,7 +539,7 @@ fn build_export_archive(
 mod tests {
     #[test]
     fn project_row_mapping_covers_all_columns() {
-        assert_eq!(timeflow_shared::sync::columns::PROJECT_COLUMNS.len(), 14);
+        assert_eq!(timeflow_shared::sync::columns::PROJECT_COLUMNS.len(), 18);
     }
 }
 

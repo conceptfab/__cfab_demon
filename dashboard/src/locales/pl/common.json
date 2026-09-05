@@ -708,7 +708,8 @@
       "sort_abc": "ABC (przełącz kierunek)",
       "sort_value": "Wartość (przełącz kierunek)",
       "sort_time": "Czas (przełącz kierunek)",
-      "toggle_folder_grouping": "Przełącz grupowanie folderów"
+      "toggle_folder_grouping": "Przełącz grupowanie folderów",
+      "limit_tooltip": "Limit godzin: {{used}} z {{limit}} (ponad limit: {{over}})"
     }
   },
   "project_page": {
@@ -812,6 +813,43 @@
       "session": "sesja",
       "app": "aplikacja",
       "apps": "aplikacje"
+    },
+    "limit": {
+      "title": "Limit godzin",
+      "edit": "Ustawienia limitu",
+      "editor_hint": "Limit dotyczy jednego okresu rozliczeniowego. Puste pole godzin wyłącza limit. Dzień startu 1 oznacza miesiąc kalendarzowy.",
+      "field_hours": "Limit godzin na okres",
+      "field_hours_placeholder": "np. 65",
+      "field_cycle_start_day": "Dzień startu okresu (1–28)",
+      "field_multiplier": "Mnożnik ponad limit",
+      "field_comment_template": "Szablon komentarza",
+      "field_comment_template_placeholder": "Praca ponad limit {limit} h ({period})",
+      "save": "Zapisz",
+      "cancel": "Anuluj",
+      "not_configured": "Ten projekt nie ma limitu godzin. Ustaw go, żeby śledzić zużycie i rozliczać nadgodziny.",
+      "cycle_range": "Okres {{start}} – {{end}}",
+      "remaining": "Pozostało",
+      "over": "Ponad limit",
+      "multiplier": "Mnożnik",
+      "manual_note": "W tym {{hours}} z sesji ręcznych — liczą się do limitu, ale nie da się ich zboostować.",
+      "apply_boost": "Zastosuj boost ({{count}})",
+      "boost_dialog_title": "Boost sesji ponad limitem",
+      "boost_dialog_hint": "Zaznaczone sesje dostaną mnożnik {{multiplier}}×. Na liście są tylko sesje, które zaczęły się po wyczerpaniu limitu {{limit}} h — sesja przekraczająca limit w połowie zostaje nietknięta.",
+      "boost_dialog_comment": "Komentarz nadawany sesjom bez własnego komentarza:",
+      "boost_dialog_manual_warning": "Część godzin ponad limitem pochodzi z sesji ręcznych — tych nie da się zboostować, trzeba je rozliczyć osobno.",
+      "column_date": "Data",
+      "column_app": "Aplikacja",
+      "column_time": "Czas",
+      "column_comment": "Komentarz",
+      "comment_kept": "własny — bez zmian",
+      "comment_from_template": "z szablonu",
+      "confirm_boost": "Zastosuj do {{count}} sesji",
+      "default_comment": "Praca ponad limit {{limit}} h ({{period}})",
+      "errors": {
+        "invalid_limit": "Limit musi być liczbą godzin większą od zera.",
+        "invalid_day": "Dzień startu okresu musi być liczbą całkowitą z zakresu 1–28.",
+        "invalid_multiplier": "Mnożnik musi mieścić się w zakresie 1–10."
+      }
     }
   },
   "costs": {
@@ -1343,7 +1381,8 @@
       "est_header": "Nagłówek (estymacje)",
       "est_summary": "Podsumowanie projektów",
       "est_per_day": "Rozbicie na dni",
-      "est_footer": "Stopka (estymacje)"
+      "est_footer": "Stopka (estymacje)",
+      "limit": "Limit godzin"
     },
     "preview": {
       "header": {
@@ -1412,6 +1451,11 @@
       },
       "est_footer": {
         "line": "TIMEFLOW · wygenerowano"
+      },
+      "limit": {
+        "limit_label": "Limit",
+        "used_label": "Zużyto",
+        "over_label": "Ponad limit"
       }
     }
   },
@@ -1733,7 +1777,13 @@
     "timeline": "Oś czasu",
     "timeline_auto": "auto",
     "timeline_manual": "ręczna",
-    "pdf_prefix": "timeflow_raport"
+    "pdf_prefix": "timeflow_raport",
+    "limit_title": "Limit godzin",
+    "limit_cycle": "Okres rozliczeniowy",
+    "limit_hours": "Limit",
+    "limit_used": "Zużyto",
+    "limit_over": "Ponad limit",
+    "limit_manual_note": "W tym {{hours}} z sesji ręcznych (bez mnożnika)."
   },
   "clients_page": {
     "title": "Klienci",
@@ -2454,7 +2504,18 @@
     "report_merge_detail_what_it_does": "Co robi: w obrębie jednego dnia łączy wpisy nierozróżnialne dla odbiorcy dokumentu – ta sama aplikacja (lub tytuł sesji ręcznej) i ten sam komentarz – w jeden wiersz z sumą czasu. Dotyczy sekcji Oś czasu, Sesje i Komentarze. Licznik ×N mówi, ile sesji złożyło się na wiersz.",
     "report_merge_detail_when_to_use": "Kiedy użyć: zawsze, gdy raport idzie do klienta – powtórzony dziesięć razy ten sam wiersz nic nie wnosi. Wyłącz („Osobno”), gdy potrzebujesz dowodu godzina po godzinie, np. przy reklamacji rozliczenia.",
     "report_merge_detail_how_to_use": "Jak ustawić: przełącznik „Scalone / Osobno” w pasku narzędzi podglądu raportu. Wybór jest zapamiętywany i obowiązuje też przy wydruku oraz eksporcie do PDF.",
-    "report_merge_detail_limitations": "Ograniczenia: sumy dzienne, suma godzin i wartość finansowa raportu się NIE zmieniają – zmienia się tylko liczba wierszy. Scalane są wyłącznie wpisy z tego samego dnia; sesje z różnymi komentarzami zostają osobno. Przy zaokrąglaniu „każda sesja osobno” zaokrąglany jest scalony blok, więc wynik bywa niższy niż przy wariancie „Osobno”."
+    "report_merge_detail_limitations": "Ograniczenia: sumy dzienne, suma godzin i wartość finansowa raportu się NIE zmieniają – zmienia się tylko liczba wierszy. Scalane są wyłącznie wpisy z tego samego dnia; sesje z różnymi komentarzami zostają osobno. Przy zaokrąglaniu „każda sesja osobno” zaokrąglany jest scalony blok, więc wynik bywa niższy niż przy wariancie „Osobno”.",
+    "limit_feature": "Limit godzin projektu — budżet godzin na okres rozliczeniowy, pasek zużycia na bieżąco i rozliczanie nadgodzin mnożnikiem.",
+    "limit_detail_title": "Limit godzin w praktyce",
+    "limit_detail_what_it_does": "Co robi: pilnuje budżetu godzin projektu (np. 65 h) w okresie rozliczeniowym o wybranym dniu startu. Pasek na karcie projektu pokazuje zużycie, pozostałe godziny i godziny ponad limit; na liście projektów widać skrót „limit · procent”.",
+    "limit_detail_when_to_use": "Kiedy użyć: przy projektach z ryczałtem godzinowym — gdy chcesz wiedzieć w trakcie miesiąca, ile budżetu zostało, i rozliczyć nadgodziny wyższą stawką.",
+    "limit_detail_how_to_use": "Jak użyć: ikona ołówka w sekcji „Limit godzin” otwiera ustawienia (limit, dzień startu okresu 1–28, mnożnik, szablon komentarza). Przycisk „Zastosuj boost” pokazuje podgląd sesji ponad limitem — dopiero potwierdzenie nadaje im mnożnik i komentarz.",
+    "limit_detail_limitations": "Ograniczenia: zużycie liczą godziny zegarowe (po dedupie), mnożnik ich nie zwiększa. Boost dostają tylko sesje, które ZACZĘŁY się po wyczerpaniu limitu — sesja przekraczająca limit w połowie zostaje nietknięta. Sesje ręczne liczą się do limitu, ale nie mają mnożnika, więc trzeba je rozliczyć osobno. Istniejący komentarz sesji nigdy nie jest nadpisywany. Nic nie dzieje się automatycznie — boost zawsze wymaga potwierdzenia.",
+    "limit_report_feature": "Sekcja „Limit godzin” w raporcie — okres rozliczeniowy, zużycie, godziny ponad limit i lista zboostowanych sesji.",
+    "limit_report_detail_title": "Sekcja limitu w raporcie",
+    "limit_report_detail_what_it_does": "Co robi: drukuje rozliczenie limitu — daty okresu rozliczeniowego, limit, zużycie i godziny ponad limit wraz z tabelą sesji z mnożnikiem.",
+    "limit_report_detail_when_to_use": "Kiedy użyć: przy fakturowaniu projektu z ryczałtem, gdy nadgodziny mają być widoczne osobno od godzin w ramach limitu.",
+    "limit_report_detail_limitations": "Ograniczenia: sekcja pojawia się tylko dla projektów z ustawionym limitem. Okres rozliczeniowy ma własny kalendarz (dzień startu projektu), więc jego daty są wydrukowane wprost i mogą różnić się od okresu raportu."
   },
   "sync_progress": {
     "title": "Synchronizacja LAN",

@@ -73,6 +73,32 @@ export const REPORT_PAGE_SECTIONS: ReportSectionDef[] = [
     ),
   },
   {
+    id: 'limit',
+    labelKey: 'reports_page.sections.limit',
+    preview: (t) => (
+      <div className="grid grid-cols-3 gap-3 text-sm">
+        <div>
+          <div className="text-[9px] text-muted-foreground/40">
+            {t('reports_page.preview.limit.limit_label')}
+          </div>
+          <div className="font-bold text-foreground/60">65,0 h</div>
+        </div>
+        <div>
+          <div className="text-[9px] text-muted-foreground/40">
+            {t('reports_page.preview.limit.used_label')}
+          </div>
+          <div className="font-bold text-foreground/60">71,5 h</div>
+        </div>
+        <div>
+          <div className="text-[9px] text-muted-foreground/40">
+            {t('reports_page.preview.limit.over_label')}
+          </div>
+          <div className="font-bold text-amber-400/60">6,5 h</div>
+        </div>
+      </div>
+    ),
+  },
+  {
     id: 'apps',
     labelKey: 'reports_page.sections.apps',
     preview: (t) => (

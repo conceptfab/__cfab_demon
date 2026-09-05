@@ -2,6 +2,7 @@ export const REPORT_DEFAULT_SECTION_IDS = [
   'header',
   'stats',
   'financials',
+  'limit',
   'apps',
   'sessions',
   'comments',

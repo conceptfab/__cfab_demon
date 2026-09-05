@@ -47,6 +47,10 @@ pub fn json_f64_opt(v: &serde_json::Value, key: &str) -> Option<f64> {
         .filter(|n| n.is_finite() && *n > 0.0)
 }
 
+pub fn json_i64_opt(v: &serde_json::Value, key: &str) -> Option<i64> {
+    v.get(key).and_then(|inner| inner.as_i64())
+}
+
 // ── Tombstone guards + conflict log (przeniesione 1:1) ──
 
 pub fn log_merge_conflict(
@@ -360,6 +364,21 @@ pub fn apply_tombstones(
 
 // ── Projects merge (przeniesione 1:1 ~595-741, incl. blacklist guard) ──
 
+/// Lokalny wiersz projektu odczytany PRZED mergem. Trzyma dokładnie te pola, których
+/// starszy peer może w ogóle nie przysłać — brak klucza w JSON znaczy „zachowaj lokalne",
+/// więc bez tego snapshotu merge wyzerowałby ustawienia znane tylko nam.
+struct LocalProjectRow {
+    updated_at: String,
+    merged_into: Option<String>,
+    merged_at: Option<String>,
+    client_name: Option<String>,
+    status: Option<String>,
+    monthly_hours_limit: Option<f64>,
+    limit_cycle_start_day: Option<i64>,
+    over_limit_multiplier: Option<f64>,
+    over_limit_comment: Option<String>,
+}
+
 pub fn merge_projects(
     tx: &rusqlite::Transaction<'_>,
     archive: &serde_json::Value,
@@ -399,23 +418,42 @@ pub fn merge_projects(
                 continue;
             }
 
-            let existing: Option<(String, Option<String>, Option<String>, Option<String>, Option<String>)> = tx
+            let existing: Option<LocalProjectRow> = tx
                 .query_row(
-                    "SELECT updated_at, merged_into, merged_at, client_name, status FROM projects WHERE name = ?1",
+                    "SELECT updated_at, merged_into, merged_at, client_name, status, \
+                     monthly_hours_limit, limit_cycle_start_day, over_limit_multiplier, \
+                     over_limit_comment FROM projects WHERE name = ?1",
                     [name],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                    |row| {
+                        Ok(LocalProjectRow {
+                            updated_at: row.get(0)?,
+                            merged_into: row.get(1)?,
+                            merged_at: row.get(2)?,
+                            client_name: row.get(3)?,
+                            status: row.get(4)?,
+                            monthly_hours_limit: row.get(5)?,
+                            limit_cycle_start_day: row.get(6)?,
+                            over_limit_multiplier: row.get(7)?,
+                            over_limit_comment: row.get(8)?,
+                        })
+                    },
                 )
                 .ok();
 
             match existing {
-                Some((local_ts, _, _, _, _)) if normalize_ts(&local_ts) >= normalize_ts(updated_at) => {
+                Some(ref local) if normalize_ts(&local.updated_at) >= normalize_ts(updated_at) => {
                     // Local wins — log only if timestamps differ (actual conflict)
-                    if normalize_ts(&local_ts) != normalize_ts(updated_at) {
-                        log_merge_conflict(tx, "projects", name, &local_ts, updated_at, "local");
+                    if normalize_ts(&local.updated_at) != normalize_ts(updated_at) {
+                        log_merge_conflict(tx, "projects", name, &local.updated_at, updated_at, "local");
                     }
                     diag_proj_local_wins += 1;
                 }
-                Some((ref local_ts, ref local_merged_into, ref local_merged_at, ref local_client_name, ref local_status)) => {
+                Some(ref local) => {
+                    let local_ts = &local.updated_at;
+                    let local_merged_into = &local.merged_into;
+                    let local_merged_at = &local.merged_at;
+                    let local_client_name = &local.client_name;
+                    let local_status = &local.status;
                     log_merge_conflict(tx, "projects", name, local_ts, updated_at, "remote");
                     // Old peers don't know merged_*/client_name/status keys — absent
                     // key means "preserve local value", explicit null means "cleared".
@@ -447,11 +485,31 @@ pub fn merge_projects(
                             rusqlite::params![name],
                         ).map_err(|e| e.to_string())?;
                     }
+                    // m28 (limit godzin): ta sama zasada co wyżej — brak klucza u peera
+                    // sprzed m28 znaczy „zachowaj lokalne", jawny null znaczy „wyczyszczone".
+                    let monthly_hours_limit: Option<f64> = match proj.get("monthly_hours_limit") {
+                        None => local.monthly_hours_limit,
+                        Some(v) => v.as_f64(),
+                    };
+                    let limit_cycle_start_day: Option<i64> = match proj.get("limit_cycle_start_day") {
+                        None => local.limit_cycle_start_day,
+                        Some(v) => v.as_i64(),
+                    };
+                    let over_limit_multiplier: Option<f64> = match proj.get("over_limit_multiplier") {
+                        None => local.over_limit_multiplier,
+                        Some(v) => v.as_f64(),
+                    };
+                    let over_limit_comment: Option<String> = match proj.get("over_limit_comment") {
+                        None => local.over_limit_comment.clone(),
+                        Some(v) => v.as_str().map(|s| s.to_string()),
+                    };
                     // Note: assigned_folder_path is machine-specific — never overwrite from remote
                     tx.execute(
                         "UPDATE projects SET color = ?1, hourly_rate = ?2, excluded_at = ?3, \
                          frozen_at = ?4, merged_into = ?5, merged_at = ?6, client_name = ?7, \
-                         status = ?8, updated_at = ?9 WHERE name = ?10",
+                         status = ?8, monthly_hours_limit = ?9, limit_cycle_start_day = ?10, \
+                         over_limit_multiplier = ?11, over_limit_comment = ?12, \
+                         updated_at = ?13 WHERE name = ?14",
                         rusqlite::params![
                             json_str(proj, "color"),
                             json_f64_opt(proj, "hourly_rate"),
@@ -461,6 +519,10 @@ pub fn merge_projects(
                             merged_at,
                             client_name,
                             status,
+                            monthly_hours_limit,
+                            limit_cycle_start_day,
+                            over_limit_multiplier,
+                            over_limit_comment,
                             updated_at,
                             name,
                         ],
@@ -482,8 +544,10 @@ pub fn merge_projects(
                         json_str_opt(proj, "status").unwrap_or_else(|| "active".to_string());
                     tx.execute(
                         "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, \
-                         frozen_at, assigned_folder_path, merged_into, merged_at, client_name, status, is_imported, updated_at) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12)",
+                         frozen_at, assigned_folder_path, merged_into, merged_at, client_name, status, \
+                         monthly_hours_limit, limit_cycle_start_day, over_limit_multiplier, \
+                         over_limit_comment, is_imported, updated_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 1, ?16)",
                         rusqlite::params![
                             name,
                             json_str(proj, "color"),
@@ -496,6 +560,10 @@ pub fn merge_projects(
                             json_str_opt(proj, "merged_at"),
                             json_str_opt(proj, "client_name"),
                             new_status,
+                            json_f64_opt(proj, "monthly_hours_limit"),
+                            json_i64_opt(proj, "limit_cycle_start_day"),
+                            json_f64_opt(proj, "over_limit_multiplier"),
+                            json_str_opt(proj, "over_limit_comment"),
                             updated_at,
                         ],
                     ).map_err(|e| e.to_string())?;
@@ -1009,6 +1077,10 @@ mod tests {
                 merged_at TEXT,
                 client_name TEXT,
                 status TEXT NOT NULL DEFAULT 'active',
+                monthly_hours_limit REAL,
+                limit_cycle_start_day INTEGER,
+                over_limit_multiplier REAL,
+                over_limit_comment TEXT,
                 is_imported INTEGER NOT NULL DEFAULT 0,
                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
             );
@@ -1122,6 +1194,88 @@ mod tests {
             .query_row("SELECT count(*) FROM projects WHERE name = 'remote-new'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(new_exists, 1, "fresh peer project should be inserted");
+    }
+
+    /// m28: peer sprzed m28 nie zna kluczy limitu. Brak klucza ≠ „wyczyść" —
+    /// inaczej jedna synchronizacja skasowałaby limit ustawiony lokalnie.
+    #[test]
+    fn merge_preserves_hour_limit_when_peer_omits_the_keys() {
+        let mut conn = smoke_db();
+        conn.execute(
+            "INSERT INTO projects (name, monthly_hours_limit, limit_cycle_start_day, \
+             over_limit_multiplier, over_limit_comment, updated_at) \
+             VALUES ('notch', 65.0, 15, 2.0, 'ponad limit', '2026-01-01 00:00:00')",
+            [],
+        )
+        .unwrap();
+
+        let archive = serde_json::json!({
+            "data": { "projects": [
+                // Nowszy wpis od starego peera — bez żadnego klucza limitu.
+                { "id": 1, "name": "notch", "color": "#123456",
+                  "updated_at": "2026-02-01 00:00:00", "created_at": "2026-01-01 00:00:00" }
+            ]}
+        });
+
+        let hooks = MergeHooks { log: &|_| {}, diag: false };
+        let tx = conn.transaction().unwrap();
+        merge_projects(&tx, &archive, &hooks).unwrap();
+        tx.commit().unwrap();
+
+        let (limit, day, mult, comment, color): (
+            Option<f64>,
+            Option<i64>,
+            Option<f64>,
+            Option<String>,
+            Option<String>,
+        ) = conn
+            .query_row(
+                "SELECT monthly_hours_limit, limit_cycle_start_day, over_limit_multiplier, \
+                 over_limit_comment, color FROM projects WHERE name = 'notch'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .unwrap();
+
+        assert_eq!(limit, Some(65.0), "limit lokalny musi przeżyć merge");
+        assert_eq!(day, Some(15));
+        assert_eq!(mult, Some(2.0));
+        assert_eq!(comment.as_deref(), Some("ponad limit"));
+        assert_eq!(color.as_deref(), Some("#123456"), "reszta pól idzie od peera");
+    }
+
+    /// Peer ZNAJĄCY klucze i przysyłający `null` naprawdę czyści limit.
+    #[test]
+    fn merge_clears_hour_limit_on_explicit_null() {
+        let mut conn = smoke_db();
+        conn.execute(
+            "INSERT INTO projects (name, monthly_hours_limit, updated_at) \
+             VALUES ('notch', 65.0, '2026-01-01 00:00:00')",
+            [],
+        )
+        .unwrap();
+
+        let archive = serde_json::json!({
+            "data": { "projects": [
+                { "id": 1, "name": "notch", "color": "#123456",
+                  "monthly_hours_limit": serde_json::Value::Null,
+                  "updated_at": "2026-02-01 00:00:00", "created_at": "2026-01-01 00:00:00" }
+            ]}
+        });
+
+        let hooks = MergeHooks { log: &|_| {}, diag: false };
+        let tx = conn.transaction().unwrap();
+        merge_projects(&tx, &archive, &hooks).unwrap();
+        tx.commit().unwrap();
+
+        let limit: Option<f64> = conn
+            .query_row(
+                "SELECT monthly_hours_limit FROM projects WHERE name = 'notch'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(limit, None, "jawny null czyści limit");
     }
 }
 

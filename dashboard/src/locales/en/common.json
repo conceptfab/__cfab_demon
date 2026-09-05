@@ -708,7 +708,8 @@
       "sort_abc": "ABC (toggle direction)",
       "sort_value": "Value (toggle direction)",
       "sort_time": "Time (toggle direction)",
-      "toggle_folder_grouping": "Toggle folder grouping"
+      "toggle_folder_grouping": "Toggle folder grouping",
+      "limit_tooltip": "Hour limit: {{used}} of {{limit}} (over limit: {{over}})"
     }
   },
   "project_page": {
@@ -812,6 +813,43 @@
       "session": "session",
       "app": "app",
       "apps": "apps"
+    },
+    "limit": {
+      "title": "Hour limit",
+      "edit": "Limit settings",
+      "editor_hint": "The limit applies to a single billing cycle. Leaving the hours field empty disables it. Start day 1 means a calendar month.",
+      "field_hours": "Hour limit per cycle",
+      "field_hours_placeholder": "e.g. 65",
+      "field_cycle_start_day": "Cycle start day (1–28)",
+      "field_multiplier": "Over-limit multiplier",
+      "field_comment_template": "Comment template",
+      "field_comment_template_placeholder": "Work above the {limit} h limit ({period})",
+      "save": "Save",
+      "cancel": "Cancel",
+      "not_configured": "This project has no hour limit. Set one to track usage and bill the overrun.",
+      "cycle_range": "Cycle {{start}} – {{end}}",
+      "remaining": "Remaining",
+      "over": "Over limit",
+      "multiplier": "Multiplier",
+      "manual_note": "Including {{hours}} from manual sessions — they count toward the limit but cannot be boosted.",
+      "apply_boost": "Apply boost ({{count}})",
+      "boost_dialog_title": "Boost sessions above the limit",
+      "boost_dialog_hint": "Selected sessions get a {{multiplier}}× multiplier. Only sessions that started after the {{limit}} h limit was used up are listed — a session that crosses the limit halfway is left untouched.",
+      "boost_dialog_comment": "Comment applied to sessions that have none:",
+      "boost_dialog_manual_warning": "Some over-limit hours come from manual sessions — those cannot be boosted and need separate billing.",
+      "column_date": "Date",
+      "column_app": "Application",
+      "column_time": "Time",
+      "column_comment": "Comment",
+      "comment_kept": "own — kept",
+      "comment_from_template": "from template",
+      "confirm_boost": "Apply to {{count}} sessions",
+      "default_comment": "Work above the {{limit}} h limit ({{period}})",
+      "errors": {
+        "invalid_limit": "The limit must be a number of hours greater than zero.",
+        "invalid_day": "The cycle start day must be a whole number between 1 and 28.",
+        "invalid_multiplier": "The multiplier must be between 1 and 10."
+      }
     }
   },
   "costs": {
@@ -1343,7 +1381,8 @@
       "est_header": "Header (estimates)",
       "est_summary": "Projects summary",
       "est_per_day": "Per-day breakdown",
-      "est_footer": "Footer (estimates)"
+      "est_footer": "Footer (estimates)",
+      "limit": "Hour limit"
     },
     "preview": {
       "header": {
@@ -1412,6 +1451,11 @@
       },
       "est_footer": {
         "line": "TIMEFLOW · generated"
+      },
+      "limit": {
+        "limit_label": "Limit",
+        "used_label": "Used",
+        "over_label": "Over limit"
       }
     }
   },
@@ -1733,7 +1777,13 @@
     "timeline": "Timeline",
     "timeline_auto": "auto",
     "timeline_manual": "manual",
-    "pdf_prefix": "timeflow_report"
+    "pdf_prefix": "timeflow_report",
+    "limit_title": "Hour limit",
+    "limit_cycle": "Billing cycle",
+    "limit_hours": "Limit",
+    "limit_used": "Used",
+    "limit_over": "Over limit",
+    "limit_manual_note": "Including {{hours}} from manual sessions (no multiplier)."
   },
   "clients_page": {
     "title": "Clients",
@@ -2454,7 +2504,18 @@
     "report_merge_detail_what_it_does": "What it does: within a single day it combines entries the document reader cannot tell apart – same application (or manual session title) and same comment – into one row with the summed time. Applies to the Timeline, Sessions and Comments sections. The ×N counter shows how many sessions the row covers.",
     "report_merge_detail_when_to_use": "When to use: whenever the report goes to a client – the same row repeated ten times adds nothing. Turn it off (“Separate”) when you need hour-by-hour evidence, e.g. when a bill is disputed.",
     "report_merge_detail_how_to_use": "How to set it: the “Merged / Separate” switch in the report preview toolbar. The choice is remembered and also applies to printing and PDF export.",
-    "report_merge_detail_limitations": "Limitations: daily totals, total hours and the financial value do NOT change – only the number of rows does. Only entries from the same day are merged; sessions with different comments stay separate. With per-session rounding the merged block is rounded once, so the result can be lower than in “Separate” mode."
+    "report_merge_detail_limitations": "Limitations: daily totals, total hours and the financial value do NOT change – only the number of rows does. Only entries from the same day are merged; sessions with different comments stay separate. With per-session rounding the merged block is rounded once, so the result can be lower than in “Separate” mode.",
+    "limit_feature": "Project hour limit — an hour budget per billing cycle, a live usage bar, and overrun billing through a multiplier.",
+    "limit_detail_title": "Hour limit in practice",
+    "limit_detail_what_it_does": "What it does: tracks a project's hour budget (e.g. 65 h) within a billing cycle that starts on a day you choose. The bar on the project card shows usage, remaining hours and hours over the limit; the project list shows a compact “limit · percent” badge.",
+    "limit_detail_when_to_use": "When to use it: for projects on an hour retainer — when you want to know mid-month how much budget is left and to bill the overrun at a higher rate.",
+    "limit_detail_how_to_use": "How to use it: the pencil icon in the “Hour limit” section opens the settings (limit, cycle start day 1–28, multiplier, comment template). “Apply boost” opens a preview of the over-limit sessions — only confirming it assigns the multiplier and comment.",
+    "limit_detail_limitations": "Limitations: usage counts clock hours (after deduplication); the multiplier does not inflate it. Only sessions that STARTED after the limit was used up get boosted — a session crossing the limit halfway is left untouched. Manual sessions count toward the limit but carry no multiplier, so they need separate billing. An existing session comment is never overwritten. Nothing happens automatically — a boost always requires confirmation.",
+    "limit_report_feature": "“Hour limit” report section — billing cycle, usage, hours over the limit and the list of boosted sessions.",
+    "limit_report_detail_title": "The limit section in a report",
+    "limit_report_detail_what_it_does": "What it does: prints the limit settlement — billing cycle dates, the limit, usage and hours over the limit, plus a table of the multiplied sessions.",
+    "limit_report_detail_when_to_use": "When to use it: when invoicing a retainer project and the overrun must be visible separately from the hours inside the limit.",
+    "limit_report_detail_limitations": "Limitations: the section only appears for projects that have a limit set. The billing cycle has its own calendar (the project's start day), so its dates are printed explicitly and may differ from the report period."
   },
   "sync_progress": {
     "title": "LAN Synchronization",

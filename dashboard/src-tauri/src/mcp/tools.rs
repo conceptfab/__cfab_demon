@@ -378,6 +378,37 @@ pub static TOOLS: &[ToolDef] = &[
         }),
     },
     ToolDef {
+        name: "get_project_limit_status",
+        command: "get_project_limit_status",
+        write: false,
+        description: "Read a project's monthly hour limit status for the billing cycle containing reference_date (default: today): limit, used/remaining/over hours, and the sessions entirely above the limit. Returns null when the project has no limit configured.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "project_id": { "type": "integer" },
+                "reference_date": { "type": ["string", "null"], "description": "YYYY-MM-DD" }
+            },
+            "required": ["project_id"]
+        }),
+    },
+    ToolDef {
+        name: "update_project_limit",
+        command: "update_project_limit",
+        write: true,
+        description: "Set or clear (limit_hours=null) a project's hour limit per billing cycle. cycle_start_day is 1-28 (1 = calendar month), multiplier is the rate applied to sessions entirely above the limit, comment_template supports {limit} and {period}.",
+        schema: || json!({
+            "type": "object",
+            "properties": {
+                "project_id": { "type": "integer" },
+                "limit_hours": { "type": ["number", "null"] },
+                "cycle_start_day": { "type": ["integer", "null"], "minimum": 1, "maximum": 28 },
+                "multiplier": { "type": ["number", "null"], "minimum": 1, "maximum": 10 },
+                "comment_template": { "type": ["string", "null"] }
+            },
+            "required": ["project_id"]
+        }),
+    },
+    ToolDef {
         name: "freeze_project",
         command: "freeze_project",
         write: true,

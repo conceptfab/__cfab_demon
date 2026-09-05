@@ -1,4 +1,5 @@
 import type { ProjectCost } from '@/lib/tauri/costs';
+import type { ProjectLimitStatus } from '@/lib/tauri/project-limits';
 
 export interface Project {
   id: number;
@@ -15,6 +16,15 @@ export interface Project {
   is_imported: number;
   client_name?: string | null;       // m24: assigned client (by name); null = none
   status?: string;                   // m24: lifecycle status ('active' | 'archived')
+  // m28: limit godzin na okres rozliczeniowy.
+  // `monthly_hours_limit` null = limit wyłączony.
+  // `limit_cycle_start_day` 1..28; null czytamy jak 1, czyli miesiąc kalendarzowy.
+  // `over_limit_multiplier` null domyśla się do 1.5.
+  // `over_limit_comment` to szablon; podstawia {limit} i {period}.
+  monthly_hours_limit?: number | null;
+  limit_cycle_start_day?: number | null;
+  over_limit_multiplier?: number | null;
+  over_limit_comment?: string | null;
 }
 
 export interface Application {
@@ -364,6 +374,11 @@ export interface ProjectReportData {
   /** Pozycje kosztowe z okresu raportu, chronologicznie. */
   costs: ProjectCost[];
   costs_total: number;
+  /**
+   * Stan limitu godzin dla okresu rozliczeniowego obejmującego KONIEC okresu raportu.
+   * `null` = projekt nie ma limitu → sekcja raportu się nie renderuje.
+   */
+  limit: ProjectLimitStatus | null;
 }
 
 export interface ProjectFolder {

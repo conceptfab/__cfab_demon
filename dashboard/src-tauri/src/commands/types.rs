@@ -43,6 +43,16 @@ pub struct Project {
     pub client_name: Option<String>,
     #[serde(default)]
     pub status: String,
+    // m28: limit godzin na okres rozliczeniowy. `#[serde(default)]` trzyma archiwa
+    // i peery sprzed m28 parsowalne (brak klucza → None → limit wyłączony).
+    #[serde(default)]
+    pub monthly_hours_limit: Option<f64>,
+    #[serde(default)]
+    pub limit_cycle_start_day: Option<i64>,
+    #[serde(default)]
+    pub over_limit_multiplier: Option<f64>,
+    #[serde(default)]
+    pub over_limit_comment: Option<String>,
 }
 
 /// Wiersz kosztu dodatkowego (m26). Serializowany do sync i do UI.
@@ -276,6 +286,54 @@ pub struct ProjectExtraInfo {
     pub top_apps: Vec<TopApp>,
 }
 
+/// Sesja w CAŁOŚCI ponad limitem godzin (m28) — kandydat do boostu.
+#[derive(Serialize, Clone)]
+pub struct OverLimitSession {
+    pub id: i64,
+    pub start_time: String,
+    pub app_name: String,
+    pub duration_seconds: i64,
+    /// Czas po dedupie — ten sam, którym liczone jest zużycie limitu.
+    pub effective_seconds: i64,
+    pub rate_multiplier: f64,
+    /// Sesja ma już własny komentarz — szablonu NIE nadpisujemy.
+    pub has_comment: bool,
+    /// Mnożnik wciąż ≤ 1, więc boost jest do zrobienia.
+    pub needs_boost: bool,
+}
+
+/// Stan limitu godzin projektu dla jednego okresu rozliczeniowego (m28).
+#[derive(Serialize, Clone)]
+pub struct ProjectLimitStatus {
+    pub limit_hours: f64,
+    pub cycle_start: String,
+    pub cycle_end: String,
+    pub cycle_start_day: i64,
+    pub used_seconds: f64,
+    pub used_hours: f64,
+    pub remaining_hours: f64,
+    pub over_hours: f64,
+    pub percent: f64,
+    pub over_limit_multiplier: f64,
+    pub over_limit_comment: Option<String>,
+    /// Godziny ponad limitem pochodzące z sesji ręcznych — liczą się do zużycia,
+    /// ale nie da się ich zboostować (brak `rate_multiplier` w `manual_sessions`).
+    pub manual_over_hours: f64,
+    pub over_sessions: Vec<OverLimitSession>,
+    pub pending_boost_count: i64,
+}
+
+/// Skrót stanu limitu dla listy projektów — bez listy sesji.
+#[derive(Serialize, Clone)]
+pub struct ProjectLimitBadge {
+    pub project_id: i64,
+    pub limit_hours: f64,
+    pub used_hours: f64,
+    pub over_hours: f64,
+    pub percent: f64,
+    pub pending_boost_count: i64,
+}
+
 #[derive(Serialize)]
 pub struct ProjectReportData {
     pub project: ProjectWithStats,
@@ -289,6 +347,10 @@ pub struct ProjectReportData {
     /// Suma powyższych — żeby front nie musiał sumować sam.
     #[serde(default)]
     pub costs_total: f64,
+    /// Stan limitu godzin (m28) dla okresu rozliczeniowego obejmującego KONIEC okresu
+    /// raportu. `None` = projekt nie ma limitu → sekcja raportu się nie renderuje.
+    #[serde(default)]
+    pub limit: Option<ProjectLimitStatus>,
 }
 
 #[derive(Serialize)]

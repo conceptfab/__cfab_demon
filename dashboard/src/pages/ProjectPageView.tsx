@@ -10,6 +10,8 @@ import { manualToSessionRow } from '@/lib/session-utils';
 import { ProjectOverview } from '@/components/project-page/ProjectOverview';
 import { ProjectEstimatesSection } from '@/components/project-page/ProjectEstimatesSection';
 import { ProjectCostsSection } from '@/components/project-page/ProjectCostsSection';
+import { ProjectLimitSection } from '@/components/project-page/ProjectLimitSection';
+import { ProjectLimitBoostDialog } from '@/components/project-page/ProjectLimitBoostDialog';
 import { CostDialog } from '@/components/project-page/CostDialog';
 import { ContextTodosSection } from '@/components/todo/ContextTodosSection';
 import { ProjectTimelineSection } from '@/components/project-page/ProjectTimelineSection';
@@ -37,6 +39,7 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
     handleCompact,
     handleContextMenu,
     handleEditCommentForSession,
+    limit,
     loading,
     manualSessions,
     mergedChildren,
@@ -133,6 +136,10 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
         onCompact={handleCompact}
         minimal={projectPageMinimal}
       />
+
+      <ProjectLimitSection controller={limit} />
+
+      <ProjectLimitBoostDialog controller={limit} />
 
       <ProjectCostsSection
         costs={costs.costs}

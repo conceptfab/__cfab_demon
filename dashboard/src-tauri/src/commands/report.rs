@@ -349,6 +349,25 @@ pub async fn get_project_report_data(
         }
     });
 
+    // Limit godzin liczymy dla OKRESU ROZLICZENIOWEGO obejmującego koniec okresu raportu —
+    // limit ma własny kalendarz (dzień startu), niekoniecznie równy zakresowi raportu.
+    // Sekcja raportu drukuje daty tego okresu, żeby nie było wątpliwości czego dotyczą.
+    let limit_handle = tauri::async_runtime::spawn({
+        let app = app.clone();
+        let reference = date_range.end.clone();
+        async move {
+            run_db_blocking(app, move |conn| {
+                super::project_limits::compute_limit_status(
+                    conn,
+                    project_id,
+                    Some(&reference),
+                    min_duration,
+                )
+            })
+            .await
+        }
+    });
+
     let project = project_handle
         .await
         .map_err(|e| format!("Project task join failed: {}", e))??;
@@ -379,6 +398,10 @@ pub async fn get_project_report_data(
         .await
         .map_err(|e| format!("Costs task join failed: {}", e))??;
     log::info!("[report] costs joined ({} items)", costs.len());
+    let limit = limit_handle
+        .await
+        .map_err(|e| format!("Limit task join failed: {}", e))??;
+    log::info!("[report] limit joined (configured={})", limit.is_some());
 
     log::info!(
         "[report] DONE project_id={} in {:?}",
@@ -394,6 +417,7 @@ pub async fn get_project_report_data(
         manual_sessions,
         costs,
         costs_total,
+        limit,
     })
 }
 

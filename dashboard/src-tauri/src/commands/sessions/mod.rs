@@ -19,6 +19,9 @@ mod split;
 mod tests;
 
 pub(crate) use manual_overrides::apply_manual_session_overrides;
+// Udostępnione dla `commands::project_limits` — boost ponad limit musi ustawić komentarz
+// i mnożnik w JEDNEJ transakcji, w tej kolejności (mnożnik > 1 wymaga komentarza).
+pub(crate) use mutations::{update_session_comment_tx, update_session_rate_multiplier_tx};
 
 #[tauri::command]
 pub async fn get_sessions(

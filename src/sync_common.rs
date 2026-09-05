@@ -1449,6 +1449,10 @@ mod tests {
                 merged_at TEXT,
                 client_name TEXT,
                 status TEXT NOT NULL DEFAULT 'active',
+                monthly_hours_limit REAL,
+                limit_cycle_start_day INTEGER,
+                over_limit_multiplier REAL,
+                over_limit_comment TEXT,
                 is_imported INTEGER DEFAULT 0,
                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
             );
