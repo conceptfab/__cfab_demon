@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { CheckCircle2, CircleOff, XCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +19,14 @@ const STATUS_KEYS: Record<string, string> = {
   unreadable: 'settings_page.integration_status_unreadable',
   missing_table: 'settings_page.integration_status_missing_table',
 };
+
+const STATUS_ICONS = {
+  disabled: CircleOff,
+  ok: CheckCircle2,
+  missing: XCircle,
+  unreadable: XCircle,
+  missing_table: XCircle,
+} as const;
 
 export function SettingsIntegrationTab({
   cfabHubIntegration,
@@ -98,6 +107,8 @@ export function SettingsIntegrationTab({
     updateCfabHubIntegration({ ...cfabHubIntegration, hubDbPath: '' });
     void refreshStatus(cfabHubIntegration.enabled, '');
   };
+
+  const Icon = STATUS_ICONS[status as keyof typeof STATUS_ICONS] ?? XCircle;
 
   return (
     <div className="space-y-4">
@@ -184,7 +195,7 @@ export function SettingsIntegrationTab({
           </div>
 
           <p
-            className={`text-sm ${
+            className={`flex items-center gap-2 text-sm ${
               status === 'ok'
                 ? 'text-emerald-400'
                 : status === 'disabled'
@@ -193,6 +204,7 @@ export function SettingsIntegrationTab({
             }`}
             data-state={status}
           >
+            <Icon className="size-4 shrink-0" aria-hidden />
             {t(STATUS_KEYS[status] ?? STATUS_KEYS.unreadable)}
           </p>
         </CardContent>

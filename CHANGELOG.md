@@ -9,6 +9,10 @@ P4 = cleanup, P5 = docs/tests.
 
 ## Unreleased
 
+### Changed
+
+- **Integracja CFAB Hub:** linia statusu cudzej bazy ma ikonę (OK / błąd / wyłączona), bez zmiany znaczenia probe.
+
 ### Features
 
 - **Eksport/import przenosi `project_name` sesji + przypisanie po nazwie:**
