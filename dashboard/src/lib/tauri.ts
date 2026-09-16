@@ -19,3 +19,4 @@ export * from './tauri/todos';
 export * from './tauri/webserver';
 export * from './tauri/mcp';
 export * from './tauri/project-limits';
+export * from './tauri/cfab-render';

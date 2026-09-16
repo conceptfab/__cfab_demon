@@ -36,6 +36,7 @@ export function HelpProjectsSection() {
         t18n('help_page.project_timeline_states_loading_empty_and_error_messages'),
         t18n('costs.help_feature'),
         t18n('help_page.limit_feature'),
+        t18n('help_page.cfab_hub_render_feature'),
       ]}
     >
       <HelpDetailsBlock
@@ -69,6 +70,14 @@ export function HelpProjectsSection() {
           t18n('help_page.limit_detail_when_to_use'),
           t18n('help_page.limit_detail_how_to_use'),
           t18n('help_page.limit_detail_limitations'),
+        ]}
+      />
+      <HelpDetailsBlock
+        title={t18n('help_page.cfab_hub_render_detail_title')}
+        items={[
+          t18n('help_page.cfab_hub_render_detail_what_it_does'),
+          t18n('help_page.cfab_hub_render_detail_when_to_use'),
+          t18n('help_page.cfab_hub_render_detail_limitations'),
         ]}
       />
     </SectionHelp>

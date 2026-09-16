@@ -1757,6 +1757,9 @@ pub(crate) fn query_project_extra_info(
     // `date_range`, wartość okresu jest tożsama z `current_value`.
     let period_value = current_value;
 
+    let current_value =
+        current_value + super::cfab_render::cfab_render_billing_addend(conn, id)?;
+
     let (session_count, file_activity_count, comment_count, boosted_session_count) = {
         let session_count_sql = format!(
             "{SESSION_PROJECT_CTE}
@@ -1954,8 +1957,9 @@ mod tests {
     use super::{
         auto_freeze_stale_projects, delete_all_excluded_projects_in_conn, delete_project_in_conn,
         ensure_app_project_from_file_hint, freeze_project_in_conn, merge_project_in_conn,
-        project_id_is_active, prune_projects_missing_on_disk, query_projects_with_stats,
-        query_active_project_with_stats_with_min, restore_project_in_conn, unmerge_project_in_conn,
+        project_id_is_active, prune_projects_missing_on_disk, query_project_extra_info,
+        query_projects_with_stats, query_active_project_with_stats_with_min,
+        restore_project_in_conn, unmerge_project_in_conn,
         ProjectListFilter,
     };
 
@@ -2768,6 +2772,67 @@ mod tests {
         assert_eq!(
             resolved, None,
             "frozen parent must not receive merged-stage hints"
+        );
+    }
+
+    fn seed_project_with_hour_and_render_cost(conn: &rusqlite::Connection, include: bool) {
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, hourly_rate, created_at)
+             VALUES (1, 'Render', 100.0, datetime('now'));
+             INSERT INTO applications (id, executable_name, display_name, project_id)
+             VALUES (10, 'c4d.exe', 'Cinema 4D', 1);
+             INSERT INTO sessions (id, app_id, project_id, start_time, end_time, duration_seconds, date)
+             VALUES (100, 10, 1, '2026-03-15T10:00:00', '2026-03-15T11:00:00', 3600, '2026-03-15');
+             INSERT INTO cfab_render_cost (
+                ledger_id, project_id, working_path, render_seconds,
+                ended_at, rbh, coefficient, value, ingested_at
+             ) VALUES (1, 1, '/work/A/scena.c4d', 3600.0, 1.0, 1.0, 0.2, 20.0, '2026-03-15T12:00:00Z');
+             INSERT INTO cfab_render_project_settings (
+                project_id, coefficient, include_in_billing, updated_at
+             ) VALUES (1, 0.2, 0, '2026-03-15T12:00:00Z');",
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE cfab_render_project_settings SET include_in_billing = ?1 WHERE project_id = 1",
+            [include as i64],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn extra_info_current_value_omits_render_cost_when_billing_off() {
+        let conn = test_conn();
+        seed_project_with_hour_and_render_cost(&conn, false);
+        let range = crate::commands::types::DateRange {
+            start: "2026-03-15".to_string(),
+            end: "2026-03-15".to_string(),
+        };
+        let extra = query_project_extra_info(&conn, 1, &range).expect("extra");
+        assert!(
+            (extra.current_value - 100.0).abs() < 0.0001,
+            "include=0 must keep current_value at 100, got {}",
+            extra.current_value
+        );
+    }
+
+    #[test]
+    fn extra_info_current_value_adds_render_cost_when_billing_on() {
+        let conn = test_conn();
+        seed_project_with_hour_and_render_cost(&conn, true);
+        let range = crate::commands::types::DateRange {
+            start: "2026-03-15".to_string(),
+            end: "2026-03-15".to_string(),
+        };
+        let extra = query_project_extra_info(&conn, 1, &range).expect("extra");
+        assert!(
+            (extra.current_value - 120.0).abs() < 0.0001,
+            "include=1 must add 20 to current_value 100, got {}",
+            extra.current_value
+        );
+        assert!(
+            (extra.period_value - 100.0).abs() < 0.0001,
+            "period_value must stay session-only, got {}",
+            extra.period_value
         );
     }
 }

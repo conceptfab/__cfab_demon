@@ -493,6 +493,34 @@ export const loadRoundingSettings = roundingManager.load;
 export const saveRoundingSettings = roundingManager.save;
 export type { RoundingSettings } from '@/lib/rounding';
 
+export interface CfabHubIntegrationSettings {
+  enabled: boolean;
+  hubDbPath: string;
+}
+export const CFAB_HUB_INTEGRATION_STORAGE_KEY =
+  'timeflow.settings.cfab-hub-integration';
+export const DEFAULT_CFAB_HUB_INTEGRATION: CfabHubIntegrationSettings = {
+  enabled: true,
+  hubDbPath: '',
+};
+const cfabHubIntegrationManager =
+  createSettingsManager<CfabHubIntegrationSettings>({
+    key: CFAB_HUB_INTEGRATION_STORAGE_KEY,
+    defaults: DEFAULT_CFAB_HUB_INTEGRATION,
+    normalize: (parsed) => ({
+      enabled:
+        typeof parsed.enabled === 'boolean'
+          ? parsed.enabled
+          : DEFAULT_CFAB_HUB_INTEGRATION.enabled,
+      hubDbPath:
+        typeof parsed.hubDbPath === 'string'
+          ? parsed.hubDbPath.trim()
+          : DEFAULT_CFAB_HUB_INTEGRATION.hubDbPath,
+    }),
+  });
+export const loadCfabHubIntegrationSettings = cfabHubIntegrationManager.load;
+export const saveCfabHubIntegrationSettings = cfabHubIntegrationManager.save;
+
 /**
  * Synchronizuje lokalny cache (localStorage) z JEDNYM wspólnym plikiem
  * konfiguracji (`user_settings.json`), współdzielonym przez wszystkie warianty

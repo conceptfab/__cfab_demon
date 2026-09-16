@@ -102,6 +102,8 @@ const APPLICATIONS_PAGE_APP_REASON_SET = new Set([
 
 const ESTIMATES_PAGE_LOCAL_REASON_SET = new Set([
   'update_global_hourly_rate',
+  'ingest_cfab_render_for_project',
+  'update_cfab_render_project_settings',
 ]);
 
 const ESTIMATES_PAGE_APP_REASON_SET = new Set([
@@ -122,6 +124,8 @@ const PROJECT_PAGE_LOCAL_REASON_SET = new Set([
   'apply_project_limit_boost',
   'update_session_comment',
   'update_session_comments',
+  'ingest_cfab_render_for_project',
+  'update_cfab_render_project_settings',
 ]);
 
 const PROJECT_PAGE_APP_REASON_SET = new Set([

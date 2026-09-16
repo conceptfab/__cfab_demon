@@ -9,6 +9,7 @@ import { SettingsPmTab } from '@/pages/settings/SettingsPmTab';
 import { SettingsRoundingTab } from '@/pages/settings/SettingsRoundingTab';
 import { SettingsSessionsTab } from '@/pages/settings/SettingsSessionsTab';
 import { SettingsSyncTab } from '@/pages/settings/SettingsSyncTab';
+import { SettingsIntegrationTab } from '@/pages/settings/SettingsIntegrationTab';
 import { SettingsTabNav } from '@/pages/settings/SettingsTabNav';
 import { SettingsWebServerTab } from '@/pages/settings/SettingsWebServerTab';
 import { SettingsMcpTab } from '@/pages/settings/SettingsMcpTab';
@@ -41,6 +42,7 @@ export function SettingsView({ controller }: SettingsViewProps) {
       {activeTab === 'algorithm' && <SettingsAlgorithmTab {...controller} />}
       {activeTab === 'rounding' && <SettingsRoundingTab {...controller} />}
       {activeTab === 'sync' && <SettingsSyncTab {...controller} />}
+      {activeTab === 'integration' && <SettingsIntegrationTab {...controller} />}
       {activeTab === 'pm' && <SettingsPmTab />}
       {activeTab === 'webserver' && <SettingsWebServerTab {...controller} />}
       {activeTab === 'mcp' && <SettingsMcpTab {...controller} />}

@@ -6,8 +6,11 @@ import {
   dashboardApi,
   manualSessionsApi,
   projectsApi,
+  cfabRenderApi,
+  emptyCfabRenderProjectState,
 } from '@/lib/tauri';
 import { getErrorMessage, logTauriError } from '@/lib/utils';
+import { loadCfabHubIntegrationSettings } from '@/lib/user-settings';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -148,6 +151,18 @@ export function useProjectPageController() {
   const [ctxMenu, setCtxMenu] = useState<ProjectPageContextMenu | null>(null);
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
+  const projectPageIdRef = useRef(projectPageId);
+  projectPageIdRef.current = projectPageId;
+  const [cfabState, setCfabState] = useState(emptyCfabRenderProjectState);
+  const [cfabCoefficientInput, setCfabCoefficientInput] = useState('0.2');
+  const [cfabLoadError, setCfabLoadError] = useState<string | null>(null);
+  const [cfabIngesting, setCfabIngesting] = useState(false);
+  const [cfabIngestError, setCfabIngestError] = useState<string | null>(null);
+  const [cfabIngestInfo, setCfabIngestInfo] = useState<string | null>(null);
+  const [cfabSaving, setCfabSaving] = useState(false);
+  const [cfabSettingsError, setCfabSettingsError] = useState<string | null>(
+    null,
+  );
 
   usePageRefreshListener((reasons) => {
     if (!reasons.some((reason) => shouldRefreshProjectPage(reason))) {
@@ -158,6 +173,11 @@ export function useProjectPageController() {
 
   useEffect(() => {
     let cancelled = false;
+    setCfabIngestError(null);
+    setCfabSettingsError(null);
+    setCfabIngestInfo(null);
+    setCfabIngesting(false);
+    setCfabSaving(false);
     const reload = () => {
       if (projectPageId === null) {
         hasLoadedProjectsListRef.current = false;
@@ -166,6 +186,8 @@ export function useProjectPageController() {
       }
 
       hasLoadedProjectsListRef.current = false;
+      setCfabIngestError(null);
+      setCfabSettingsError(null);
       Promise.all([
         projectsApi
           .getProject(projectPageId)
@@ -231,6 +253,19 @@ export function useProjectPageController() {
           logTauriError('load merged projects', error);
           return [] as ProjectWithStats[];
         }),
+        cfabRenderApi
+          .getCfabRenderProject(projectPageId)
+          .then((state) => ({ state, error: null as string | null }))
+          .catch((error) => {
+            logTauriError('load cfab render project', error);
+            return {
+              state: emptyCfabRenderProjectState(),
+              error: getErrorMessage(
+                error,
+                t('project_page.cfab_load_error'),
+              ),
+            };
+          }),
       ])
         .then(
           ([
@@ -241,6 +276,7 @@ export function useProjectPageController() {
             sessions,
             manuals,
             merged,
+            cfabResult,
           ]) => {
             if (cancelled) return;
             if (projectResult.missing || projectResult.project === null) {
@@ -250,6 +286,9 @@ export function useProjectPageController() {
 
             const nextProject = projectResult.project;
             const est = estimates.find((e) => e.project_id === projectPageId);
+            setCfabState(cfabResult.state);
+            setCfabCoefficientInput(String(cfabResult.state.coefficient));
+            setCfabLoadError(cfabResult.error);
             setPageState((prev) =>
               applyProjectPageLoad(prev, {
                 project: nextProject,
@@ -375,6 +414,109 @@ export function useProjectPageController() {
       await action();
     } catch (e) {
       logger.error(e);
+    }
+  };
+
+  const parseCfabCoefficient = (raw: string): number | null => {
+    const parsed = Number(raw.replace(',', '.'));
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 100) {
+      return null;
+    }
+    return parsed;
+  };
+
+  const handleCfabSaveSettings = async () => {
+    if (!project) return;
+    const coefficient = parseCfabCoefficient(cfabCoefficientInput);
+    if (coefficient === null) {
+      setCfabSettingsError(t('project_page.cfab_coefficient_invalid'));
+      return;
+    }
+    setCfabSaving(true);
+    setCfabSettingsError(null);
+    try {
+      const next = await cfabRenderApi.updateCfabRenderProjectSettings(
+        project.id,
+        coefficient,
+        cfabState.include_in_billing,
+      );
+      setCfabState(next);
+      setCfabCoefficientInput(String(next.coefficient));
+    } catch (error) {
+      logTauriError('save cfab render settings', error);
+      setCfabSettingsError(
+        getErrorMessage(error, t('project_page.cfab_coefficient_invalid')),
+      );
+    } finally {
+      setCfabSaving(false);
+    }
+  };
+
+  const handleCfabToggleBilling = async (includeInBilling: boolean) => {
+    if (!project) return;
+    const coefficient = parseCfabCoefficient(cfabCoefficientInput);
+    if (coefficient === null) {
+      setCfabSettingsError(t('project_page.cfab_coefficient_invalid'));
+      return;
+    }
+    setCfabSaving(true);
+    setCfabSettingsError(null);
+    try {
+      const next = await cfabRenderApi.updateCfabRenderProjectSettings(
+        project.id,
+        coefficient,
+        includeInBilling,
+      );
+      setCfabState(next);
+      setCfabCoefficientInput(String(next.coefficient));
+    } catch (error) {
+      logTauriError('toggle cfab render billing', error);
+      setCfabSettingsError(
+        getErrorMessage(error, t('project_page.cfab_coefficient_invalid')),
+      );
+    } finally {
+      setCfabSaving(false);
+    }
+  };
+
+  const handleCfabIngest = async () => {
+    if (!project) return;
+    if (!loadCfabHubIntegrationSettings().enabled) {
+      setCfabIngestError(t('project_page.cfab_integration_disabled'));
+      return;
+    }
+    const ingestProjectId = project.id;
+    setCfabIngesting(true);
+    setCfabIngestError(null);
+    setCfabIngestInfo(null);
+    try {
+      const result = await cfabRenderApi.ingestCfabRenderForProject(
+        ingestProjectId,
+      );
+      if (projectPageIdRef.current !== ingestProjectId) return;
+      setCfabState((prev) => ({
+        ...prev,
+        days: result.days ?? [],
+      }));
+      if (result.ingested === 0) {
+        setCfabIngestInfo(
+          result.updated > 0
+            ? t('project_page.cfab_ingest_zero_updated', {
+                count: result.updated,
+              })
+            : t('project_page.cfab_ingest_zero'),
+        );
+      }
+    } catch (error) {
+      if (projectPageIdRef.current !== ingestProjectId) return;
+      logTauriError('ingest cfab render', error);
+      setCfabIngestError(
+        getErrorMessage(error, t('project_page.cfab_ingest_error')),
+      );
+    } finally {
+      if (projectPageIdRef.current === ingestProjectId) {
+        setCfabIngesting(false);
+      }
     }
   };
 
@@ -628,6 +770,15 @@ export function useProjectPageController() {
     ctxMenu,
     ctxRef,
     currencyCode,
+    cfabCoefficientInput,
+    cfabIngestError,
+    cfabIngestInfo,
+    cfabIngesting,
+    cfabLoadError,
+    cfabSaving,
+    cfabSettingsError,
+    cfabState,
+    cfabIntegrationEnabled: loadCfabHubIntegrationSettings().enabled,
     deleteManualSessions,
     deleteSessions,
     editManualSession,
@@ -640,6 +791,9 @@ export function useProjectPageController() {
     handleBack,
     handleBulkDelete,
     handleBulkUnassign,
+    handleCfabIngest,
+    handleCfabSaveSettings,
+    handleCfabToggleBilling,
     handleCompact,
     handleContextMenu,
     handleCustomRateMultiplier,
@@ -662,6 +816,7 @@ export function useProjectPageController() {
     sessionDialogDate,
     sessionDialogOpen,
     selectedSessionDetail,
+    setCfabCoefficientInput,
     setCtxMenu,
     setCurrentPage,
     setEditManualSession,

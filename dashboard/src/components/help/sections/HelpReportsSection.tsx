@@ -20,6 +20,7 @@ export function HelpReportsSection() {
         t18n('help_page.reportview_full_screen_report_preview_without_the_side_p'),
         t18n('help_page.report_view_toolbar_focuses_on_preview_print_and_pdf_'),
         t18n('help_page.report_work_time_uses_the_same_deduplicated_clock_time_a'),
+        t18n('help_page.cfab_hub_render_feature'),
         t18n('help_page.report_rounding_toggle_feature'),
         t18n('help_page.report_period_feature'),
         t18n('help_page.report_merge_entries_feature'),

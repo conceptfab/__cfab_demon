@@ -14,6 +14,7 @@ import { ProjectLimitSection } from '@/components/project-page/ProjectLimitSecti
 import { ProjectLimitBoostDialog } from '@/components/project-page/ProjectLimitBoostDialog';
 import { CostDialog } from '@/components/project-page/CostDialog';
 import { ContextTodosSection } from '@/components/todo/ContextTodosSection';
+import { ProjectCfabHubSection } from '@/components/project-page/ProjectCfabHubSection';
 import { ProjectTimelineSection } from '@/components/project-page/ProjectTimelineSection';
 import { ProjectSessionsList } from '@/components/project-page/ProjectSessionsList';
 import type { ProjectSessionRow } from '@/components/project-page/ProjectSessionsList';
@@ -29,6 +30,15 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
   const {
     busy,
     costs,
+    cfabCoefficientInput,
+    cfabIngestError,
+    cfabIngestInfo,
+    cfabIngesting,
+    cfabLoadError,
+    cfabSaving,
+    cfabSettingsError,
+    cfabState,
+    cfabIntegrationEnabled,
     currencyCode,
     estimate,
     extraInfo,
@@ -36,6 +46,9 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
     groupedSessions,
     handleAction,
     handleBack,
+    handleCfabIngest,
+    handleCfabSaveSettings,
+    handleCfabToggleBilling,
     handleCompact,
     handleContextMenu,
     handleEditCommentForSession,
@@ -48,6 +61,7 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
     recentComments,
     recentSessions,
     sessionCountLabel,
+    setCfabCoefficientInput,
     setCtxMenu,
     setCurrentPage,
     setEditManualSession,
@@ -196,6 +210,23 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
           </CardContent>
         </Card>
       )}
+
+      <ProjectCfabHubSection
+        state={cfabState}
+        coefficientInput={cfabCoefficientInput}
+        currencyCode={currencyCode}
+        ingesting={cfabIngesting}
+        ingestError={cfabIngestError}
+        ingestInfo={cfabIngestInfo}
+        loadError={cfabLoadError}
+        saving={cfabSaving}
+        settingsError={cfabSettingsError}
+        integrationEnabled={cfabIntegrationEnabled}
+        onCoefficientInputChange={setCfabCoefficientInput}
+        onSaveSettings={() => void handleCfabSaveSettings()}
+        onToggleBilling={(checked) => void handleCfabToggleBilling(checked)}
+        onIngest={() => void handleCfabIngest()}
+      />
 
       <ProjectTimelineSection
         project={project}

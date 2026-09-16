@@ -11,6 +11,7 @@ export type SettingsTab =
   | 'algorithm'
   | 'rounding'
   | 'sync'
+  | 'integration'
   | 'pm'
   | 'webserver'
   | 'mcp'
@@ -22,6 +23,7 @@ export const SETTINGS_TAB_IDS: SettingsTab[] = [
   'algorithm',
   'rounding',
   'sync',
+  'integration',
   'pm',
   'webserver',
   'mcp',

@@ -78,6 +78,10 @@ export function useSettingsPageController() {
       label: t('settings_page.tab_sync'),
       active: 'border-emerald-400 text-emerald-400',
     },
+    integration: {
+      label: t('settings_page.tab_integration'),
+      active: 'border-indigo-400 text-indigo-400',
+    },
     pm: {
       label: t('settings_page.tab_pm'),
       active: 'border-orange-400 text-orange-400',

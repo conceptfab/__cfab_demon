@@ -70,6 +70,7 @@ export function HelpEstimatesSection() {
         t18n('help_page.estimates_client_filter'),
         t18n('help_page.estimates_report_variants'),
         t18n('help_page.estimates_report_rounding'),
+        t18n('help_page.cfab_hub_render_feature'),
       ]}
     />
   );

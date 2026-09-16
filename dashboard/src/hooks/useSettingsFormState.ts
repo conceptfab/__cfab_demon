@@ -18,6 +18,9 @@ import {
   saveLanguageSettings,
   saveSessionSettings,
   saveWorkingHoursSettings,
+  saveCfabHubIntegrationSettings,
+  loadCfabHubIntegrationSettings,
+  type CfabHubIntegrationSettings,
   timeToMinutes,
 } from '@/lib/user-settings';
 import {
@@ -62,6 +65,8 @@ export function useSettingsFormState({
   setStoreSplitSettings,
 }: UseSettingsFormStateOptions) {
   const [savedSettings, setSavedSettings] = useState(true);
+  const [cfabHubIntegration, setCfabHubIntegration] =
+    useState<CfabHubIntegrationSettings>(() => loadCfabHubIntegrationSettings());
   const uiSettings = useUiSettings({ setSavedSettings });
   const generalSettings = useGeneralSettings({ setSavedSettings, t });
   const syncSettings = useSyncSettings({
@@ -155,6 +160,7 @@ export function useSettingsFormState({
       },
     );
     const savedAppearance = saveAppearanceSettings(uiSettings.appearanceSettings);
+    const savedCfabHub = saveCfabHubIntegrationSettings(cfabHubIntegration);
 
     uiSettings.setWorkingHours(savedWorking);
     generalSettings.setSessionSettings(savedSession);
@@ -166,6 +172,7 @@ export function useSettingsFormState({
     uiSettings.setCurrencySettings(savedCurrency);
     uiSettings.setLanguageSettings(savedLanguage);
     uiSettings.setAppearanceSettings(savedAppearance);
+    setCfabHubIntegration(savedCfabHub);
     setCurrencyCode(savedCurrency.code);
     setChartAnimations(savedAppearance.chartAnimations);
     setStoreWorkingHours?.(savedWorking);
@@ -191,6 +198,7 @@ export function useSettingsFormState({
     showError,
     showInfo,
     syncSettings,
+    cfabHubIntegration,
     t,
     triggerRefresh,
     uiSettings,
@@ -201,6 +209,11 @@ export function useSettingsFormState({
     ...uiSettings,
     ...generalSettings,
     ...syncSettings,
+    cfabHubIntegration,
+    updateCfabHubIntegration: (next: CfabHubIntegrationSettings) => {
+      setCfabHubIntegration(next);
+      setSavedSettings(false);
+    },
     savedSettings,
     handleSaveSettings,
   };

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::OptionalExtension;
 use tauri::AppHandle;
@@ -204,6 +204,29 @@ fn query_project_multiplier_extra_seconds(
     Ok(out)
 }
 
+fn query_render_billing_project_ids(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<i64>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT p.id
+             FROM projects p
+             INNER JOIN cfab_render_project_settings s ON s.project_id = p.id
+             WHERE s.include_in_billing = 1
+               AND p.excluded_at IS NULL
+               AND p.merged_into IS NULL",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| format!("Failed to read render billing project id: {}", e))?);
+    }
+    Ok(out)
+}
+
 pub(crate) fn build_estimate_rows(
     conn: &rusqlite::Connection,
     date_range: &DateRange,
@@ -221,9 +244,6 @@ pub(crate) fn build_estimate_rows(
             Some(super::daemon::load_persisted_session_min_duration()),
             true,
         )?;
-    if totals.is_empty() {
-        return Ok(Vec::new());
-    }
 
     // Dzienne sekundy per projekt (clock, dedup) — bucket = data, bo hourly=false.
     // Potrzebne do zaokrąglania per_day po stronie frontu (każdy dzień → pełna godzina).
@@ -237,6 +257,7 @@ pub(crate) fn build_estimate_rows(
     let costs_by_project = super::costs::costs_totals_by_project(conn, date_range)?;
 
     let mut rows: Vec<EstimateProjectRow> = Vec::new();
+    let mut included_ids: HashSet<i64> = HashSet::new();
     for (series_key, seconds_f64) in totals {
         let Some(project_id) = series_meta_by_key
             .get(&series_key)
@@ -263,7 +284,8 @@ pub(crate) fn build_estimate_rows(
         let mult_info = multiplier_extra_seconds_by_project.get(&series_key);
         let extra_secs = mult_info.map(|m| m.extra_seconds).unwrap_or(0.0);
         let weighted_hours = hours + (extra_secs / 3600.0);
-        let estimated_value = weighted_hours * effective_hourly_rate;
+        let render_addend = super::cfab_render::cfab_render_billing_addend(conn, *project_id)?;
+        let estimated_value = weighted_hours * effective_hourly_rate + render_addend;
         let session_count = session_counts.get(&series_key).copied().unwrap_or(0);
         let multiplied_session_count = mult_info.map(|m| m.session_count).unwrap_or(0);
         // Koszty linkują się NAZWĄ projektu, nie `id` — stąd lookup po `mapped_name`.
@@ -272,6 +294,7 @@ pub(crate) fn build_estimate_rows(
             .copied()
             .unwrap_or_default();
 
+        included_ids.insert(*project_id);
         rows.push(EstimateProjectRow {
             project_id: *project_id,
             project_name: mapped_name.clone(),
@@ -295,6 +318,45 @@ pub(crate) fn build_estimate_rows(
                 .collect(),
             costs_value: costs.value,
             costs_count: costs.count,
+        });
+    }
+
+    for project_id in query_render_billing_project_ids(conn)? {
+        if included_ids.contains(&project_id) {
+            continue;
+        }
+        let render_addend = super::cfab_render::cfab_render_billing_addend(conn, project_id)?;
+        if render_addend == 0.0 {
+            continue;
+        }
+        let Some((_, mapped_name, project_color, project_hourly_rate, client_name)) =
+            project_meta.get(&project_id)
+        else {
+            log::warn!(
+                "Could not resolve project metadata for project_id={} while building render-only estimates",
+                project_id
+            );
+            continue;
+        };
+        let effective_hourly_rate = project_hourly_rate
+            .filter(|r| r.is_finite() && *r > 0.0)
+            .unwrap_or(global_hourly_rate);
+        rows.push(EstimateProjectRow {
+            project_id,
+            project_name: mapped_name.clone(),
+            project_color: project_color.clone(),
+            seconds: 0,
+            hours: 0.0,
+            weighted_hours: 0.0,
+            project_hourly_rate: *project_hourly_rate,
+            effective_hourly_rate,
+            estimated_value: render_addend,
+            session_count: 0,
+            multiplied_session_count: 0,
+            multiplier_extra_seconds: 0.0,
+            daily_seconds: Vec::new(),
+            client_name: client_name.clone(),
+            days: Vec::new(),
         });
     }
 
@@ -489,6 +551,7 @@ mod tests {
             );",
         )
         .expect("schema");
+        crate::db_migrations::m29_cfab_render::run(&conn).expect("cfab render tables");
         conn
     }
 
@@ -514,6 +577,53 @@ mod tests {
                 "2026-05-10T11:00:00",
                 3600i64,
                 "2026-05-10",
+                1i64
+            ],
+        )
+        .expect("insert session");
+    }
+
+    fn insert_render_cost(conn: &rusqlite::Connection, project_id: i64, value: f64) {
+        conn.execute(
+            "INSERT INTO cfab_render_cost (
+                ledger_id, project_id, working_path, render_seconds,
+                ended_at, rbh, coefficient, value, ingested_at
+            ) VALUES (?1, ?2, '/work/A/scena.c4d', 3600.0, 1.0, 1.0, 0.2, ?3, '2026-03-15T12:00:00Z')",
+            rusqlite::params![project_id, project_id, value],
+        )
+        .expect("insert render cost");
+    }
+
+    fn set_render_include(conn: &rusqlite::Connection, project_id: i64, include: bool) {
+        conn.execute(
+            "INSERT INTO cfab_render_project_settings (
+                project_id, coefficient, include_in_billing, updated_at
+            ) VALUES (?1, 0.2, ?2, '2026-03-15T12:00:00Z')",
+            rusqlite::params![project_id, include as i64],
+        )
+        .expect("insert render settings");
+    }
+
+    fn insert_one_hour_project(conn: &rusqlite::Connection) {
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params!["global_hourly_rate", "100"],
+        )
+        .expect("insert setting");
+        conn.execute(
+            "INSERT INTO projects (id, name, color, hourly_rate) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![1i64, "Render", "#111111", Some(100.0f64)],
+        )
+        .expect("insert project");
+        conn.execute(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+            rusqlite::params![
+                1i64,
+                "2026-03-15T10:00:00",
+                "2026-03-15T11:00:00",
+                3600i64,
+                "2026-03-15",
                 1i64
             ],
         )
@@ -861,6 +971,94 @@ mod tests {
                 ("2026-01-05".to_string(), 3900),
             ],
             "days must carry chronological date labels"
+        );
+    }
+
+    #[test]
+    fn estimate_rows_omit_render_cost_when_billing_off() {
+        let conn = setup_conn();
+        insert_one_hour_project(&conn);
+        insert_render_cost(&conn, 1, 20.0);
+        set_render_include(&conn, 1, false);
+
+        let rows = build_estimate_rows(
+            &conn,
+            &DateRange {
+                start: "2026-03-15".to_string(),
+                end: "2026-03-15".to_string(),
+            },
+        )
+        .expect("estimate rows");
+        let row = rows.first().expect("row");
+        assert!((row.hours - 1.0).abs() < 0.0001, "must not treat render as session hours");
+        assert!((row.weighted_hours - 1.0).abs() < 0.0001);
+        assert!(
+            (row.estimated_value - 100.0).abs() < 0.0001,
+            "include=0 must keep estimated_value at 100, got {}",
+            row.estimated_value
+        );
+    }
+
+    #[test]
+    fn estimate_rows_add_render_cost_when_billing_on() {
+        let conn = setup_conn();
+        insert_one_hour_project(&conn);
+        insert_render_cost(&conn, 1, 20.0);
+        set_render_include(&conn, 1, true);
+
+        let rows = build_estimate_rows(
+            &conn,
+            &DateRange {
+                start: "2026-03-15".to_string(),
+                end: "2026-03-15".to_string(),
+            },
+        )
+        .expect("estimate rows");
+        let row = rows.first().expect("row");
+        assert_eq!(row.seconds, 3600);
+        assert!((row.hours - 1.0).abs() < 0.0001, "must not treat render as session hours");
+        assert!((row.weighted_hours - 1.0).abs() < 0.0001);
+        assert!(
+            (row.estimated_value - 120.0).abs() < 0.0001,
+            "include=1 must add 20 (3600s × 0.2 × 100) to 100, got {}",
+            row.estimated_value
+        );
+    }
+
+    #[test]
+    fn estimate_rows_include_render_cost_without_sessions() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params!["global_hourly_rate", "100"],
+        )
+        .expect("insert setting");
+        conn.execute(
+            "INSERT INTO projects (id, name, color, hourly_rate) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![1i64, "Render only", "#111111", Some(100.0f64)],
+        )
+        .expect("insert project");
+        insert_render_cost(&conn, 1, 20.0);
+        set_render_include(&conn, 1, true);
+
+        let rows = build_estimate_rows(
+            &conn,
+            &DateRange {
+                start: "2026-03-15".to_string(),
+                end: "2026-03-15".to_string(),
+            },
+        )
+        .expect("estimate rows");
+
+        assert_eq!(rows.len(), 1, "include=1 with cost and no sessions must still yield a row");
+        let row = rows.first().expect("row");
+        assert_eq!(row.seconds, 0);
+        assert!((row.hours - 0.0).abs() < 0.0001);
+        assert!((row.weighted_hours - 0.0).abs() < 0.0001);
+        assert!(
+            (row.estimated_value - 20.0).abs() < 0.0001,
+            "no sessions, include=1, cost 20 must yield estimated_value ≈ 20, got {}",
+            row.estimated_value
         );
     }
 }

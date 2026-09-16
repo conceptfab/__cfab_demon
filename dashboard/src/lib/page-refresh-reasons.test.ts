@@ -80,4 +80,18 @@ describe('page refresh reason helpers', () => {
     expect(shouldRefreshTodos('update_session_comment')).toBe(false);
     expect(shouldRefreshTodos('applications_changed')).toBe(false);
   });
+
+  it('refreshes project page and estimates after CFAB Hub ingest and settings', () => {
+    expect(shouldRefreshProjectPage('ingest_cfab_render_for_project')).toBe(true);
+    expect(shouldRefreshProjectPage('update_cfab_render_project_settings')).toBe(
+      true,
+    );
+    expect(shouldRefreshEstimatesPage('ingest_cfab_render_for_project')).toBe(
+      true,
+    );
+    expect(
+      shouldRefreshEstimatesPage('update_cfab_render_project_settings'),
+    ).toBe(true);
+  });
+  });
 });
