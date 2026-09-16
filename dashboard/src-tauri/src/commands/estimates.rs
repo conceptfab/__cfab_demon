@@ -357,6 +357,8 @@ pub(crate) fn build_estimate_rows(
             daily_seconds: Vec::new(),
             client_name: client_name.clone(),
             days: Vec::new(),
+            costs_value: 0.0,
+            costs_count: 0,
         });
     }
 
