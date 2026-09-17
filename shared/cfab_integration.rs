@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub const BEACON_SCHEMA: u32 = 1;
-pub const CFAB_RENDER_SUPPORTED: &[u32] = &[1, 2];
+pub const CFAB_RENDER_SUPPORTED: &[u32] = &[1, 2, 3];
 pub const HEARTBEAT_INTERVAL_SECS: u64 = 30;
 pub const HEARTBEAT_STALE_SECS: f64 = 90.0;
 

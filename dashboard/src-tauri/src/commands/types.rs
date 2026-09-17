@@ -335,6 +335,17 @@ pub struct ProjectLimitBadge {
 }
 
 #[derive(Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CfabRenderThumbnail {
+    pub hub_instance_id: String,
+    pub ledger_id: i64,
+    pub working_path: String,
+    pub render_seconds: f64,
+    pub ended_at: f64,
+    pub thumbnail_path: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct ProjectReportData {
     pub project: ProjectWithStats,
     pub extra: ProjectExtraInfo,
@@ -351,6 +362,9 @@ pub struct ProjectReportData {
     /// raportu. `None` = projekt nie ma limitu → sekcja raportu się nie renderuje.
     #[serde(default)]
     pub limit: Option<ProjectLimitStatus>,
+    /// Miniatury renderów z okresu raportu (R4).
+    #[serde(default)]
+    pub cfab_renders: Vec<CfabRenderThumbnail>,
 }
 
 #[derive(Serialize)]

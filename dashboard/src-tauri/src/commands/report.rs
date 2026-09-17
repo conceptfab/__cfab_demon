@@ -12,11 +12,64 @@ use super::sql_fragments::{
 use super::time_algorithm::{compute_project_activity_unique, source_key};
 use super::types::{
     CostRow, DateRange, ManualSessionFilters, ManualSessionWithProject, ProjectExtraInfo,
-    ProjectReportData, ProjectWithStats, SessionWithApp,
+    CfabRenderThumbnail, ProjectReportData, ProjectWithStats, SessionWithApp,
 };
 
 /// Pozycje kosztowe projektu w okresie raportu + ich suma.
 /// Projekt rozwiązywany po `id` → NAZWA, bo koszty linkują się nazwą (brak FK).
+pub(crate) fn load_report_cfab_renders(
+    conn: &rusqlite::Connection,
+    project_id: i64,
+    date_range: &DateRange,
+) -> Result<Vec<CfabRenderThumbnail>, String> {
+    let has_thumb_col = conn
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('cfab_render_cost') WHERE name='thumbnail_path'")
+        .and_then(|mut stmt| stmt.query_row([], |r| r.get::<_, i64>(0)))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if !has_thumb_col {
+        return Ok(Vec::new());
+    }
+
+    let start_unix = match chrono::NaiveDate::parse_from_str(&date_range.start, "%Y-%m-%d") {
+        Ok(d) => d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc().timestamp() as f64).unwrap_or(0.0),
+        Err(_) => 0.0,
+    };
+    let end_unix = match chrono::NaiveDate::parse_from_str(&date_range.end, "%Y-%m-%d") {
+        Ok(d) => d.and_hms_opt(23, 59, 59).map(|dt| dt.and_utc().timestamp() as f64).unwrap_or(f64::MAX),
+        Err(_) => f64::MAX,
+    };
+
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT hub_instance_id, ledger_id, working_path, render_seconds, ended_at, thumbnail_path
+             FROM cfab_render_cost
+             WHERE project_id = ?1
+               AND ended_at >= ?2
+               AND ended_at <= ?3
+               AND thumbnail_path IS NOT NULL
+               AND TRIM(thumbnail_path) != ''
+             ORDER BY ended_at DESC, id DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![project_id, start_unix, end_unix], |row| {
+            Ok(CfabRenderThumbnail {
+                hub_instance_id: row.get(0)?,
+                ledger_id: row.get(1)?,
+                working_path: row.get(2)?,
+                render_seconds: row.get(3)?,
+                ended_at: row.get(4)?,
+                thumbnail_path: row.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
 pub(crate) fn load_report_costs(
     conn: &rusqlite::Connection,
     project_id: i64,
@@ -368,6 +421,17 @@ pub async fn get_project_report_data(
         }
     });
 
+    let cfab_renders_handle = tauri::async_runtime::spawn({
+        let app = app.clone();
+        let date_range = date_range.clone();
+        async move {
+            run_db_blocking(app, move |conn| {
+                load_report_cfab_renders(conn, project_id, &date_range)
+            })
+            .await
+        }
+    });
+
     let project = project_handle
         .await
         .map_err(|e| format!("Project task join failed: {}", e))??;
@@ -402,6 +466,10 @@ pub async fn get_project_report_data(
         .await
         .map_err(|e| format!("Limit task join failed: {}", e))??;
     log::info!("[report] limit joined (configured={})", limit.is_some());
+    let cfab_renders = cfab_renders_handle
+        .await
+        .map_err(|e| format!("CFAB renders task join failed: {}", e))??;
+    log::info!("[report] cfab_renders joined ({} items)", cfab_renders.len());
 
     log::info!(
         "[report] DONE project_id={} in {:?}",
@@ -418,6 +486,7 @@ pub async fn get_project_report_data(
         costs,
         costs_total,
         limit,
+        cfab_renders,
     })
 }
 

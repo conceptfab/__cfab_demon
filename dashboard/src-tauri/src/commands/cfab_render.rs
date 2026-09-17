@@ -7,7 +7,7 @@ use std::time::Duration;
 use chrono::TimeZone;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use timeflow_shared::cfab_integration::{
-    read_beacon, write_beacon, peer_state, Beacon, BeaconRead, PeerState,
+    read_beacon, write_beacon, peer_state, Beacon, BeaconRead,
     CFAB_RENDER_SUPPORTED,
 };
 use serde::{Deserialize, Serialize};
@@ -50,6 +50,49 @@ pub struct CfabRenderDay {
     pub rows: Vec<CfabRenderRow>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CfabUnassignedRenderRow {
+    pub hub_instance_id: String,
+    pub ledger_id: i64,
+    pub working_path: String,
+    pub render_seconds: f64,
+    pub rbh: f64,
+    pub ended_at: f64,
+    pub machine_name: Option<String>,
+    pub thumbnail_path: Option<String>,
+    pub matched_project_id: Option<i64>,
+    pub matched_project_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CfabRenderCostDetail {
+    pub id: i64,
+    pub hub_instance_id: String,
+    pub ledger_id: i64,
+    pub project_id: i64,
+    pub project_name: String,
+    pub working_path: String,
+    pub render_seconds: f64,
+    pub rbh: f64,
+    pub coefficient: f64,
+    pub value: f64,
+    pub ended_at: f64,
+    pub ingested_at: String,
+    pub machine_name: Option<String>,
+    pub thumbnail_path: Option<String>,
+    pub assigned_by: String,
+    pub assigned_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CfabAllRendersResponse {
+    pub total: i64,
+    pub total_seconds: f64,
+    pub total_rbh: f64,
+    pub total_value: f64,
+    pub items: Vec<CfabRenderCostDetail>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CfabRenderRow {
     pub hub_instance_id: String,
@@ -59,6 +102,7 @@ pub struct CfabRenderRow {
     pub rbh: f64,
     pub value: f64,
     pub ended_at: f64,
+    pub thumbnail_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -72,6 +116,7 @@ pub struct CfabRenderIngestResult {
 pub struct CfabRenderProjectState {
     pub coefficient: f64,
     pub include_in_billing: bool,
+    pub include_render_in_hours_limit: bool,
     pub effective_hourly_rate: f64,
     pub days: Vec<CfabRenderDay>,
 }
@@ -304,11 +349,19 @@ pub struct HubLedgerRow {
     pub ended_at: f64,
     pub hint: Option<i64>,
     pub machine_name: Option<String>,
+    pub thumbnail_path: Option<String>,
     pub contract: i64,
 }
 
 pub fn hub_ledger_has_instance(hub: &Connection) -> bool {
     hub.prepare("SELECT COUNT(*) FROM pragma_table_info('render_ledger') WHERE name='hub_instance_id'")
+        .and_then(|mut stmt| stmt.query_row([], |r| r.get::<_, i64>(0)))
+        .map(|c| c > 0)
+        .unwrap_or(false)
+}
+
+pub fn hub_ledger_has_thumbnail_path(hub: &Connection) -> bool {
+    hub.prepare("SELECT COUNT(*) FROM pragma_table_info('render_ledger') WHERE name='thumbnail_path'")
         .and_then(|mut stmt| stmt.query_row([], |r| r.get::<_, i64>(0)))
         .map(|c| c > 0)
         .unwrap_or(false)
@@ -324,17 +377,17 @@ pub fn hub_ledger_has_machine_name(hub: &Connection) -> bool {
 pub fn read_open_ledger(hub: &Connection) -> Result<Vec<HubLedgerRow>, String> {
     let has_instance = hub_ledger_has_instance(hub);
     let has_machine = hub_ledger_has_machine_name(hub);
+    let has_thumb = hub_ledger_has_thumbnail_path(hub);
     if has_instance {
-        let sql = if has_machine {
-            "SELECT COALESCE(hub_instance_id, 'legacy'), id, working_path, render_seconds, ended_at, project_hint, machine_name, contract
+        let machine_col = if has_machine { "machine_name" } else { "NULL AS machine_name" };
+        let thumb_col = if has_thumb { "thumbnail_path" } else { "NULL AS thumbnail_path" };
+        let sql = format!(
+            "SELECT COALESCE(hub_instance_id, 'legacy'), id, working_path, render_seconds, ended_at, project_hint, {}, {}, contract
              FROM render_ledger
-             WHERE contract IN (1, 2) AND status = 'open'"
-        } else {
-            "SELECT COALESCE(hub_instance_id, 'legacy'), id, working_path, render_seconds, ended_at, project_hint, NULL AS machine_name, contract
-             FROM render_ledger
-             WHERE contract IN (1, 2) AND status = 'open'"
-        };
-        let mut stmt = hub.prepare(sql).map_err(|e| e.to_string())?;
+             WHERE contract IN (1, 2, 3) AND status = 'open'",
+            machine_col, thumb_col
+        );
+        let mut stmt = hub.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |row| {
                 Ok(HubLedgerRow {
@@ -345,7 +398,8 @@ pub fn read_open_ledger(hub: &Connection) -> Result<Vec<HubLedgerRow>, String> {
                     ended_at: row.get(4)?,
                     hint: row.get(5)?,
                     machine_name: row.get(6)?,
-                    contract: row.get(7)?,
+                    thumbnail_path: row.get(7)?,
+                    contract: row.get(8)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -368,6 +422,7 @@ pub fn read_open_ledger(hub: &Connection) -> Result<Vec<HubLedgerRow>, String> {
                     ended_at: row.get(3)?,
                     hint: row.get(4)?,
                     machine_name: None,
+                    thumbnail_path: None,
                     contract: 1,
                 })
             })
@@ -457,12 +512,196 @@ pub fn match_project(
     best.and_then(|project| resolve_merge(project, &by_name))
 }
 
+
+pub fn rebuild_cfab_path_index(tf: &Connection) -> Result<usize, String> {
+    let mut stmt = tf
+        .prepare(
+            "SELECT id, assigned_folder_path FROM projects
+             WHERE excluded_at IS NULL AND assigned_folder_path IS NOT NULL AND TRIM(assigned_folder_path) != ''",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut count = 0usize;
+    for res in rows {
+        let (project_id, folder) = res.map_err(|e| e.to_string())?;
+        let norm = normalize_path(&folder);
+        if norm.is_empty() {
+            continue;
+        }
+        let inserted = tf.execute(
+            "INSERT INTO cfab_project_path_index (folder_norm, project_id, source, updated_at)
+             VALUES (?1, ?2, 'auto', ?3)
+             ON CONFLICT(folder_norm) DO UPDATE SET
+                 project_id = excluded.project_id,
+                 updated_at = excluded.updated_at
+             WHERE cfab_project_path_index.source != 'manual'",
+            rusqlite::params![norm, project_id, now],
+        ).map_err(|e| e.to_string())?;
+        if inserted > 0 {
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+pub fn load_cfab_path_index(tf: &Connection) -> Result<Vec<(String, i64, String)>, String> {
+    let mut stmt = tf
+        .prepare(
+            "SELECT folder_norm, project_id, source
+             FROM cfab_project_path_index
+             ORDER BY LENGTH(folder_norm) DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+pub fn match_project_with_index(
+    working_path: &str,
+    projects: &[ProjectRow],
+    hint: Option<i64>,
+    path_index: &[(String, i64, String)],
+) -> Option<i64> {
+    if working_path.is_empty() || working_path == "(unknown)" {
+        return None;
+    }
+
+    let by_id: HashMap<i64, &ProjectRow> = projects.iter().map(|p| (p.id, p)).collect();
+    let by_name: HashMap<&str, &ProjectRow> =
+        projects.iter().map(|p| (p.name.as_str(), p)).collect();
+
+    // 1. Hint has highest priority if valid and not excluded
+    if let Some(hint_id) = hint {
+        if let Some(hinted) = by_id.get(&hint_id) {
+            if hinted.excluded_at.is_none() {
+                return resolve_merge(hinted, &by_name);
+            }
+        }
+    }
+
+    let normalized_working = normalize_path(working_path);
+
+    // 2. Longest-prefix match in path_index (ordered by length DESC)
+    for (folder_norm, project_id, _source) in path_index {
+        if normalized_working == *folder_norm
+            || normalized_working.starts_with(&format!("{folder_norm}/"))
+        {
+            if let Some(proj) = by_id.get(project_id) {
+                if proj.excluded_at.is_none() {
+                    return resolve_merge(proj, &by_name);
+                }
+            }
+        }
+    }
+
+    // 3. Fallback: projects.assigned_folder_path
+    match_project(working_path, projects, None)
+}
+
+fn read_single_hub_ledger(
+    hub: &Connection,
+    hub_instance_id: &str,
+    ledger_id: i64,
+) -> Result<Option<HubLedgerRow>, String> {
+    let has_instance = hub
+        .prepare("SELECT 1 FROM render_ledger WHERE hub_instance_id = ?1 LIMIT 1")
+        .is_ok();
+    let has_machine = hub_ledger_has_machine_name(hub);
+    let has_thumb = hub_ledger_has_thumbnail_path(hub);
+    if has_instance {
+        let machine_col = if has_machine { "machine_name" } else { "NULL AS machine_name" };
+        let thumb_col = if has_thumb { "thumbnail_path" } else { "NULL AS thumbnail_path" };
+        let sql = format!(
+            "SELECT hub_instance_id, id, working_path, render_seconds, ended_at, project_hint, {}, {}, contract
+             FROM render_ledger
+             WHERE hub_instance_id = ?1 AND id = ?2",
+            machine_col, thumb_col
+        );
+        let mut stmt = hub.prepare(&sql).map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query_map(rusqlite::params![hub_instance_id, ledger_id], |row| {
+                Ok(HubLedgerRow {
+                    instance: row.get(0)?,
+                    ledger_id: row.get(1)?,
+                    working_path: row.get(2)?,
+                    render_seconds: row.get(3)?,
+                    ended_at: row.get(4)?,
+                    hint: row.get(5)?,
+                    machine_name: row.get(6)?,
+                    thumbnail_path: row.get(7)?,
+                    contract: row.get(8)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        if let Some(r) = rows.next() {
+            return r.map(Some).map_err(|e| e.to_string());
+        }
+    } else {
+        let mut stmt = hub
+            .prepare(
+                "SELECT id, working_path, render_seconds, ended_at, project_hint
+                 FROM render_ledger
+                 WHERE id = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query_map(rusqlite::params![ledger_id], |row| {
+                Ok(HubLedgerRow {
+                    instance: "legacy".to_string(),
+                    ledger_id: row.get(0)?,
+                    working_path: row.get(1)?,
+                    render_seconds: row.get(2)?,
+                    ended_at: row.get(3)?,
+                    hint: row.get(4)?,
+                    machine_name: None,
+                    thumbnail_path: None,
+                    contract: 1,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        if let Some(r) = rows.next() {
+            return r.map(Some).map_err(|e| e.to_string());
+        }
+    }
+    Ok(None)
+}
+
+fn parse_date_boundary(date_str: &str, end_of_day: bool) -> Option<f64> {
+    let date = chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()?;
+    let time = if end_of_day {
+        chrono::NaiveTime::from_hms_opt(23, 59, 59)?
+    } else {
+        chrono::NaiveTime::from_hms_opt(0, 0, 0)?
+    };
+    let dt = date.and_time(time);
+    match chrono::Local.from_local_datetime(&dt) {
+        chrono::LocalResult::Single(local_dt) | chrono::LocalResult::Ambiguous(local_dt, _) => {
+            Some(local_dt.timestamp() as f64)
+        }
+        chrono::LocalResult::None => {
+            Some(chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc).timestamp() as f64)
+        }
+    }
+}
+
 fn load_projects(tf: &Connection) -> Result<Vec<ProjectRow>, String> {
     let mut stmt = tf
         .prepare(
             "SELECT id, name, assigned_folder_path, frozen_at, excluded_at, merged_into
-             FROM projects
-             WHERE assigned_folder_path IS NOT NULL AND assigned_folder_path != ''",
+             FROM projects",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -481,27 +720,38 @@ fn load_projects(tf: &Connection) -> Result<Vec<ProjectRow>, String> {
         .map_err(|e| e.to_string())
 }
 
-fn load_project_settings(tf: &Connection, project_id: i64) -> Result<(f64, bool), String> {
-    let row: Option<(f64, i64)> = tf
+fn load_project_settings(tf: &Connection, project_id: i64) -> Result<(f64, bool, bool), String> {
+    let has_limit_col = tf
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('cfab_render_project_settings') WHERE name='include_render_in_hours_limit'")
+        .and_then(|mut stmt| stmt.query_row([], |r| r.get::<_, i64>(0)))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    let sql = if has_limit_col {
+        "SELECT coefficient, include_in_billing, include_render_in_hours_limit FROM cfab_render_project_settings WHERE project_id = ?1"
+    } else {
+        "SELECT coefficient, include_in_billing, 0 FROM cfab_render_project_settings WHERE project_id = ?1"
+    };
+
+    let row: Option<(f64, i64, i64)> = tf
         .query_row(
-            "SELECT coefficient, include_in_billing
-             FROM cfab_render_project_settings
-             WHERE project_id = ?1",
+            sql,
             [project_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()
         .map_err(|e| e.to_string())?;
     Ok(match row {
-        Some((c, include)) => (
+        Some((c, include, include_limit)) => (
             if c.is_finite() {
                 c
             } else {
                 DEFAULT_COEFFICIENT
             },
             include != 0,
+            include_limit != 0,
         ),
-        None => (DEFAULT_COEFFICIENT, false),
+        None => (DEFAULT_COEFFICIENT, false, false),
     })
 }
 
@@ -567,6 +817,8 @@ pub fn ingest_cfab_render_into(
     let coefficient = project_coefficient(tf, project_id)?;
     let rate = effective_hourly_rate(tf, project_id)?;
 
+    let _ = rebuild_cfab_path_index(tf);
+    let path_index = load_cfab_path_index(tf)?;
     let hub_rows = read_open_ledger(hub)?;
 
     let tx = tf.transaction().map_err(|e| e.to_string())?;
@@ -585,7 +837,7 @@ pub fn ingest_cfab_render_into(
     let mut ingested = 0usize;
 
     for row in hub_rows {
-        if match_project(&row.working_path, &projects, row.hint) != Some(project_id) {
+        if match_project_with_index(&row.working_path, &projects, row.hint, &path_index) != Some(project_id) {
             continue;
         }
 
@@ -608,8 +860,8 @@ pub fn ingest_cfab_render_into(
         tx.execute(
             "INSERT INTO cfab_render_cost (
                 hub_instance_id, ledger_id, project_id, working_path, render_seconds,
-                ended_at, rbh, coefficient, value, ingested_at, machine_name
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                ended_at, rbh, coefficient, value, ingested_at, machine_name, thumbnail_path
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![
                 row.instance,
                 row.ledger_id,
@@ -621,14 +873,15 @@ pub fn ingest_cfab_render_into(
                 coefficient,
                 value,
                 ingested_at,
-                row.machine_name
+                row.machine_name,
+                row.thumbnail_path,
             ],
         )
         .map_err(|e| e.to_string())?;
         tx.execute(
             "INSERT INTO cfab_render_ack (
-                hub_instance_id, ledger_id, ingested_at, project_id, rbh, coefficient, contract
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                hub_instance_id, ledger_id, ingested_at, project_id, rbh, coefficient, contract, thumbnail_path
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
                 row.instance,
                 row.ledger_id,
@@ -636,7 +889,8 @@ pub fn ingest_cfab_render_into(
                 project_id,
                 rbh,
                 coefficient,
-                row.contract
+                row.contract,
+                row.thumbnail_path,
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -658,7 +912,7 @@ pub fn list_cfab_render_for_project(
 ) -> Result<Vec<CfabRenderDay>, String> {
     let mut stmt = tf
         .prepare(
-            "SELECT hub_instance_id, ledger_id, working_path, render_seconds, rbh, value, ended_at
+            "SELECT hub_instance_id, ledger_id, working_path, render_seconds, rbh, value, ended_at, thumbnail_path
              FROM cfab_render_cost
              WHERE project_id = ?1
              ORDER BY ended_at DESC, id DESC",
@@ -674,6 +928,7 @@ pub fn list_cfab_render_for_project(
                 rbh: row.get(4)?,
                 value: row.get(5)?,
                 ended_at: row.get(6)?,
+                thumbnail_path: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -750,10 +1005,11 @@ pub fn get_cfab_render_project_state(
     tf: &Connection,
     project_id: i64,
 ) -> Result<CfabRenderProjectState, String> {
-    let (coefficient, include_in_billing) = load_project_settings(tf, project_id)?;
+    let (coefficient, include_in_billing, include_render_in_hours_limit) = load_project_settings(tf, project_id)?;
     Ok(CfabRenderProjectState {
         coefficient,
         include_in_billing,
+        include_render_in_hours_limit,
         effective_hourly_rate: effective_hourly_rate(tf, project_id)?,
         days: list_cfab_render_for_project(tf, project_id)?,
     })
@@ -764,22 +1020,27 @@ pub fn update_cfab_render_project_settings_in_conn(
     project_id: i64,
     coefficient: f64,
     include_in_billing: bool,
+    include_render_in_hours_limit: Option<bool>,
 ) -> Result<CfabRenderProjectState, String> {
     validate_coefficient(coefficient)?;
     let rate = effective_hourly_rate(tf, project_id)?;
     let updated_at = chrono::Utc::now().to_rfc3339();
+    let current_limit_setting = load_project_settings(tf, project_id)?.2;
+    let include_limit = include_render_in_hours_limit.unwrap_or(current_limit_setting);
     tf.execute(
         "INSERT INTO cfab_render_project_settings (
-            project_id, coefficient, include_in_billing, updated_at
-        ) VALUES (?1, ?2, ?3, ?4)
+            project_id, coefficient, include_in_billing, include_render_in_hours_limit, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5)
         ON CONFLICT(project_id) DO UPDATE SET
             coefficient = excluded.coefficient,
             include_in_billing = excluded.include_in_billing,
+            include_render_in_hours_limit = excluded.include_render_in_hours_limit,
             updated_at = excluded.updated_at",
         rusqlite::params![
             project_id,
             coefficient,
             include_in_billing as i64,
+            include_limit as i64,
             updated_at
         ],
     )
@@ -834,6 +1095,7 @@ pub async fn update_cfab_render_project_settings(
     project_id: i64,
     coefficient: f64,
     include_in_billing: bool,
+    include_render_in_hours_limit: Option<bool>,
 ) -> Result<CfabRenderProjectState, String> {
     validate_coefficient(coefficient)?;
     run_db_blocking(app, move |conn| {
@@ -842,13 +1104,569 @@ pub async fn update_cfab_render_project_settings(
             project_id,
             coefficient,
             include_in_billing,
+            include_render_in_hours_limit,
         )
+    })
+    .await
+}
+
+
+pub fn get_unassigned_cfab_renders_in_conn(
+    tf: &Connection,
+    hub_path: &Path,
+) -> Result<Vec<CfabUnassignedRenderRow>, String> {
+    let hub_conn = match open_foreign(hub_path)? {
+        Some(conn) => conn,
+        None => return Ok(Vec::new()),
+    };
+
+    let projects = load_projects(tf)?;
+    let _ = rebuild_cfab_path_index(tf);
+    let path_index = load_cfab_path_index(tf)?;
+
+    let hub_rows = read_open_ledger(&hub_conn)?;
+
+    let mut ack_stmt = tf
+        .prepare("SELECT hub_instance_id, ledger_id FROM cfab_render_ack")
+        .map_err(|e| e.to_string())?;
+    let ack_rows = ack_stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+        .map_err(|e| e.to_string())?;
+    let mut acked_set = std::collections::HashSet::new();
+    for r in ack_rows {
+        acked_set.insert(r.map_err(|e| e.to_string())?);
+    }
+
+    let proj_names: HashMap<i64, String> = projects.iter().map(|p| (p.id, p.name.clone())).collect();
+
+    let mut unassigned = Vec::new();
+    for row in hub_rows {
+        if acked_set.contains(&(row.instance.clone(), row.ledger_id)) {
+            continue;
+        }
+        let matched_id = match_project_with_index(&row.working_path, &projects, row.hint, &path_index);
+        let matched_name = matched_id.and_then(|id| proj_names.get(&id).cloned());
+
+        unassigned.push(CfabUnassignedRenderRow {
+            hub_instance_id: row.instance,
+            ledger_id: row.ledger_id,
+            working_path: row.working_path,
+            render_seconds: row.render_seconds,
+            rbh: row.render_seconds / 3600.0,
+            ended_at: row.ended_at,
+            machine_name: row.machine_name,
+            thumbnail_path: row.thumbnail_path,
+            matched_project_id: matched_id,
+            matched_project_name: matched_name,
+        });
+    }
+
+    unassigned.sort_by(|a, b| b.ended_at.partial_cmp(&a.ended_at).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(unassigned)
+}
+
+pub fn get_all_cfab_renders_in_conn(
+    tf: &Connection,
+    project_id: Option<i64>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<CfabAllRendersResponse, String> {
+    let mut where_clauses = Vec::new();
+    let mut params = Vec::<rusqlite::types::Value>::new();
+
+    if let Some(pid) = project_id {
+        where_clauses.push(format!("c.project_id = ?{}", params.len() + 1));
+        params.push(pid.into());
+    }
+
+    if let Some(df) = date_from {
+        if let Some(ts) = parse_date_boundary(&df, false) {
+            where_clauses.push(format!("c.ended_at >= ?{}", params.len() + 1));
+            params.push(ts.into());
+        }
+    }
+
+    if let Some(dt) = date_to {
+        if let Some(ts) = parse_date_boundary(&dt, true) {
+            where_clauses.push(format!("c.ended_at <= ?{}", params.len() + 1));
+            params.push(ts.into());
+        }
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    let count_query = format!(
+        "SELECT COUNT(*), COALESCE(SUM(c.render_seconds), 0.0), COALESCE(SUM(c.rbh), 0.0), COALESCE(SUM(c.value), 0.0)
+         FROM cfab_render_cost c
+         LEFT JOIN projects p ON p.id = c.project_id
+         {where_sql}"
+    );
+
+    let (total, total_seconds, total_rbh, total_value): (i64, f64, f64, f64) = tf
+        .query_row(&count_query, rusqlite::params_from_iter(params.iter()), |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let lim = limit.unwrap_or(100).max(1);
+    let off = offset.unwrap_or(0).max(0);
+
+    let query = format!(
+        "SELECT c.id, c.hub_instance_id, c.ledger_id, c.project_id, COALESCE(p.name, 'Unknown'),
+                c.working_path, c.render_seconds, c.rbh, c.coefficient, c.value,
+                c.ended_at, c.ingested_at, c.machine_name, c.assigned_by, c.assigned_at, c.thumbnail_path
+         FROM cfab_render_cost c
+         LEFT JOIN projects p ON p.id = c.project_id
+         {where_sql}
+         ORDER BY c.ended_at DESC, c.id DESC
+         LIMIT ?{} OFFSET ?{}",
+        params.len() + 1,
+        params.len() + 2,
+    );
+
+    let mut list_params = params;
+    list_params.push(lim.into());
+    list_params.push(off.into());
+
+    let mut stmt = tf.prepare(&query).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(list_params.iter()), |r| {
+            Ok(CfabRenderCostDetail {
+                id: r.get(0)?,
+                hub_instance_id: r.get(1)?,
+                ledger_id: r.get(2)?,
+                project_id: r.get(3)?,
+                project_name: r.get(4)?,
+                working_path: r.get(5)?,
+                render_seconds: r.get(6)?,
+                rbh: r.get(7)?,
+                coefficient: r.get(8)?,
+                value: r.get(9)?,
+                ended_at: r.get(10)?,
+                ingested_at: r.get(11)?,
+                machine_name: r.get(12)?,
+                assigned_by: r.get(13)?,
+                assigned_at: r.get(14)?,
+                thumbnail_path: r.get(15)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let items = rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    Ok(CfabAllRendersResponse {
+        total,
+        total_seconds,
+        total_rbh,
+        total_value,
+        items,
+    })
+}
+
+pub fn assign_cfab_render_in_conn(
+    tf: &mut Connection,
+    hub_path: &Path,
+    hub_instance_id: &str,
+    ledger_id: i64,
+    project_id: i64,
+    remember_rule: bool,
+) -> Result<(), String> {
+    let hub_conn = open_foreign(hub_path)?
+        .ok_or_else(|| "CFAB Hub database not accessible".to_string())?;
+
+    let hub_row = read_single_hub_ledger(&hub_conn, hub_instance_id, ledger_id)?
+        .ok_or_else(|| format!("Render record {hub_instance_id}:{ledger_id} not found in Hub"))?;
+
+    let coefficient = project_coefficient(tf, project_id)?;
+    let rate = effective_hourly_rate(tf, project_id)?;
+    let rbh = hub_row.render_seconds / 3600.0;
+    let value = rbh * coefficient * rate;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let tx = tf.transaction().map_err(|e| e.to_string())?;
+
+    if remember_rule {
+        let p = Path::new(&hub_row.working_path);
+        if let Some(parent) = p.parent() {
+            let parent_str = parent.to_string_lossy();
+            let norm = normalize_path(&parent_str);
+            if !norm.is_empty() && norm != "." {
+                tx.execute(
+                    "INSERT INTO cfab_project_path_index (folder_norm, project_id, source, updated_at)
+                     VALUES (?1, ?2, 'manual', ?3)
+                     ON CONFLICT(folder_norm) DO UPDATE SET
+                         project_id = excluded.project_id,
+                         source = 'manual',
+                         updated_at = excluded.updated_at",
+                    rusqlite::params![norm, project_id, now],
+                ).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    tx.execute(
+        "INSERT INTO cfab_render_cost (
+            hub_instance_id, ledger_id, project_id, working_path, render_seconds,
+            ended_at, rbh, coefficient, value, ingested_at, machine_name, assigned_by, assigned_at, thumbnail_path
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'manual', ?10, ?12)
+        ON CONFLICT(hub_instance_id, ledger_id) DO UPDATE SET
+            project_id = excluded.project_id,
+            coefficient = excluded.coefficient,
+            value = excluded.value,
+            assigned_by = 'manual',
+            assigned_at = excluded.assigned_at,
+            thumbnail_path = COALESCE(excluded.thumbnail_path, cfab_render_cost.thumbnail_path)",
+        rusqlite::params![
+            hub_row.instance,
+            hub_row.ledger_id,
+            project_id,
+            hub_row.working_path,
+            hub_row.render_seconds,
+            hub_row.ended_at,
+            rbh,
+            coefficient,
+            value,
+            now,
+            hub_row.machine_name,
+            hub_row.thumbnail_path,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "INSERT INTO cfab_render_ack (
+            hub_instance_id, ledger_id, ingested_at, project_id, rbh, coefficient, contract, assigned_by, assigned_at, thumbnail_path
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'manual', ?3, ?8)
+        ON CONFLICT(hub_instance_id, ledger_id) DO UPDATE SET
+            project_id = excluded.project_id,
+            coefficient = excluded.coefficient,
+            assigned_by = 'manual',
+            assigned_at = excluded.assigned_at,
+            thumbnail_path = COALESCE(excluded.thumbnail_path, cfab_render_ack.thumbnail_path)",
+        rusqlite::params![
+            hub_row.instance,
+            hub_row.ledger_id,
+            now,
+            project_id,
+            rbh,
+            coefficient,
+            hub_row.contract,
+            hub_row.thumbnail_path,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn reassign_cfab_render_in_conn(
+    tf: &mut Connection,
+    hub_instance_id: &str,
+    ledger_id: i64,
+    new_project_id: i64,
+) -> Result<(), String> {
+    let (render_seconds,): (f64,) = tf
+        .query_row(
+            "SELECT render_seconds FROM cfab_render_cost WHERE hub_instance_id = ?1 AND ledger_id = ?2",
+            rusqlite::params![hub_instance_id, ledger_id],
+            |r| Ok((r.get(0)?,)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Render record {hub_instance_id}:{ledger_id} not found in costs"))?;
+
+    let coefficient = project_coefficient(tf, new_project_id)?;
+    let rate = effective_hourly_rate(tf, new_project_id)?;
+    let rbh = render_seconds / 3600.0;
+    let value = rbh * coefficient * rate;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let tx = tf.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE cfab_render_cost
+         SET project_id = ?1, coefficient = ?2, value = ?3, assigned_by = 'manual', assigned_at = ?4
+         WHERE hub_instance_id = ?5 AND ledger_id = ?6",
+        rusqlite::params![new_project_id, coefficient, value, now, hub_instance_id, ledger_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "UPDATE cfab_render_ack
+         SET project_id = ?1, coefficient = ?2, assigned_by = 'manual', assigned_at = ?3
+         WHERE hub_instance_id = ?4 AND ledger_id = ?5",
+        rusqlite::params![new_project_id, coefficient, now, hub_instance_id, ledger_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn detach_cfab_render_in_conn(
+    tf: &mut Connection,
+    hub_instance_id: &str,
+    ledger_id: i64,
+) -> Result<(), String> {
+    let tx = tf.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM cfab_render_cost WHERE hub_instance_id = ?1 AND ledger_id = ?2",
+        rusqlite::params![hub_instance_id, ledger_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "DELETE FROM cfab_render_ack WHERE hub_instance_id = ?1 AND ledger_id = ?2",
+        rusqlite::params![hub_instance_id, ledger_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_unassigned_cfab_renders(
+    app: AppHandle,
+) -> Result<Vec<CfabUnassignedRenderRow>, String> {
+    run_db_blocking(app, move |conn| {
+        let settings = load_cfab_hub_integration();
+        let hub_path = hub_db_path_from(&settings);
+        get_unassigned_cfab_renders_in_conn(conn, &hub_path)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_all_cfab_renders(
+    app: AppHandle,
+    project_id: Option<i64>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<CfabAllRendersResponse, String> {
+    run_db_blocking(app, move |conn| {
+        get_all_cfab_renders_in_conn(conn, project_id, date_from, date_to, limit, offset)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn assign_cfab_render(
+    app: AppHandle,
+    hub_instance_id: String,
+    ledger_id: i64,
+    project_id: i64,
+    remember_rule: bool,
+) -> Result<(), String> {
+    run_db_blocking(app, move |conn| {
+        let settings = load_cfab_hub_integration();
+        let hub_path = hub_db_path_from(&settings);
+        assign_cfab_render_in_conn(
+            conn,
+            &hub_path,
+            &hub_instance_id,
+            ledger_id,
+            project_id,
+            remember_rule,
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn reassign_cfab_render(
+    app: AppHandle,
+    hub_instance_id: String,
+    ledger_id: i64,
+    new_project_id: i64,
+) -> Result<(), String> {
+    run_db_blocking(app, move |conn| {
+        reassign_cfab_render_in_conn(conn, &hub_instance_id, ledger_id, new_project_id)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn detach_cfab_render(
+    app: AppHandle,
+    hub_instance_id: String,
+    ledger_id: i64,
+) -> Result<(), String> {
+    run_db_blocking(app, move |conn| {
+        detach_cfab_render_in_conn(conn, &hub_instance_id, ledger_id)
+    })
+    .await
+}
+
+
+pub fn find_dcc_document_in_hub(
+    hub: &Connection,
+    app_name: &str,
+    start_ts: f64,
+    end_ts: f64,
+) -> Result<Option<String>, String> {
+    let app_lower = app_name.to_lowercase();
+    let app_code = if app_lower.contains("c4d") || app_lower.contains("cinema") {
+        "c4d"
+    } else if app_lower.contains("blender") {
+        "blender"
+    } else {
+        &app_lower
+    };
+
+    let has_dcc_act = hub
+        .prepare("SELECT 1 FROM dcc_activity LIMIT 1")
+        .is_ok();
+    if !has_dcc_act {
+        return Ok(None);
+    }
+
+    // 1. Try to find activity inside the window
+    let mut stmt = hub
+        .prepare(
+            "SELECT document_path FROM dcc_activity
+             WHERE app = ?1 AND at >= ?2 AND at <= ?3
+             ORDER BY at DESC LIMIT 1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let in_window = stmt
+        .query_row(rusqlite::params![app_code, start_ts, end_ts], |row| {
+            row.get::<_, String>(0)
+        })
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    if in_window.is_some() {
+        return Ok(in_window);
+    }
+
+    // 2. Fallback: latest activity before end_ts (up to 4 hours earlier)
+    let lookback = start_ts - 14400.0;
+    let mut stmt2 = hub
+        .prepare(
+            "SELECT document_path FROM dcc_activity
+             WHERE app = ?1 AND at <= ?2 AND at >= ?3
+             ORDER BY at DESC LIMIT 1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let prior = stmt2
+        .query_row(rusqlite::params![app_code, end_ts, lookback], |row| {
+            row.get::<_, String>(0)
+        })
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    Ok(prior)
+}
+
+pub fn infer_dcc_project_from_hub(
+    tf: &Connection,
+    hub: &Connection,
+    app_name: &str,
+    start_ts: f64,
+    end_ts: f64,
+) -> Result<Option<i64>, String> {
+    let doc = find_dcc_document_in_hub(hub, app_name, start_ts, end_ts)?;
+    let Some(working_path) = doc else {
+        return Ok(None);
+    };
+
+    let projects = load_projects(tf)?;
+    let _ = rebuild_cfab_path_index(tf);
+    let path_index = load_cfab_path_index(tf)?;
+
+    Ok(match_project_with_index(&working_path, &projects, None, &path_index))
+}
+
+pub fn get_render_overlap_seconds(
+    hub: &Connection,
+    start_ts: f64,
+    end_ts: f64,
+) -> Result<f64, String> {
+    if end_ts <= start_ts {
+        return Ok(0.0);
+    }
+
+    let has_ledger = hub
+        .prepare("SELECT 1 FROM render_ledger LIMIT 1")
+        .is_ok();
+    if !has_ledger {
+        return Ok(0.0);
+    }
+
+    let mut stmt = hub
+        .prepare(
+            "SELECT started_at, ended_at FROM render_ledger
+             WHERE ended_at > ?1 AND started_at < ?2",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![start_ts, end_ts], |row| {
+            Ok((row.get::<_, f64>(0)?, row.get::<_, f64>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut total_overlap = 0.0;
+    for r in rows {
+        let (s_at, e_at) = r.map_err(|e| e.to_string())?;
+        let s = s_at.max(start_ts);
+        let e = e_at.min(end_ts);
+        if e > s {
+            total_overlap += e - s;
+        }
+    }
+
+    let max_dur = end_ts - start_ts;
+    Ok(total_overlap.min(max_dur))
+}
+
+#[tauri::command]
+pub async fn infer_dcc_session_project(
+    app: AppHandle,
+    app_name: String,
+    start_ts: f64,
+    end_ts: f64,
+) -> Result<Option<i64>, String> {
+    run_db_blocking(app, move |conn| {
+        let settings = load_cfab_hub_integration();
+        let hub_path = hub_db_path_from(&settings);
+        match open_foreign(&hub_path)? {
+            Some(hub) => infer_dcc_project_from_hub(conn, &hub, &app_name, start_ts, end_ts),
+            None => Ok(None),
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_dcc_render_overlap(
+    app: AppHandle,
+    start_ts: f64,
+    end_ts: f64,
+) -> Result<f64, String> {
+    run_db_blocking(app, move |_conn| {
+        let settings = load_cfab_hub_integration();
+        let hub_path = hub_db_path_from(&settings);
+        match open_foreign(&hub_path)? {
+            Some(hub) => get_render_overlap_seconds(&hub, start_ts, end_ts),
+            None => Ok(0.0),
+        }
     })
     .await
 }
 
 #[cfg(test)]
 mod tests {
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     use super::*;
     use chrono::{Local, TimeZone};
     use rusqlite::Connection;
@@ -875,6 +1693,7 @@ mod tests {
         .unwrap();
         crate::db_migrations::m29_cfab_render::run(&conn).unwrap();
         crate::db_migrations::m30_cfab_render_instance::run(&conn).unwrap();
+        crate::db_migrations::m31_cfab_path_index_and_manual::run(&conn).unwrap();
         conn
     }
 
@@ -971,6 +1790,9 @@ mod tests {
 
     #[test]
     fn hub_db_path_ends_with_c4dwatch_db() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let dir = temp_test_dir("canon1");
+        std::env::set_var("CFAB_INTEGRATION_DIR", &dir);
         let path = hub_db_path_from(&CfabHubIntegration::default());
         let posix = path.to_string_lossy().replace('\\', "/");
         assert!(
@@ -982,6 +1804,8 @@ mod tests {
             posix.contains("Library/Application Support/c4dwatch"),
             "macOS hub path should use Application Support/c4dwatch, got {posix}"
         );
+        std::env::remove_var("CFAB_INTEGRATION_DIR");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1400,6 +2224,9 @@ mod tests {
 
     #[test]
     fn hub_db_path_empty_override_is_canonical() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let dir = temp_test_dir("canon2");
+        std::env::set_var("CFAB_INTEGRATION_DIR", &dir);
         let path = hub_db_path_from(&CfabHubIntegration {
             enabled: true,
             hub_db_path: String::new(),
@@ -1409,6 +2236,8 @@ mod tests {
             posix.ends_with("c4dwatch/c4dwatch.db"),
             "empty override must use canonical c4dwatch.db, got {posix}"
         );
+        std::env::remove_var("CFAB_INTEGRATION_DIR");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1655,6 +2484,7 @@ mod tests {
 
     #[test]
     fn hub_db_path_source_resolution() {
+        let _lock = ENV_LOCK.lock().unwrap();
         let dir = temp_test_dir("source_res");
         std::env::set_var("CFAB_INTEGRATION_DIR", &dir);
 
@@ -1701,6 +2531,191 @@ mod tests {
 
         std::env::remove_var("CFAB_INTEGRATION_DIR");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+
+    #[test]
+    fn path_index_rebuild_and_manual_override() {
+        let tf = setup_tf();
+        insert_project(&tf, 1, "Alpha", "/work/alpha", None);
+        insert_project(&tf, 2, "Beta", "/work/beta", None);
+
+        let count = rebuild_cfab_path_index(&tf).unwrap();
+        assert_eq!(count, 2);
+
+        let idx = load_cfab_path_index(&tf).unwrap();
+        assert_eq!(idx.len(), 2);
+
+        // Add a manual rule for a subfolder
+        let now = chrono::Utc::now().to_rfc3339();
+        tf.execute(
+            "INSERT INTO cfab_project_path_index (folder_norm, project_id, source, updated_at)
+             VALUES ('/work/alpha/special', 2, 'manual', ?1)",
+            rusqlite::params![now],
+        ).unwrap();
+
+        // Rebuild again: manual rule must not be overwritten
+        rebuild_cfab_path_index(&tf).unwrap();
+        let idx2 = load_cfab_path_index(&tf).unwrap();
+        assert_eq!(idx2.len(), 3);
+        let special = idx2.iter().find(|(f, _, _)| f == "/work/alpha/special").unwrap();
+        assert_eq!(special.1, 2);
+        assert_eq!(special.2, "manual");
+
+        let projects = load_projects(&tf).unwrap();
+        // Path in /work/alpha/special matches project 2 (special), not 1 (alpha)
+        let m = match_project_with_index("/work/alpha/special/shot1.c4d", &projects, None, &idx2);
+        assert_eq!(m, Some(2));
+
+        // Path in /work/alpha/normal matches project 1
+        let m2 = match_project_with_index("/work/alpha/normal/shot1.c4d", &projects, None, &idx2);
+        assert_eq!(m2, Some(1));
+    }
+
+    #[test]
+    fn assign_reassign_detach_lifecycle() {
+        let mut tf = setup_tf();
+        insert_project(&tf, 1, "Proj1", "/work/p1", None);
+        insert_project(&tf, 2, "Proj2", "/work/p2", None);
+
+        let ended = 1710500000.0;
+        let hub_dir = temp_test_dir("hub_assign");
+        let hub_path = hub_dir.join("c4dwatch.db");
+        let hub_conn = Connection::open(&hub_path).unwrap();
+        hub_conn.execute_batch(
+            "CREATE TABLE render_ledger (
+                id INTEGER PRIMARY KEY,
+                hub_instance_id TEXT NOT NULL,
+                working_path TEXT NOT NULL,
+                render_seconds REAL NOT NULL,
+                started_at REAL,
+                ended_at REAL NOT NULL,
+                source TEXT NOT NULL,
+                project_hint INTEGER,
+                machine_name TEXT,
+                status TEXT NOT NULL DEFAULT 'open',
+                contract INTEGER NOT NULL DEFAULT 2
+            );",
+        ).unwrap();
+        hub_conn.execute(
+            "INSERT INTO render_ledger (
+                id, hub_instance_id, working_path, render_seconds, started_at, ended_at, source, machine_name, status, contract
+            ) VALUES (10, 'hub-abc', '/unknown/folder/scene.c4d', 3600.0, ?1, ?1, 'c4d', 'MacBook-Pro', 'open', 2)",
+            rusqlite::params![ended],
+        ).unwrap();
+
+        // 1. Check unassigned
+        let unassigned = get_unassigned_cfab_renders_in_conn(&tf, &hub_path).unwrap();
+        assert_eq!(unassigned.len(), 1);
+        assert_eq!(unassigned[0].ledger_id, 10);
+        assert_eq!(unassigned[0].matched_project_id, None);
+
+        // 2. Assign with remember_rule = true
+        assign_cfab_render_in_conn(&mut tf, &hub_path, "hub-abc", 10, 1, true).unwrap();
+
+        // Now should not be unassigned
+        let unassigned2 = get_unassigned_cfab_renders_in_conn(&tf, &hub_path).unwrap();
+        assert_eq!(unassigned2.len(), 0);
+
+        // Check path index created
+        let idx = load_cfab_path_index(&tf).unwrap();
+        assert!(idx.iter().any(|(f, pid, src)| f == "/unknown/folder" && *pid == 1 && src == "manual"));
+
+        // Check all renders list
+        let all = get_all_cfab_renders_in_conn(&tf, None, None, None, None, None).unwrap();
+        assert_eq!(all.total, 1);
+        assert_eq!(all.items[0].project_id, 1);
+        assert_eq!(all.items[0].assigned_by, "manual");
+
+        // 3. Reassign to project 2
+        reassign_cfab_render_in_conn(&mut tf, "hub-abc", 10, 2).unwrap();
+        let all2 = get_all_cfab_renders_in_conn(&tf, None, None, None, None, None).unwrap();
+        assert_eq!(all2.items[0].project_id, 2);
+
+        // 4. Detach
+        detach_cfab_render_in_conn(&mut tf, "hub-abc", 10).unwrap();
+        let all3 = get_all_cfab_renders_in_conn(&tf, None, None, None, None, None).unwrap();
+        assert_eq!(all3.total, 0);
+
+        // Now it shows up in unassigned again, and this time matched_project_id is 1 because of remembered rule!
+        let unassigned3 = get_unassigned_cfab_renders_in_conn(&tf, &hub_path).unwrap();
+        assert_eq!(unassigned3.len(), 1);
+        assert_eq!(unassigned3[0].matched_project_id, Some(1));
+
+        let _ = std::fs::remove_dir_all(&hub_dir);
+    }
+
+
+    #[test]
+    fn dcc_document_inference_and_render_overlap() {
+        let tf = setup_tf();
+        insert_project(&tf, 1, "ProjectX", "/work/project_x", None);
+
+        let hub_dir = temp_test_dir("dcc_hub");
+        let hub_path = hub_dir.join("c4dwatch.db");
+        let hub = Connection::open(&hub_path).unwrap();
+        hub.execute_batch(
+            "CREATE TABLE dcc_activity (
+                id INTEGER PRIMARY KEY,
+                hub_instance_id TEXT NOT NULL,
+                app TEXT NOT NULL,
+                app_version TEXT,
+                pid INTEGER NOT NULL,
+                document_path TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                at REAL NOT NULL,
+                contract INTEGER NOT NULL DEFAULT 1
+            );
+            CREATE TABLE render_ledger (
+                id INTEGER PRIMARY KEY,
+                hub_instance_id TEXT NOT NULL,
+                working_path TEXT NOT NULL,
+                render_seconds REAL NOT NULL,
+                started_at REAL,
+                ended_at REAL NOT NULL,
+                source TEXT NOT NULL,
+                project_hint INTEGER,
+                machine_name TEXT,
+                status TEXT NOT NULL DEFAULT 'open',
+                contract INTEGER NOT NULL DEFAULT 2
+            );",
+        ).unwrap();
+
+        let base_ts = 1710500000.0;
+        hub.execute(
+            "INSERT INTO dcc_activity (hub_instance_id, app, pid, document_path, kind, at, contract)
+             VALUES ('hub-1', 'c4d', 100, '/work/project_x/scene1.c4d', 'active_doc', ?1, 1)",
+            rusqlite::params![base_ts],
+        ).unwrap();
+
+        // 1. Infer project within window
+        let proj = infer_dcc_project_from_hub(&tf, &hub, "Cinema 4D", base_ts - 10.0, base_ts + 10.0).unwrap();
+        assert_eq!(proj, Some(1));
+
+        // 2. Infer project with lookback
+        let proj2 = infer_dcc_project_from_hub(&tf, &hub, "c4d", base_ts + 50.0, base_ts + 100.0).unwrap();
+        assert_eq!(proj2, Some(1));
+
+        // 3. Render overlap
+        hub.execute(
+            "INSERT INTO render_ledger (id, hub_instance_id, working_path, render_seconds, started_at, ended_at, source, status, contract)
+             VALUES (1, 'hub-1', '/work/project_x/scene1.c4d', 100.0, ?1, ?2, 'queue', 'open', 2)",
+            rusqlite::params![base_ts + 100.0, base_ts + 200.0],
+        ).unwrap();
+
+        // Window completely covers render
+        let ov1 = get_render_overlap_seconds(&hub, base_ts + 50.0, base_ts + 250.0).unwrap();
+        assert_eq!(ov1, 100.0);
+
+        // Window overlaps half of render
+        let ov2 = get_render_overlap_seconds(&hub, base_ts + 150.0, base_ts + 300.0).unwrap();
+        assert_eq!(ov2, 50.0);
+
+        // Window has no overlap
+        let ov3 = get_render_overlap_seconds(&hub, base_ts + 300.0, base_ts + 400.0).unwrap();
+        assert_eq!(ov3, 0.0);
+
+        let _ = std::fs::remove_dir_all(&hub_dir);
     }
 
 }

@@ -1,6 +1,6 @@
 [package]
 name = "timeflow-demon"
-version = "0.1.5771"
+version = "0.1.5772"
 edition = "2021"
 description = "TIMEFLOW cross-platform tray daemon with application monitor"
 autobins = false
@@ -68,7 +68,7 @@ wmi = "0.13"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # System tray (cross-platform crate, used only for macOS for now)
-tray-icon = "0.14"
+tray-icon = "0.21"
 # macOS / Objective-C bindings
 objc2 = "0.5"
 objc2-app-kit = { version = "0.2", features = ["NSWorkspace", "NSRunningApplication", "NSApplication", "NSResponder", "NSEvent", "libc"] }

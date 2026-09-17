@@ -87,11 +87,97 @@ export const probeCfabHubDb = (path?: string | null) =>
 export const getCfabHubPeer = () =>
   invoke<CfabHubPeerInfo>('get_cfab_hub_peer');
 
+
+export interface CfabUnassignedRenderRow {
+  hub_instance_id: string;
+  ledger_id: number;
+  working_path: string;
+  render_seconds: number;
+  rbh: number;
+  ended_at: number;
+  machine_name?: string | null;
+  matched_project_id?: number | null;
+  matched_project_name?: string | null;
+}
+
+export interface CfabRenderCostDetail {
+  id: number;
+  hub_instance_id: string;
+  ledger_id: number;
+  project_id: number;
+  project_name: string;
+  working_path: string;
+  render_seconds: number;
+  rbh: number;
+  coefficient: number;
+  value: number;
+  ended_at: number;
+  ingested_at: string;
+  machine_name?: string | null;
+  assigned_by: string;
+  assigned_at?: string | null;
+}
+
+export interface CfabAllRendersResponse {
+  total: number;
+  total_seconds: number;
+  total_rbh: number;
+  total_value: number;
+  items: CfabRenderCostDetail[];
+}
+
+export const getUnassignedCfabRenders = () =>
+  invoke<CfabUnassignedRenderRow[]>('get_unassigned_cfab_renders');
+
+export const getAllCfabRenders = (params: {
+  projectId?: number | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  limit?: number | null;
+  offset?: number | null;
+}) =>
+  invoke<CfabAllRendersResponse>('get_all_cfab_renders', params);
+
+export const assignCfabRender = (
+  hubInstanceId: string,
+  ledgerId: number,
+  projectId: number,
+  rememberRule: boolean,
+) =>
+  invokeMutation<void>('assign_cfab_render', {
+    hubInstanceId,
+    ledgerId,
+    projectId,
+    rememberRule,
+  });
+
+export const reassignCfabRender = (
+  hubInstanceId: string,
+  ledgerId: number,
+  newProjectId: number,
+) =>
+  invokeMutation<void>('reassign_cfab_render', {
+    hubInstanceId,
+    ledgerId,
+    newProjectId,
+  });
+
+export const detachCfabRender = (hubInstanceId: string, ledgerId: number) =>
+  invokeMutation<void>('detach_cfab_render', {
+    hubInstanceId,
+    ledgerId,
+  });
+
 export const cfabRenderApi = {
   getCfabRenderProject,
   ingestCfabRenderForProject,
   updateCfabRenderProjectSettings,
   probeCfabHubDb,
   getCfabHubPeer,
+  getUnassignedCfabRenders,
+  getAllCfabRenders,
+  assignCfabRender,
+  reassignCfabRender,
+  detachCfabRender,
 } as const;
 
