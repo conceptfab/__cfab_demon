@@ -439,11 +439,40 @@ export function useProjectPageController() {
         project.id,
         coefficient,
         cfabState.include_in_billing,
+        cfabState.include_render_in_hours_limit,
       );
       setCfabState(next);
       setCfabCoefficientInput(String(next.coefficient));
     } catch (error) {
       logTauriError('save cfab render settings', error);
+      setCfabSettingsError(
+        getErrorMessage(error, t('project_page.cfab_coefficient_invalid')),
+      );
+    } finally {
+      setCfabSaving(false);
+    }
+  };
+
+    const handleCfabToggleHoursLimit = async (includeRenderInHoursLimit: boolean) => {
+    if (!project) return;
+    const coefficient = parseCfabCoefficient(cfabCoefficientInput);
+    if (coefficient === null) {
+      setCfabSettingsError(t('project_page.cfab_coefficient_invalid'));
+      return;
+    }
+    setCfabSaving(true);
+    setCfabSettingsError(null);
+    try {
+      const next = await cfabRenderApi.updateCfabRenderProjectSettings(
+        project.id,
+        coefficient,
+        cfabState.include_in_billing,
+        includeRenderInHoursLimit,
+      );
+      setCfabState(next);
+      setCfabCoefficientInput(String(next.coefficient));
+    } catch (error) {
+      logTauriError('toggle cfab render hours limit', error);
       setCfabSettingsError(
         getErrorMessage(error, t('project_page.cfab_coefficient_invalid')),
       );
@@ -466,6 +495,7 @@ export function useProjectPageController() {
         project.id,
         coefficient,
         includeInBilling,
+        cfabState.include_render_in_hours_limit,
       );
       setCfabState(next);
       setCfabCoefficientInput(String(next.coefficient));
@@ -794,6 +824,7 @@ export function useProjectPageController() {
     handleCfabIngest,
     handleCfabSaveSettings,
     handleCfabToggleBilling,
+    handleCfabToggleHoursLimit,
     handleCompact,
     handleContextMenu,
     handleCustomRateMultiplier,

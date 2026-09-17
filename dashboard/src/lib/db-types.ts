@@ -365,6 +365,15 @@ export interface ProjectExtraInfo {
   top_apps: { name: string; seconds: number; color: string | null; daily_seconds: number[] }[];
 }
 
+export interface CfabRenderThumbnail {
+  hub_instance_id: string;
+  ledger_id: number;
+  working_path: string;
+  render_seconds: number;
+  ended_at: number;
+  thumbnail_path: string;
+}
+
 export interface ProjectReportData {
   project: ProjectWithStats;
   extra: ProjectExtraInfo;
@@ -379,6 +388,8 @@ export interface ProjectReportData {
    * `null` = projekt nie ma limitu → sekcja raportu się nie renderuje.
    */
   limit: ProjectLimitStatus | null;
+  /** Miniatury renderów z okresu raportu (R4). */
+  cfab_renders?: CfabRenderThumbnail[];
 }
 
 export interface ProjectFolder {

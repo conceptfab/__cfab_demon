@@ -868,7 +868,8 @@
     "cfab_ingest_error": "Could not load data from CFAB Hub.",
     "cfab_ingest_zero": "0 new rows",
     "cfab_ingest_zero_updated": "0 new rows ({{count}} updated)",
-    "cfab_integration_disabled": "CFAB Hub integration is off. Turn it on in Settings → Integration."
+    "cfab_integration_disabled": "CFAB Hub integration is off. Turn it on in Settings → Integration.",
+    "cfab_include_in_hours_limit": "Include rendering time in project hours limit"
   },
   "costs": {
     "section_title": "Additional costs",
@@ -1400,7 +1401,8 @@
       "est_summary": "Projects summary",
       "est_per_day": "Per-day breakdown",
       "est_footer": "Footer (estimates)",
-      "limit": "Hour limit"
+      "limit": "Hour limit",
+      "renders": "Render thumbnails (CFAB Hub)"
     },
     "preview": {
       "header": {
@@ -1801,7 +1803,9 @@
     "limit_hours": "Limit",
     "limit_used": "Used",
     "limit_over": "Over limit",
-    "limit_manual_note": "Including {{hours}} from manual sessions (no multiplier)."
+    "limit_manual_note": "Including {{hours}} from manual sessions (no multiplier).",
+    "renders": "Render Results",
+    "renders_count": "Renders count"
   },
   "clients_page": {
     "title": "Clients",
@@ -2557,7 +2561,26 @@
     "limit_report_detail_title": "The limit section in a report",
     "limit_report_detail_what_it_does": "What it does: prints the limit settlement — billing cycle dates, the limit, usage and hours over the limit, plus a table of the multiplied sessions.",
     "limit_report_detail_when_to_use": "When to use it: when invoicing a retainer project and the overrun must be visible separately from the hours inside the limit.",
-    "limit_report_detail_limitations": "Limitations: the section only appears for projects that have a limit set. The billing cycle has its own calendar (the project's start day), so its dates are printed explicitly and may differ from the report period."
+    "limit_report_detail_limitations": "Limitations: the section only appears for projects that have a limit set. The billing cycle has its own calendar (the project's start day), so its dates are printed explicitly and may differ from the report period.",
+    "renders": "Renderings",
+    "renders_description": "Integration and billing for 3D renders from CFAB 4D Hub (Cinema 4D / Redshift / Blender).",
+    "renders_feature_beacon": "Automatic mutual discovery via beacon files without network or socket configuration.",
+    "renders_feature_index": "Automatic scene-to-project matching based on project folder path index.",
+    "renders_feature_unassigned": "Unassigned renders section with manual assignment and folder rule learning.",
+    "renders_feature_offline": "Air-gapped / offline machine data exchange using .cfabx packages and .cfabx-ack receipts.",
+    "renders_feature_cost": "Conversion of render time (RBH) into monetary cost based on hourly rate and project coefficient.",
+    "renders_feature_thumbnails": "Thumbnails of rendered frames presented in the project PDF report gallery section.",
+    "renders_detail_beacon_title": "Hub Instance Discovery",
+    "renders_detail_beacon_1": "CFAB 4D Hub and TIMEFLOW communicate via shared integration directory, writing runtime status to hub.json and timeflow.json.",
+    "renders_detail_beacon_2": "No network connection or IP configuration required - works locally and safely in read-only mode.",
+    "renders_detail_assignment_title": "Project Assignment",
+    "renders_detail_assignment_1": "TIMEFLOW maintains a path index and automatically maps scene paths to the correct project.",
+    "renders_detail_assignment_2": "Renders from unindexed folders appear in the Unassigned section for quick manual assignment.",
+    "renders_detail_assignment_3": "The Remember rule folder -> project option routes all future renders from that directory automatically.",
+    "renders_detail_offline_title": "Offline Exchange (.cfabx / .cfabx-ack)",
+    "renders_detail_offline_1": "On render nodes without TIMEFLOW, export a .cfabx package containing render proposals and SHA-256 integrity checksums.",
+    "renders_detail_offline_2": "In the Renderings tab, preview package contents, adjust project assignments, and import costs into TIMEFLOW.",
+    "renders_detail_offline_3": "Importing produces a .cfabx-ack confirmation file with project snapshot that archives accounted jobs in Hub."
   },
   "sync_progress": {
     "title": "LAN Synchronization",

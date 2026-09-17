@@ -30,6 +30,7 @@ export interface CfabRenderRow {
   rbh: number;
   value: number;
   ended_at: number;
+  thumbnail_path?: string | null;
 }
 
 export interface CfabRenderDay {
@@ -49,6 +50,7 @@ export interface CfabRenderIngestResult {
 export interface CfabRenderProjectState {
   coefficient: number;
   include_in_billing: boolean;
+  include_render_in_hours_limit: boolean;
   effective_hourly_rate: number;
   days: CfabRenderDay[];
 }
@@ -56,6 +58,7 @@ export interface CfabRenderProjectState {
 export const emptyCfabRenderProjectState = (): CfabRenderProjectState => ({
   coefficient: 0.2,
   include_in_billing: false,
+  include_render_in_hours_limit: false,
   effective_hourly_rate: 0,
   days: [],
 });

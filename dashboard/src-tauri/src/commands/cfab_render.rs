@@ -1694,6 +1694,7 @@ mod tests {
         crate::db_migrations::m29_cfab_render::run(&conn).unwrap();
         crate::db_migrations::m30_cfab_render_instance::run(&conn).unwrap();
         crate::db_migrations::m31_cfab_path_index_and_manual::run(&conn).unwrap();
+        crate::db_migrations::m32_cfab_thumbnails_and_project_summary::run(&conn).unwrap();
         conn
     }
 
@@ -2068,7 +2069,7 @@ mod tests {
     fn update_settings_rejects_invalid_coefficient_without_write() {
         let mut tf = setup_tf();
         insert_project(&tf, 1, "A", "/work/A", None);
-        let err = update_cfab_render_project_settings_in_conn(&mut tf, 1, 0.0, true)
+        let err = update_cfab_render_project_settings_in_conn(&mut tf, 1, 0.0, true, None)
             .expect_err("zero coefficient must be rejected");
         assert!(!err.is_empty());
         let count: i64 = tf
@@ -2094,7 +2095,7 @@ mod tests {
         ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
 
         let state =
-            update_cfab_render_project_settings_in_conn(&mut tf, 1, 0.5, true).unwrap();
+            update_cfab_render_project_settings_in_conn(&mut tf, 1, 0.5, true, None).unwrap();
         assert!((state.coefficient - 0.5).abs() < 1e-9);
         assert!(state.include_in_billing);
 
@@ -2435,7 +2436,7 @@ mod tests {
     }
 
     #[test]
-    fn ingest_skips_contract_3_without_error() {
+    fn ingest_skips_contract_4_without_error() {
         let mut tf = setup_tf();
         insert_project(&tf, 1, "A", "/work/A", None);
         let hub = Connection::open_in_memory().unwrap();
@@ -2451,11 +2452,11 @@ mod tests {
                 hub_instance_id TEXT
             );
             INSERT INTO render_ledger (id, working_path, render_seconds, ended_at, status, contract, hub_instance_id)
-            VALUES (10, '/work/A/future.c4d', 3600.0, 123456789.0, 'open', 3, 'hub-x');",
+            VALUES (10, '/work/A/future.c4d', 3600.0, 123456789.0, 'open', 4, 'hub-x');",
         ).unwrap();
 
         let result = ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
-        assert_eq!(result.ingested, 0, "Unknown contract 3 must be skipped");
+        assert_eq!(result.ingested, 0, "Unknown contract 4 must be skipped");
     }
 
     #[test]

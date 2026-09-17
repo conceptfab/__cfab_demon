@@ -254,6 +254,8 @@ pub fn run() {
             commands::get_project_estimates,
             commands::get_estimates_summary,
             commands::get_cfab_render_project,
+            commands::preview_cfabx_package,
+            commands::import_cfabx_package,
             commands::get_cfab_hub_peer,
             commands::ingest_cfab_render_for_project,
             commands::probe_cfab_hub_db,

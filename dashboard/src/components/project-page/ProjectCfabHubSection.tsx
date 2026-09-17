@@ -23,6 +23,7 @@ type ProjectCfabHubSectionProps = {
   onCoefficientInputChange: (value: string) => void;
   onSaveSettings: () => void;
   onToggleBilling: (includeInBilling: boolean) => void;
+  onToggleHoursLimit?: (includeRenderInHoursLimit: boolean) => void;
   onIngest: () => void;
 };
 
@@ -44,6 +45,7 @@ export function ProjectCfabHubSection({
   onCoefficientInputChange,
   onSaveSettings,
   onToggleBilling,
+  onToggleHoursLimit,
   onIngest,
 }: ProjectCfabHubSectionProps) {
   const { t } = useTranslation();
@@ -107,6 +109,17 @@ export function ProjectCfabHubSection({
               id="cfab-include-billing"
               checked={state.include_in_billing}
               onCheckedChange={onToggleBilling}
+              disabled={saving}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/40 bg-secondary/20 px-4 py-3">
+            <Label htmlFor="cfab-include-hours-limit" className="text-sm">
+              {t('project_page.cfab_include_in_hours_limit')}
+            </Label>
+            <Switch
+              id="cfab-include-hours-limit"
+              checked={state.include_render_in_hours_limit}
+              onCheckedChange={onToggleHoursLimit}
               disabled={saving}
             />
           </div>

@@ -53,6 +53,23 @@ export const REPORT_PAGE_SECTIONS: ReportSectionDef[] = [
     ),
   },
   {
+    id: 'renders',
+    labelKey: 'reports_page.sections.renders',
+    preview: (t) => (
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div className="aspect-video bg-muted-foreground/10 rounded flex items-center justify-center text-[10px] text-muted-foreground/60 border border-muted-foreground/20">
+          Frame 001
+        </div>
+        <div className="aspect-video bg-muted-foreground/10 rounded flex items-center justify-center text-[10px] text-muted-foreground/60 border border-muted-foreground/20">
+          Frame 050
+        </div>
+        <div className="aspect-video bg-muted-foreground/10 rounded flex items-center justify-center text-[10px] text-muted-foreground/60 border border-muted-foreground/20">
+          Frame 100
+        </div>
+      </div>
+    ),
+  },
+  {
     id: 'financials',
     labelKey: 'reports_page.sections.financials',
     preview: (t) => (

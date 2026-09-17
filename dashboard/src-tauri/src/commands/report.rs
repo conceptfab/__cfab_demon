@@ -570,6 +570,7 @@ pub fn print_report(window: tauri::WebviewWindow) -> Result<(), CommandError> {
 #[cfg(test)]
 mod tests {
     use super::{
+        load_report_cfab_renders,
         attach_effective_seconds, compute_effective_by_source,
         query_active_project_with_stats_in_range, query_project_date_bounds,
         query_project_extra_info, query_report_sessions,
@@ -692,4 +693,29 @@ mod tests {
         assert_eq!(all_time_project.total_seconds, 10800);
         assert_eq!(all_time_project.period_seconds, None);
     }
+
+    #[test]
+    fn report_cfab_renders_loads_thumbnails_in_date_range() {
+        let conn = test_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, created_at) VALUES (1, 'P', datetime('now'));
+             INSERT INTO cfab_render_cost (
+                hub_instance_id, ledger_id, project_id, working_path, render_seconds,
+                ended_at, rbh, coefficient, value, ingested_at, thumbnail_path
+             ) VALUES
+                ('hub-1', 1, 1, '/work/P/shot1.c4d', 1800.0, 1773000000.0, 0.5, 0.2, 10.0, '2026-03-10T12:00:00Z', '/thumb/shot1.jpg'),
+                ('hub-1', 2, 1, '/work/P/shot2.c4d', 3600.0, 1773005000.0, 1.0, 0.2, 20.0, '2026-03-10T13:00:00Z', '');"
+        ).unwrap();
+
+        let range = DateRange {
+            start: "2026-03-01".into(),
+            end: "2026-03-31".into(),
+        };
+
+        let renders = load_report_cfab_renders(&conn, 1, &range).expect("renders");
+        assert_eq!(renders.len(), 1, "Only rows with non-empty thumbnail_path are included");
+        assert_eq!(renders[0].thumbnail_path, "/thumb/shot1.jpg");
+        assert_eq!(renders[0].ledger_id, 1);
+    }
+
 }

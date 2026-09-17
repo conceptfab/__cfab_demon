@@ -868,7 +868,8 @@
     "cfab_ingest_error": "Nie udało się wczytać danych z CFAB Hub.",
     "cfab_ingest_zero": "0 nowych wierszy",
     "cfab_ingest_zero_updated": "0 nowych wierszy (zaktualizowano {{count}})",
-    "cfab_integration_disabled": "Integracja z CFAB Hub jest wyłączona. Włącz ją w Ustawienia → Integracja."
+    "cfab_integration_disabled": "Integracja z CFAB Hub jest wyłączona. Włącz ją w Ustawienia → Integracja.",
+    "cfab_include_in_hours_limit": "Wliczaj czas renderowania do limitu godzin projektu"
   },
   "costs": {
     "section_title": "Koszty dodatkowe",
@@ -1400,7 +1401,8 @@
       "est_summary": "Podsumowanie projektów",
       "est_per_day": "Rozbicie na dni",
       "est_footer": "Stopka (estymacje)",
-      "limit": "Limit godzin"
+      "limit": "Limit godzin",
+      "renders": "Miniatury renderów (CFAB Hub)"
     },
     "preview": {
       "header": {
@@ -1801,7 +1803,9 @@
     "limit_hours": "Limit",
     "limit_used": "Zużyto",
     "limit_over": "Ponad limit",
-    "limit_manual_note": "W tym {{hours}} z sesji ręcznych (bez mnożnika)."
+    "limit_manual_note": "W tym {{hours}} z sesji ręcznych (bez mnożnika).",
+    "renders": "Wyniki renderowania",
+    "renders_count": "Liczba renderów"
   },
   "clients_page": {
     "title": "Klienci",
@@ -2557,7 +2561,26 @@
     "limit_report_detail_title": "Sekcja limitu w raporcie",
     "limit_report_detail_what_it_does": "Co robi: drukuje rozliczenie limitu — daty okresu rozliczeniowego, limit, zużycie i godziny ponad limit wraz z tabelą sesji z mnożnikiem.",
     "limit_report_detail_when_to_use": "Kiedy użyć: przy fakturowaniu projektu z ryczałtem, gdy nadgodziny mają być widoczne osobno od godzin w ramach limitu.",
-    "limit_report_detail_limitations": "Ograniczenia: sekcja pojawia się tylko dla projektów z ustawionym limitem. Okres rozliczeniowy ma własny kalendarz (dzień startu projektu), więc jego daty są wydrukowane wprost i mogą różnić się od okresu raportu."
+    "limit_report_detail_limitations": "Ograniczenia: sekcja pojawia się tylko dla projektów z ustawionym limitem. Okres rozliczeniowy ma własny kalendarz (dzień startu projektu), więc jego daty są wydrukowane wprost i mogą różnić się od okresu raportu.",
+    "renders": "Renderingi",
+    "renders_description": "Integracja i rozliczanie renderingów 3D z pakietu CFAB 4D Hub (Cinema 4D / Redshift / Blender).",
+    "renders_feature_beacon": "Automatyczne wykrywanie obecności obu programów przez plik-latarnię (beacon) bez konieczności konfiguracji sieciowej.",
+    "renders_feature_index": "Automatyczne dopasowywanie scen do projektów na podstawie indeksu ścieżek folderów projektów.",
+    "renders_feature_unassigned": "Sekcja Nieprzypisane z możliwością ręcznego przypisania do projektu i zapamiętania reguły folderu.",
+    "renders_feature_offline": "Wymiana danych na maszynach offline (bez sieci) przez paczki .cfabx oraz pliki potwierdzenia .cfabx-ack.",
+    "renders_feature_cost": "Przeliczanie czasu renderu (RBH) na wartość kosztową według stawki godzinowej i współczynnika projektu.",
+    "renders_feature_thumbnails": "Miniatury ukończonych klatek i sekwencji prezentowane w sekcji galerii raportu PDF projektu.",
+    "renders_detail_beacon_title": "Wykrywanie instancji Huba",
+    "renders_detail_beacon_1": "CFAB 4D Hub i TIMEFLOW komunikują się przez wspólny katalog integracji, zapisując stan działania w hub.json i timeflow.json.",
+    "renders_detail_beacon_2": "Nie jest wymagane połączenie sieciowe ani wpisywanie adresów IP - integracja działa lokalnie i bezpiecznie w trybie tylko do odczytu.",
+    "renders_detail_assignment_title": "Przypisywanie do projektów",
+    "renders_detail_assignment_1": "TIMEFLOW utrzymuje indeks folderów i automatycznie wiąże rendering ze ścieżki sceny z odpowiednim projektem.",
+    "renders_detail_assignment_2": "Renderingi wykonane w nowych folderach trafiają do sekcji Nieprzypisane, skąd można je jednym kliknięciem przypisać do projektu.",
+    "renders_detail_assignment_3": "Opcja Zapamiętaj regułę folder -> projekt sprawia, że wszystkie przyszłe renderingi z tego katalogu trafią automatycznie do wybranego projektu.",
+    "renders_detail_offline_title": "Wymiana offline (.cfabx / .cfabx-ack)",
+    "renders_detail_offline_1": "Na stacjach renderujących bez TIMEFLOW można wyeksportować paczkę .cfabx zawierającą propozycje renderów i sumy kontrolne SHA-256.",
+    "renders_detail_offline_2": "W zakładce Renderingi można podejrzeć zawartość paczki, skorygować przypisania i zaimportować koszty do bazy TIMEFLOW.",
+    "renders_detail_offline_3": "Po imporcie generowany jest plik zwrotny .cfabx-ack z migawką projektów, który po wczytaniu w Hubie archiwizuje rozliczone zadania."
   },
   "sync_progress": {
     "title": "Synchronizacja LAN",

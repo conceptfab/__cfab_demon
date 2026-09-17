@@ -23,6 +23,7 @@ import {
   Briefcase,
   Users,
   ListTodo,
+  Clapperboard,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +44,7 @@ import { HelpProjectsSection } from '@/components/help/sections/HelpProjectsSect
 import { HelpAiSection } from '@/components/help/sections/HelpAiSection';
 import { HelpDataSection } from '@/components/help/sections/HelpDataSection';
 import { HelpReportsSection } from '@/components/help/sections/HelpReportsSection';
+import { HelpRendersSection } from '@/components/help/sections/HelpRendersSection';
 import { HelpOnlineSyncSection } from '@/components/help/sections/HelpOnlineSyncSection';
 import { HelpLanSyncSection } from '@/components/help/sections/HelpLanSyncSection';
 import { HelpWebServerSection } from '@/components/help/sections/HelpWebServerSection';
@@ -239,6 +241,7 @@ export function Help() {
             <HelpTabTrigger value="sessions" icon={<List className="size-3.5" />} label={t18n('help_page.sessions')} />
             <HelpTabTrigger value="projects" icon={<FolderKanban className="size-3.5" />} label={t18n('help_page.projects')} />
             <HelpTabTrigger value="estimates" icon={<CircleDollarSign className="size-3.5" />} label={t18n('help_page.estimates')} />
+            <HelpTabTrigger value="renders" icon={<Clapperboard className="size-3.5" />} label={t18n('help_page.renders')} />
             <HelpTabTrigger value="clients" icon={<Users className="size-3.5" />} label={t18n('help_page.clients')} />
             <HelpTabTrigger value="apps" icon={<AppWindow className="size-3.5" />} label={t18n('help_page.applications')} />
             <HelpTabTrigger value="analysis" icon={<BarChart3 className="size-3.5" />} label={t18n('help_page.time_analysis')} />
@@ -274,6 +277,9 @@ export function Help() {
             </TabsContent>
             <TabsContent value="estimates" className="m-0 focus-visible:outline-none">
               <HelpEstimatesSection />
+            </TabsContent>
+            <TabsContent value="renders" className="m-0 focus-visible:outline-none">
+              <HelpRendersSection />
             </TabsContent>
             <TabsContent value="clients" className="m-0 focus-visible:outline-none">
               <HelpClientsSection />

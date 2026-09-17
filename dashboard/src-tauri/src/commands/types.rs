@@ -334,7 +334,6 @@ pub struct ProjectLimitBadge {
     pub pending_boost_count: i64,
 }
 
-#[derive(Serialize)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CfabRenderThumbnail {
     pub hub_instance_id: String,
@@ -345,7 +344,7 @@ pub struct CfabRenderThumbnail {
     pub thumbnail_path: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 pub struct ProjectReportData {
     pub project: ProjectWithStats,
     pub extra: ProjectExtraInfo,

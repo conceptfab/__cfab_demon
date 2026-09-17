@@ -49,6 +49,7 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
     handleCfabIngest,
     handleCfabSaveSettings,
     handleCfabToggleBilling,
+    handleCfabToggleHoursLimit,
     handleCompact,
     handleContextMenu,
     handleEditCommentForSession,
@@ -225,6 +226,7 @@ export function ProjectPageView({ controller }: ProjectPageViewProps) {
         onCoefficientInputChange={setCfabCoefficientInput}
         onSaveSettings={() => void handleCfabSaveSettings()}
         onToggleBilling={(checked) => void handleCfabToggleBilling(checked)}
+        onToggleHoursLimit={(checked) => void handleCfabToggleHoursLimit(checked)}
         onIngest={() => void handleCfabIngest()}
       />
 

@@ -22,7 +22,7 @@ export const ESTIMATE_PLUS_TEMPLATE_ID = 'estimate-plus';
 const ESTIMATE_SIMPLE_SECTIONS = ['est_header', 'est_summary', 'est_footer'];
 const ESTIMATE_PLUS_SECTIONS = ['est_header', 'est_summary', 'est_per_day', 'est_footer'];
 
-const DEFAULT_SECTIONS = ['header', 'stats', 'financials', 'apps', 'timeline', 'sessions', 'comments', 'footer'];
+const DEFAULT_SECTIONS = ['header', 'stats', 'financials', 'renders', 'apps', 'timeline', 'sessions', 'comments', 'footer'];
 
 function generateId(): string {
   return crypto.randomUUID ? crypto.randomUUID() : `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

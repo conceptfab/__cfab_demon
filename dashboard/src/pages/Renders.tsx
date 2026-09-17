@@ -10,6 +10,7 @@ import {
   AlertCircle,
   FileCode,
 } from "lucide-react";
+import { RendersOfflineSection } from "@/components/renders/RendersOfflineSection";
 import { RendersIntegrationStatus } from "@/components/renders/RendersIntegrationStatus";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { mobileLayout } from "@/lib/mobile-layout";
@@ -500,6 +501,9 @@ export function RendersPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Offline Exchange (.cfabx) */}
+      <RendersOfflineSection onImportSuccess={fetchData} />
 
       {/* Integration Status Card at bottom */}
       <RendersIntegrationStatus />
