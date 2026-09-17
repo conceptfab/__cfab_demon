@@ -1,3 +1,41 @@
+
+fn write_demon_timeflow_beacon() {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from);
+    let app_support = {
+        #[cfg(target_os = "macos")]
+        {
+            home.map(|h| h.join("Library").join("Application Support"))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            std::env::var_os("APPDATA")
+                .map(std::path::PathBuf::from)
+                .or_else(|| home.map(|h| h.join("AppData").join("Roaming")))
+        }
+    };
+    if let Some(base) = app_support {
+        let db_path = base.join("TIMEFLOW").join("timeflow_dashboard.db");
+        let now = chrono::Utc::now().timestamp() as f64;
+        let mut contracts = std::collections::HashMap::new();
+        contracts.insert("cfab_render".to_string(), 2);
+
+        let beacon = timeflow_shared::cfab_integration::Beacon {
+            schema: 1,
+            app: "timeflow".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            db_path: db_path.to_string_lossy().into_owned(),
+            instance_id: None,
+            contracts,
+            pid: std::process::id(),
+            started_at: now,
+            heartbeat_at: now,
+        };
+        let _ = timeflow_shared::cfab_integration::write_beacon("timeflow", &beacon);
+    }
+}
+
 // Tracker module — background monitoring thread
 // Wakes every 10s, checks foreground window + CPU usage, aggregates data.
 // Saves to JSON every 5 minutes. Minimal CPU/RAM footprint.
@@ -571,8 +609,15 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
     // Foreground app seen on the previous tick. Used to credit the app the user
     // was leaving for the pre-switch slice of a tick (see split_switch_elapsed).
     let mut last_foreground: Option<monitor::ProcessInfo> = None;
+    let mut last_beacon_write = Instant::now() - Duration::from_secs(30);
 
     loop {
+        // Refresh CFAB integration beacon heartbeat co 30 s
+        if last_beacon_write.elapsed() >= Duration::from_secs(30) {
+            last_beacon_write = Instant::now();
+            write_demon_timeflow_beacon();
+        }
+
         // Check stop signal
         if stop_signal.load(Ordering::Relaxed) {
             // Final save before exiting

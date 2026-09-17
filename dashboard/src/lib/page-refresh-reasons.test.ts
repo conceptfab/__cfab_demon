@@ -93,5 +93,4 @@ describe('page refresh reason helpers', () => {
       shouldRefreshEstimatesPage('update_cfab_render_project_settings'),
     ).toBe(true);
   });
-  });
 });

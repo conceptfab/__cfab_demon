@@ -1,7 +1,29 @@
+export type PeerState = 'absent' | 'stale' | 'alive' | 'incompatible' | 'unreadable';
+
+export interface CfabMachineRow {
+  machine_name: string;
+  hub_instance_id: string;
+  last_ended_at: number;
+  total_renders: number;
+}
+
+export interface CfabHubPeerInfo {
+  state: PeerState;
+  version?: string | null;
+  db_path?: string | null;
+  contract?: number | null;
+  heartbeat_at?: number | null;
+  source: 'override' | 'beacon' | 'canonical';
+  resolved_path: string;
+  probe_status: string;
+  machines: CfabMachineRow[];
+}
+
 // @public-api — Tauri command bindings; knip cannot detect dynamic invoke() usage
 import { invoke, invokeMutation } from './core';
 
 export interface CfabRenderRow {
+  hub_instance_id: string;
   ledger_id: number;
   working_path: string;
   render_seconds: number;
@@ -62,9 +84,14 @@ export const probeCfabHubDb = (path?: string | null) =>
     path: path && path.trim() ? path.trim() : null,
   });
 
+export const getCfabHubPeer = () =>
+  invoke<CfabHubPeerInfo>('get_cfab_hub_peer');
+
 export const cfabRenderApi = {
   getCfabRenderProject,
   ingestCfabRenderForProject,
   updateCfabRenderProjectSettings,
   probeCfabHubDb,
+  getCfabHubPeer,
 } as const;
+

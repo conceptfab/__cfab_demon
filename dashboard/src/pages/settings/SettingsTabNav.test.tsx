@@ -10,6 +10,7 @@ const labels = {
   algorithm: 'Time algorithm',
   rounding: 'Rounding',
   sync: 'Sync',
+  integration: 'Integration',
   pm: 'PM',
   webserver: 'Web Server',
   mcp: 'MCP',

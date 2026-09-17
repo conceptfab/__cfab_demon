@@ -1,11 +1,15 @@
 //! CFAB Hub render ingest (on demand, no daemon tick) and project-page commands.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use chrono::TimeZone;
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
+use timeflow_shared::cfab_integration::{
+    read_beacon, write_beacon, peer_state, Beacon, BeaconRead, PeerState,
+    CFAB_RENDER_SUPPORTED,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::AppHandle;
@@ -15,6 +19,27 @@ use super::helpers::run_db_blocking;
 
 const DEFAULT_COEFFICIENT: f64 = 0.2;
 pub const CFAB_HUB_INTEGRATION_KEY: &str = "timeflow.settings.cfab-hub-integration";
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CfabMachineRow {
+    pub machine_name: String,
+    pub hub_instance_id: String,
+    pub last_ended_at: f64,
+    pub total_renders: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CfabHubPeerInfo {
+    pub state: String,
+    pub version: Option<String>,
+    pub db_path: Option<String>,
+    pub contract: Option<u32>,
+    pub heartbeat_at: Option<f64>,
+    pub source: String,
+    pub resolved_path: String,
+    pub probe_status: String,
+    pub machines: Vec<CfabMachineRow>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CfabRenderDay {
@@ -27,6 +52,7 @@ pub struct CfabRenderDay {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CfabRenderRow {
+    pub hub_instance_id: String,
     pub ledger_id: i64,
     pub working_path: String,
     pub render_seconds: f64,
@@ -134,13 +160,24 @@ pub fn load_cfab_hub_integration() -> CfabHubIntegration {
         .unwrap_or_default()
 }
 
-pub fn hub_db_path_from(settings: &CfabHubIntegration) -> PathBuf {
+pub fn resolve_hub_db_path_with_source(settings: &CfabHubIntegration) -> (PathBuf, &'static str) {
     let override_path = settings.hub_db_path.trim();
     if !override_path.is_empty() {
-        PathBuf::from(override_path)
-    } else {
-        app_support_root().join("c4dwatch").join("c4dwatch.db")
+        return (PathBuf::from(override_path), "override");
     }
+
+    if let BeaconRead::Found(beacon) = read_beacon("hub") {
+        let p = PathBuf::from(&beacon.db_path);
+        if p.is_file() {
+            return (p, "beacon");
+        }
+    }
+
+    (app_support_root().join("c4dwatch").join("c4dwatch.db"), "canonical")
+}
+
+pub fn hub_db_path_from(settings: &CfabHubIntegration) -> PathBuf {
+    resolve_hub_db_path_with_source(settings).0
 }
 
 pub fn hub_db_path() -> PathBuf {
@@ -171,12 +208,172 @@ pub fn open_foreign(path: &Path) -> Result<Option<Connection>, String> {
     if !path.is_file() {
         return Ok(None);
     }
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
+    // Try opening with SQLITE_OPEN_READ_ONLY first (fails gracefully if WAL shm lock fails)
+    let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    let conn = match Connection::open_with_flags(path, flags) {
+        Ok(c) => c,
+        Err(_) => Connection::open(path).map_err(|e| e.to_string())?,
+    };
     conn.execute_batch("PRAGMA query_only=ON;")
         .map_err(|e| e.to_string())?;
     conn.busy_timeout(Duration::from_millis(5000))
         .map_err(|e| e.to_string())?;
     Ok(Some(conn))
+}
+
+pub fn write_timeflow_beacon() {
+    if let Ok(data_dir) = super::helpers::timeflow_data_dir() {
+        let db_path = data_dir.join("timeflow_dashboard.db");
+        let now = chrono::Utc::now().timestamp() as f64;
+        let mut contracts = std::collections::HashMap::new();
+        contracts.insert("cfab_render".to_string(), 2);
+
+        let beacon = Beacon {
+            schema: 1,
+            app: "timeflow".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            db_path: db_path.to_string_lossy().into_owned(),
+            instance_id: None,
+            contracts,
+            pid: std::process::id(),
+            started_at: now,
+            heartbeat_at: now,
+        };
+        let _ = write_beacon("timeflow", &beacon);
+    }
+}
+
+pub fn get_cfab_hub_peer_info(tf: &Connection) -> Result<CfabHubPeerInfo, String> {
+    let settings = load_cfab_hub_integration();
+    let (resolved, source) = resolve_hub_db_path_with_source(&settings);
+    let probe = probe_hub_db(&resolved).to_string();
+
+    let beacon_read = read_beacon("hub");
+    let now = chrono::Utc::now().timestamp() as f64;
+    let state = peer_state(&beacon_read, CFAB_RENDER_SUPPORTED, now).as_str().to_string();
+
+    let (version, db_path, contract, heartbeat_at) = match beacon_read {
+        BeaconRead::Found(b) => {
+            let c = b.contracts.get("cfab_render").copied();
+            (Some(b.version), Some(b.db_path), c, Some(b.heartbeat_at))
+        }
+        _ => (None, None, None, None),
+    };
+
+    let mut stmt = tf
+        .prepare(
+            "SELECT COALESCE(machine_name, '(unknown)'), hub_instance_id, MAX(ended_at), COUNT(*)
+             FROM cfab_render_cost
+             GROUP BY hub_instance_id, COALESCE(machine_name, '(unknown)')
+             ORDER BY MAX(ended_at) DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let machines = stmt
+        .query_map([], |row| {
+            Ok(CfabMachineRow {
+                machine_name: row.get(0)?,
+                hub_instance_id: row.get(1)?,
+                last_ended_at: row.get(2)?,
+                total_renders: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(CfabHubPeerInfo {
+        state,
+        version,
+        db_path,
+        contract,
+        heartbeat_at,
+        source: source.to_string(),
+        resolved_path: resolved.to_string_lossy().into_owned(),
+        probe_status: probe,
+        machines,
+    })
+}
+
+#[derive(Debug, Clone)]
+pub struct HubLedgerRow {
+    pub instance: String,
+    pub ledger_id: i64,
+    pub working_path: String,
+    pub render_seconds: f64,
+    pub ended_at: f64,
+    pub hint: Option<i64>,
+    pub machine_name: Option<String>,
+    pub contract: i64,
+}
+
+pub fn hub_ledger_has_instance(hub: &Connection) -> bool {
+    hub.prepare("SELECT COUNT(*) FROM pragma_table_info('render_ledger') WHERE name='hub_instance_id'")
+        .and_then(|mut stmt| stmt.query_row([], |r| r.get::<_, i64>(0)))
+        .map(|c| c > 0)
+        .unwrap_or(false)
+}
+
+pub fn hub_ledger_has_machine_name(hub: &Connection) -> bool {
+    hub.prepare("SELECT COUNT(*) FROM pragma_table_info('render_ledger') WHERE name='machine_name'")
+        .and_then(|mut stmt| stmt.query_row([], |r| r.get::<_, i64>(0)))
+        .map(|c| c > 0)
+        .unwrap_or(false)
+}
+
+pub fn read_open_ledger(hub: &Connection) -> Result<Vec<HubLedgerRow>, String> {
+    let has_instance = hub_ledger_has_instance(hub);
+    let has_machine = hub_ledger_has_machine_name(hub);
+    if has_instance {
+        let sql = if has_machine {
+            "SELECT COALESCE(hub_instance_id, 'legacy'), id, working_path, render_seconds, ended_at, project_hint, machine_name, contract
+             FROM render_ledger
+             WHERE contract IN (1, 2) AND status = 'open'"
+        } else {
+            "SELECT COALESCE(hub_instance_id, 'legacy'), id, working_path, render_seconds, ended_at, project_hint, NULL AS machine_name, contract
+             FROM render_ledger
+             WHERE contract IN (1, 2) AND status = 'open'"
+        };
+        let mut stmt = hub.prepare(sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(HubLedgerRow {
+                    instance: row.get(0)?,
+                    ledger_id: row.get(1)?,
+                    working_path: row.get(2)?,
+                    render_seconds: row.get(3)?,
+                    ended_at: row.get(4)?,
+                    hint: row.get(5)?,
+                    machine_name: row.get(6)?,
+                    contract: row.get(7)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    } else {
+        let mut stmt = hub
+            .prepare(
+                "SELECT id, working_path, render_seconds, ended_at, project_hint
+                 FROM render_ledger
+                 WHERE contract = 1 AND status = 'open'",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(HubLedgerRow {
+                    instance: "legacy".to_string(),
+                    ledger_id: row.get(0)?,
+                    working_path: row.get(1)?,
+                    render_seconds: row.get(2)?,
+                    ended_at: row.get(3)?,
+                    hint: row.get(4)?,
+                    machine_name: None,
+                    contract: 1,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
 }
 
 pub fn normalize_path(path: &str) -> String {
@@ -370,46 +567,16 @@ pub fn ingest_cfab_render_into(
     let coefficient = project_coefficient(tf, project_id)?;
     let rate = effective_hourly_rate(tf, project_id)?;
 
-    let mut hub_stmt = hub
-        .prepare(
-            "SELECT id, working_path, render_seconds, ended_at, project_hint
-             FROM render_ledger
-             WHERE contract = 1 AND status = 'open'",
-        )
-        .map_err(|e| e.to_string())?;
-    let hub_rows: Vec<(i64, String, f64, f64, Option<i64>)> = hub_stmt
-        .query_map([], |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-            ))
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<_, _>>()
-        .map_err(|e| e.to_string())?;
+    let hub_rows = read_open_ledger(hub)?;
 
     let tx = tf.transaction().map_err(|e| e.to_string())?;
-
-    let acked: HashSet<i64> = {
-        let mut stmt = tx
-            .prepare("SELECT ledger_id FROM cfab_render_ack")
-            .map_err(|e| e.to_string())?;
-        let ids = stmt
-            .query_map([], |row| row.get(0))
-            .map_err(|e| e.to_string())?;
-        ids.collect::<Result<HashSet<i64>, _>>()
-            .map_err(|e| e.to_string())?
-    };
 
     let updated = tx
         .execute(
             "UPDATE cfab_render_cost
              SET coefficient = ?1,
                  value = (render_seconds / 3600.0) * ?1 * ?2
-             WHERE project_id = ?3",
+             WHERE project_id = ?3 AND (ABS(coefficient - ?1) > 1e-9 OR ABS(value - (render_seconds / 3600.0) * ?1 * ?2) > 1e-9)",
             rusqlite::params![coefficient, rate, project_id],
         )
         .map_err(|e| e.to_string())?;
@@ -417,38 +584,60 @@ pub fn ingest_cfab_render_into(
     let ingested_at = chrono::Utc::now().to_rfc3339();
     let mut ingested = 0usize;
 
-    for (ledger_id, working_path, render_seconds, ended_at, hint) in hub_rows {
-        if match_project(&working_path, &projects, hint) != Some(project_id) {
+    for row in hub_rows {
+        if match_project(&row.working_path, &projects, row.hint) != Some(project_id) {
             continue;
         }
-        if acked.contains(&ledger_id) {
+
+        let already_acked: bool = tx
+            .query_row(
+                "SELECT 1 FROM cfab_render_ack WHERE hub_instance_id = ?1 AND ledger_id = ?2",
+                rusqlite::params![row.instance, row.ledger_id],
+                |_| Ok(true),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .unwrap_or(false);
+
+        if already_acked {
             continue;
         }
-        let rbh = render_seconds / 3600.0;
+
+        let rbh = row.render_seconds / 3600.0;
         let value = rbh * coefficient * rate;
         tx.execute(
             "INSERT INTO cfab_render_cost (
-                ledger_id, project_id, working_path, render_seconds,
-                ended_at, rbh, coefficient, value, ingested_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                hub_instance_id, ledger_id, project_id, working_path, render_seconds,
+                ended_at, rbh, coefficient, value, ingested_at, machine_name
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             rusqlite::params![
-                ledger_id,
+                row.instance,
+                row.ledger_id,
                 project_id,
-                working_path,
-                render_seconds,
-                ended_at,
+                row.working_path,
+                row.render_seconds,
+                row.ended_at,
                 rbh,
                 coefficient,
                 value,
-                ingested_at
+                ingested_at,
+                row.machine_name
             ],
         )
         .map_err(|e| e.to_string())?;
         tx.execute(
             "INSERT INTO cfab_render_ack (
-                ledger_id, ingested_at, project_id, rbh, coefficient, contract
-            ) VALUES (?1, ?2, ?3, ?4, ?5, 1)",
-            rusqlite::params![ledger_id, ingested_at, project_id, rbh, coefficient],
+                hub_instance_id, ledger_id, ingested_at, project_id, rbh, coefficient, contract
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                row.instance,
+                row.ledger_id,
+                ingested_at,
+                project_id,
+                rbh,
+                coefficient,
+                row.contract
+            ],
         )
         .map_err(|e| e.to_string())?;
         ingested += 1;
@@ -469,21 +658,22 @@ pub fn list_cfab_render_for_project(
 ) -> Result<Vec<CfabRenderDay>, String> {
     let mut stmt = tf
         .prepare(
-            "SELECT ledger_id, working_path, render_seconds, rbh, value, ended_at
+            "SELECT hub_instance_id, ledger_id, working_path, render_seconds, rbh, value, ended_at
              FROM cfab_render_cost
              WHERE project_id = ?1
-             ORDER BY ended_at DESC, ledger_id DESC",
+             ORDER BY ended_at DESC, id DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows: Vec<CfabRenderRow> = stmt
         .query_map(rusqlite::params![project_id], |row| {
             Ok(CfabRenderRow {
-                ledger_id: row.get(0)?,
-                working_path: row.get(1)?,
-                render_seconds: row.get(2)?,
-                rbh: row.get(3)?,
-                value: row.get(4)?,
-                ended_at: row.get(5)?,
+                hub_instance_id: row.get(0)?,
+                ledger_id: row.get(1)?,
+                working_path: row.get(2)?,
+                render_seconds: row.get(3)?,
+                rbh: row.get(4)?,
+                value: row.get(5)?,
+                ended_at: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -625,6 +815,11 @@ pub async fn ingest_cfab_render_for_project(
 }
 
 #[tauri::command]
+pub async fn get_cfab_hub_peer(app: AppHandle) -> Result<CfabHubPeerInfo, String> {
+    run_db_blocking(app, |conn| get_cfab_hub_peer_info(conn)).await
+}
+
+#[tauri::command]
 pub fn probe_cfab_hub_db(path: Option<String>) -> Result<String, String> {
     let resolved = match path.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
         Some(override_path) => PathBuf::from(override_path),
@@ -679,6 +874,7 @@ mod tests {
         )
         .unwrap();
         crate::db_migrations::m29_cfab_render::run(&conn).unwrap();
+        crate::db_migrations::m30_cfab_render_instance::run(&conn).unwrap();
         conn
     }
 
@@ -732,6 +928,21 @@ mod tests {
         )
         .unwrap();
         hub.last_insert_rowid()
+    }
+
+    fn temp_test_dir(tag: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "cfab_test_dir_{}_{}_{}",
+            tag,
+            std::process::id(),
+            nanos
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
     }
 
     fn temp_db_path(tag: &str) -> PathBuf {
@@ -914,7 +1125,7 @@ mod tests {
 
         let second = ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
         assert_eq!(second.ingested, 0);
-        assert!(second.updated >= 1);
+        assert_eq!(second.updated, 0, "second pass without rate change must not recompute");
 
         let costs: i64 = tf
             .query_row("SELECT COUNT(*) FROM cfab_render_cost", [], |row| row.get(0))
@@ -1090,9 +1301,9 @@ mod tests {
     fn insert_cost_row(conn: &Connection, project_id: i64, value: f64) {
         conn.execute(
             "INSERT INTO cfab_render_cost (
-                ledger_id, project_id, working_path, render_seconds,
-                ended_at, rbh, coefficient, value, ingested_at
-            ) VALUES (?1, ?2, '/work/A/scena.c4d', 3600.0, 1.0, 1.0, 0.2, ?3, '2026-03-15T12:00:00Z')",
+                hub_instance_id, ledger_id, project_id, working_path, render_seconds,
+                ended_at, rbh, coefficient, value, ingested_at, machine_name
+            ) VALUES ('legacy', ?1, ?2, '/work/A/scena.c4d', 3600.0, 1.0, 1.0, 0.2, ?3, '2026-03-15T12:00:00Z', NULL)",
             rusqlite::params![project_id, project_id, value],
         )
         .unwrap();
@@ -1302,4 +1513,194 @@ mod tests {
         assert_eq!(ack, 0);
         let _ = std::fs::remove_file(&hub_path);
     }
+
+    #[test]
+    fn ingest_contract1_without_hub_instance_id_column() {
+        let mut tf = setup_tf();
+        insert_project(&tf, 1, "A", "/work/A", None);
+        let hub = setup_hub(); // contract 1, no hub_instance_id column
+        let ended = Local.with_ymd_and_hms(2026, 3, 15, 12, 0, 0).unwrap().timestamp() as f64;
+        insert_open_ledger(&hub, "/work/A/scena.c4d", 3600.0, ended);
+        let result = ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
+        assert_eq!(result.ingested, 1);
+        let (inst, count): (String, i64) = tf.query_row(
+            "SELECT hub_instance_id, COUNT(*) FROM cfab_render_ack WHERE ledger_id = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?))
+        ).unwrap();
+        assert_eq!(inst, "legacy");
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn ingest_contract2_with_instance_id_and_collision_resolution() {
+        let mut tf = setup_tf();
+        insert_project(&tf, 1, "A", "/work/A", None);
+        tf.execute(
+            "INSERT INTO cfab_render_ack (hub_instance_id, ledger_id, ingested_at, project_id, rbh, coefficient, contract)
+             VALUES ('legacy', 5, '2026-03-15T10:00:00Z', 1, 1.0, 0.2, 1)",
+            [],
+        ).unwrap();
+
+        let hub = Connection::open_in_memory().unwrap();
+        hub.execute_batch(
+            "CREATE TABLE render_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                working_path TEXT NOT NULL,
+                render_seconds REAL NOT NULL,
+                ended_at REAL NOT NULL,
+                project_hint INTEGER,
+                status TEXT NOT NULL DEFAULT 'open',
+                contract INTEGER NOT NULL DEFAULT 2,
+                hub_instance_id TEXT,
+                machine_name TEXT
+            );
+            INSERT INTO render_ledger (id, working_path, render_seconds, ended_at, status, contract, hub_instance_id, machine_name)
+            VALUES (5, '/work/A/scena.c4d', 3600.0, 123456789.0, 'open', 2, 'inst-A', 'node-1');",
+        ).unwrap();
+
+        let result = ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
+        assert_eq!(result.ingested, 1, "Must ingest row 5 for inst-A even if legacy 5 exists");
+
+        let result2 = ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
+        assert_eq!(result2.ingested, 0);
+
+        let (inst, machine): (String, Option<String>) = tf.query_row(
+            "SELECT hub_instance_id, machine_name FROM cfab_render_cost WHERE hub_instance_id = 'inst-A' AND ledger_id = 5",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?))
+        ).unwrap();
+        assert_eq!(inst, "inst-A");
+        assert_eq!(machine.as_deref(), Some("node-1"));
+    }
+
+    #[test]
+    fn ingest_contract1_legacy_row_already_acked_is_skipped() {
+        let mut tf = setup_tf();
+        insert_project(&tf, 1, "A", "/work/A", None);
+        tf.execute(
+            "INSERT INTO cfab_render_ack (hub_instance_id, ledger_id, ingested_at, project_id, rbh, coefficient, contract)
+             VALUES ('legacy', 5, '2026-03-15T10:00:00Z', 1, 1.0, 0.2, 1)",
+            [],
+        ).unwrap();
+
+        let hub = Connection::open_in_memory().unwrap();
+        hub.execute_batch(
+            "CREATE TABLE render_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                working_path TEXT NOT NULL,
+                render_seconds REAL NOT NULL,
+                ended_at REAL NOT NULL,
+                project_hint INTEGER,
+                status TEXT NOT NULL DEFAULT 'open',
+                contract INTEGER NOT NULL DEFAULT 1,
+                hub_instance_id TEXT,
+                machine_name TEXT
+            );
+            INSERT INTO render_ledger (id, working_path, render_seconds, ended_at, status, contract, hub_instance_id)
+            VALUES (5, '/work/A/scena.c4d', 3600.0, 123456789.0, 'open', 1, NULL);",
+        ).unwrap();
+
+        let result = ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
+        assert_eq!(result.ingested, 0, "Already acked legacy row 5 must be skipped");
+    }
+
+    #[test]
+    fn ingest_skips_contract_3_without_error() {
+        let mut tf = setup_tf();
+        insert_project(&tf, 1, "A", "/work/A", None);
+        let hub = Connection::open_in_memory().unwrap();
+        hub.execute_batch(
+            "CREATE TABLE render_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                working_path TEXT NOT NULL,
+                render_seconds REAL NOT NULL,
+                ended_at REAL NOT NULL,
+                project_hint INTEGER,
+                status TEXT NOT NULL DEFAULT 'open',
+                contract INTEGER NOT NULL,
+                hub_instance_id TEXT
+            );
+            INSERT INTO render_ledger (id, working_path, render_seconds, ended_at, status, contract, hub_instance_id)
+            VALUES (10, '/work/A/future.c4d', 3600.0, 123456789.0, 'open', 3, 'hub-x');",
+        ).unwrap();
+
+        let result = ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
+        assert_eq!(result.ingested, 0, "Unknown contract 3 must be skipped");
+    }
+
+    #[test]
+    fn ingest_updates_only_on_rate_or_coefficient_change() {
+        let mut tf = setup_tf();
+        insert_project(&tf, 1, "A", "/work/A", None);
+        let hub = setup_hub();
+        let ended = Local.with_ymd_and_hms(2026, 3, 15, 12, 0, 0).unwrap().timestamp() as f64;
+        insert_open_ledger(&hub, "/work/A/scena.c4d", 3600.0, ended);
+
+        let res1 = ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
+        assert_eq!(res1.ingested, 1);
+        assert_eq!(res1.updated, 0);
+
+        // Second click without change -> updated = 0
+        let res2 = ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
+        assert_eq!(res2.ingested, 0);
+        assert_eq!(res2.updated, 0);
+
+        // Change project rate
+        tf.execute("UPDATE projects SET hourly_rate = 200.0 WHERE id = 1", []).unwrap();
+        let res3 = ingest_cfab_render_into(&mut tf, &hub, 1).unwrap();
+        assert_eq!(res3.ingested, 0);
+        assert_eq!(res3.updated, 1);
+    }
+
+    #[test]
+    fn hub_db_path_source_resolution() {
+        let dir = temp_test_dir("source_res");
+        std::env::set_var("CFAB_INTEGRATION_DIR", &dir);
+
+        // 1. Override wins
+        let s_override = CfabHubIntegration {
+            enabled: true,
+            hub_db_path: "/custom/h.db".to_string(),
+        };
+        let (p1, src1) = resolve_hub_db_path_with_source(&s_override);
+        assert_eq!(p1, PathBuf::from("/custom/h.db"));
+        assert_eq!(src1, "override");
+
+        // 2. Beacon used if file exists
+        let empty_settings = CfabHubIntegration::default();
+        let fake_db = dir.join("fake_history.db");
+        std::fs::write(&fake_db, "sqlite").unwrap();
+
+        let beacon = Beacon {
+            schema: 1,
+            app: "hub".to_string(),
+            version: "0.15".to_string(),
+            db_path: fake_db.to_string_lossy().into_owned(),
+            instance_id: None,
+            contracts: HashMap::new(),
+            pid: 1,
+            started_at: 1.0,
+            heartbeat_at: 1.0,
+        };
+        timeflow_shared::cfab_integration::write_beacon_in_dir(&dir, "hub", &beacon).unwrap();
+
+        let (p2, src2) = resolve_hub_db_path_with_source(&empty_settings);
+        assert_eq!(p2, fake_db);
+        assert_eq!(src2, "beacon");
+
+        // 3. Beacon points to non-existent file -> fallback to canonical
+        let missing_beacon = Beacon {
+            db_path: "/does/not/exist.db".to_string(),
+            ..beacon
+        };
+        timeflow_shared::cfab_integration::write_beacon_in_dir(&dir, "hub", &missing_beacon).unwrap();
+        let (p3, src3) = resolve_hub_db_path_with_source(&empty_settings);
+        assert_eq!(src3, "canonical");
+        assert!(p3.to_string_lossy().ends_with("c4dwatch.db"));
+
+        std::env::remove_var("CFAB_INTEGRATION_DIR");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
 }

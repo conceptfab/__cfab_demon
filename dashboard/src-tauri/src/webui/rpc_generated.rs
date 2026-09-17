@@ -104,6 +104,7 @@ pub fn dispatch_generated(
         "get_autostart_enabled" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_autostart_enabled())?) })()),
         "get_background_diagnostics" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_background_diagnostics(app.clone()))?) })()),
         "get_backup_files" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_backup_files(app.clone()))?) })()),
+        "get_cfab_hub_peer" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_cfab_hub_peer(app.clone()))?) })()),
         "get_cfab_render_project" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_cfab_render_project(app.clone(), from_arg(args, "project_id")?))?) })()),
         "get_clients_summary" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_clients_summary(app.clone(), from_arg(args, "date_range")?))?) })()),
         "get_daemon_logs" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::get_daemon_logs(from_arg(args, "tail_lines")?))?) })()),

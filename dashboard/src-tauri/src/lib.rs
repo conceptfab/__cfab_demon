@@ -53,6 +53,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(move |app| {
+            commands::write_timeflow_beacon();
             // Setup dashboard logging to %APPDATA%/TimeFlow/logs/dashboard.log
             {
                 let base = commands::helpers::timeflow_data_dir()
@@ -253,6 +254,7 @@ pub fn run() {
             commands::get_project_estimates,
             commands::get_estimates_summary,
             commands::get_cfab_render_project,
+            commands::get_cfab_hub_peer,
             commands::ingest_cfab_render_for_project,
             commands::probe_cfab_hub_db,
             commands::update_cfab_render_project_settings,

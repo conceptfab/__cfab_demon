@@ -59,7 +59,8 @@
       "reports": "Reports",
       "pm": "PM",
       "daemon": "Daemon",
-      "todo": "Tasks"
+      "todo": "Tasks",
+      "renders": "Renderings"
     },
     "status": {
       "daemon": "Daemon",
@@ -2865,5 +2866,34 @@
     "pdf_filename": "timeflow_estimate_report",
     "error": "Failed to load report data.",
     "empty": "No data for the report."
+  },
+  "renders_page": {
+    "page_title": "Renderings",
+    "page_desc": "CFAB 4D Hub render integration and communication status",
+    "integration_title": "CFAB 4D Hub Integration Status",
+    "integration_desc": "Automatic database discovery, contract versions and render machines",
+    "refresh": "Refresh",
+    "connection_status": "Connection Status",
+    "hub_version": "Hub Version",
+    "contract": "Contract",
+    "heartbeat": "Last Signal",
+    "database_path": "Database Path",
+    "probe_status": "File Probe Status",
+    "machines_title": "Registered Hub Machines & Instances",
+    "col_machine": "Machine",
+    "col_instance": "Hub Instance",
+    "col_last_render": "Last Render",
+    "col_renders_count": "Renders Count",
+    "no_machines": "No registered renders in project history.",
+    "status_alive": "Active (connected)",
+    "status_stale": "Stale signal (> 90s)",
+    "status_incompatible": "Incompatible contract",
+    "status_unreadable": "Unreadable beacon",
+    "status_absent": "Hub beacon absent",
+    "source_override": "Custom override",
+    "source_beacon": "Auto-discovered",
+    "source_canonical": "Canonical default",
+    "no_heartbeat": "No data",
+    "ago": "ago"
   }
 }

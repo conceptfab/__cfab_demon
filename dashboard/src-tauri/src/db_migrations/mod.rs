@@ -27,9 +27,10 @@ mod m26_costs_and_todos;
 mod m27_todo_end_date;
 mod m28_project_hour_limits;
 pub(crate) mod m29_cfab_render;
+pub(crate) mod m30_cfab_render_instance;
 pub(crate) mod tombstone_triggers;
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 29;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 30;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -145,6 +146,9 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     }
     if current_version < 29 {
         m29_cfab_render::run(&tx)?;
+    }
+    if current_version < 30 {
+        m30_cfab_render_instance::run(&tx)?;
     }
 
     tx.execute(

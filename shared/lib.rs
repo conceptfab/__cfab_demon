@@ -1,3 +1,4 @@
+pub mod cfab_integration;
 pub mod activity_classification;
 pub mod title_parser;
 pub mod daily_store;

@@ -167,7 +167,7 @@ export function ProjectCfabHubSection({
               <div className="space-y-1">
                 {(day.rows ?? []).map((row) => (
                   <div
-                    key={row.ledger_id}
+                    key={`${row.hub_instance_id}:${row.ledger_id}`}
                     className="grid grid-cols-1 gap-1 rounded-md px-2 py-1.5 text-xs hover:bg-secondary/20 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center sm:gap-3"
                   >
                     <p

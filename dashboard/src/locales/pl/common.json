@@ -59,7 +59,8 @@
       "reports": "Raporty",
       "pm": "PM",
       "daemon": "Demon",
-      "todo": "Zadania"
+      "todo": "Zadania",
+      "renders": "Renderingi"
     },
     "status": {
       "daemon": "Demon",
@@ -2865,5 +2866,34 @@
     "pdf_filename": "timeflow_raport_estymacji",
     "error": "Nie udało się wczytać danych raportu.",
     "empty": "Brak danych do raportu."
+  },
+  "renders_page": {
+    "page_title": "Renderingi",
+    "page_desc": "Integracja renderów z CFAB 4D Hub i status komunikacji",
+    "integration_title": "Stan integracji z CFAB 4D Hub",
+    "integration_desc": "Automatyczne wykrywanie bazy, wersje kontraktów i maszyny renderujące",
+    "refresh": "Odśwież",
+    "connection_status": "Status połączenia",
+    "hub_version": "Wersja Huba",
+    "contract": "Kontrakt",
+    "heartbeat": "Ostatni sygnał",
+    "database_path": "Ścieżka bazy danych",
+    "probe_status": "Status odczytu pliku",
+    "machines_title": "Zarejestrowane maszyny i instancje Huba",
+    "col_machine": "Maszyna",
+    "col_instance": "Instancja Huba",
+    "col_last_render": "Ostatni render",
+    "col_renders_count": "Liczba renderów",
+    "no_machines": "Brak zarejestrowanych renderów w historii projektów.",
+    "status_alive": "Aktywny (połączono)",
+    "status_stale": "Brak sygnału (> 90 s)",
+    "status_incompatible": "Niezgodny kontrakt",
+    "status_unreadable": "Błąd odczytu latarni",
+    "status_absent": "Brak sygnału Huba",
+    "source_override": "Ręczna z Ustawień",
+    "source_beacon": "Wykryta automatycznie",
+    "source_canonical": "Domyślna",
+    "no_heartbeat": "Brak danych",
+    "ago": "temu"
   }
 }

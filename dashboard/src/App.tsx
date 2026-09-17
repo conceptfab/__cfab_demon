@@ -23,6 +23,9 @@ const Projects = lazy(() =>
 const Estimates = lazy(() =>
   import('@/pages/Estimates').then((m) => ({ default: m.Estimates })),
 );
+const RendersPage = lazy(() =>
+  import('@/pages/Renders').then((m) => ({ default: m.RendersPage })),
+);
 const Clients = lazy(() =>
   import('@/pages/Clients').then((m) => ({ default: m.Clients })),
 );
@@ -88,6 +91,8 @@ function PageRouter() {
         return <Projects />;
       case 'estimates':
         return <Estimates />;
+      case 'renders':
+        return <RendersPage />;
       case 'clients':
         return <Clients />;
       case 'client-card':

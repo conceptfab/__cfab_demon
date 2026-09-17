@@ -12,6 +12,7 @@ import {
   Cpu,
   Users,
   ListTodo,
+  Clapperboard,
 } from 'lucide-react';
 
 export const sidebarNavItems = [
@@ -21,6 +22,7 @@ export const sidebarNavItems = [
   { id: 'sessions', labelKey: 'layout.nav.sessions', icon: List },
   { id: 'projects', labelKey: 'layout.nav.projects', icon: FolderKanban },
   { id: 'estimates', labelKey: 'layout.nav.estimates', icon: CircleDollarSign },
+  { id: 'renders', labelKey: 'layout.nav.renders', icon: Clapperboard },
   { id: 'clients', labelKey: 'layout.nav.clients', icon: Users },
   {
     id: 'applications',
