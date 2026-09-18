@@ -503,7 +503,7 @@ export function RendersPage() {
       </Card>
 
       {/* Offline Exchange (.cfabx) */}
-      <RendersOfflineSection onImportSuccess={fetchData} />
+      <RendersOfflineSection onImportSuccess={loadData} />
 
       {/* Integration Status Card at bottom */}
       <RendersIntegrationStatus />
