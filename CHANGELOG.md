@@ -9,6 +9,25 @@ P4 = cleanup, P5 = docs/tests.
 
 ## Unreleased
 
+### Fixed
+
+- **P1 — strona „Renderingi" przestała się otwierać:** sekcja wymiany offline dostawała
+  nieistniejącą funkcję odświeżania (`fetchData` zamiast `loadData`), więc cały widok
+  kończył się ekranem „Something went wrong".
+- **P2 — latarnia ogłaszała `cfab_render: 2`,** choć ingest przyjmuje już kontrakt 3;
+  numer bierze się teraz z listy obsługiwanych kontraktów, nie z literału.
+
+### Added
+
+- **Synergia CFAB Hub × TIMEFLOW, etapy A–D** (plan `docs/superpowers/plans/` w repo Huba):
+  migracja m30 (klucz `(hub_instance_id, ledger_id)` w `cfab_render_ack` i `cfab_render_cost`),
+  ingest kontraktów 1–3, latarnie integracji w `Application Support/CFAB/integration/`,
+  bezpieczne otwieranie cudzej bazy (`mode=ro` z fallbackiem), strona „Renderingi"
+  (stan integracji, nieprzypisane, wszystkie, import/eksport `.cfabx`), indeks ścieżek
+  projektów, ręczne przypisywanie renderów i raport rentowności.
+- **Test formatu latarni Huba** na dosłownej kopii pliku `hub.json`: brak pola po stronie
+  Huba wychodzi jako czerwony test, a nie jako cichy stan `unreadable` u użytkownika.
+
 ### Changed
 
 - **Integracja CFAB Hub:** linia statusu cudzej bazy ma ikonę (OK / błąd / wyłączona), bez zmiany znaczenia probe.

@@ -155,7 +155,7 @@ pub fn create_cfabx_ack_content(
     .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
 
     let ack_file = CfabxAckFile {
-        schema: 1,
+        schema: CFABX_SCHEMA,
         hub_instance_id: hub_instance_id.to_string(),
         acked_at: Utc::now().to_rfc3339(),
         acked_items,

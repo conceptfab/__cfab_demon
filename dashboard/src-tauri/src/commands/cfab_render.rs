@@ -8,6 +8,7 @@ use chrono::TimeZone;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use timeflow_shared::cfab_integration::{
     read_beacon, write_beacon, peer_state, Beacon, BeaconRead,
+    announced_render_contract,
     CFAB_RENDER_SUPPORTED,
 };
 use serde::{Deserialize, Serialize};
@@ -271,7 +272,7 @@ pub fn write_timeflow_beacon() {
         let db_path = data_dir.join("timeflow_dashboard.db");
         let now = chrono::Utc::now().timestamp() as f64;
         let mut contracts = std::collections::HashMap::new();
-        contracts.insert("cfab_render".to_string(), 2);
+        contracts.insert("cfab_render".to_string(), announced_render_contract());
 
         let beacon = Beacon {
             schema: 1,

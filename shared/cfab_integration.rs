@@ -4,6 +4,14 @@ use serde::{Deserialize, Serialize};
 
 pub const BEACON_SCHEMA: u32 = 1;
 pub const CFAB_RENDER_SUPPORTED: &[u32] = &[1, 2, 3];
+
+/// Numer kontraktu, ktory TIMEFLOW oglasza w swojej latarni.
+///
+/// Zawsze najwyzszy z obslugiwanych: wpisany recznie rozjezdza sie z ingestem
+/// i druga strona widzi mniej, niz naprawde potrafimy przyjac.
+pub fn announced_render_contract() -> u32 {
+    CFAB_RENDER_SUPPORTED.iter().copied().max().unwrap_or(1)
+}
 pub const HEARTBEAT_INTERVAL_SECS: u64 = 30;
 pub const HEARTBEAT_STALE_SECS: f64 = 90.0;
 
@@ -196,6 +204,48 @@ mod tests {
             r#"{"schema": 2, "app": "hub", "version": "1", "db_path": "", "pid": 1, "started_at": 1, "heartbeat_at": 1}"#
         ).unwrap();
         assert_eq!(read_beacon_in_dir(&dir, "bad_schema"), BeaconRead::Unreadable);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn announced_contract_is_the_highest_we_can_ingest() {
+        assert_eq!(announced_render_contract(), *CFAB_RENDER_SUPPORTED.iter().max().unwrap());
+        assert!(CFAB_RENDER_SUPPORTED.contains(&announced_render_contract()));
+    }
+
+    #[test]
+    fn beacon_written_by_the_hub_parses() {
+        // Doslowna kopia pliku hub.json z CFAB 4D Hub
+        // (shared/cfab_core/integration_beacon.py :: hub_beacon). Kazde pole, ktore Hub
+        // przestanie pisac, zmienia tu stan na Unreadable — czyli powrot do recznego
+        // wklejania sciezki bazy zamiast wykrycia z latarni.
+        let dir = temp_test_dir("hub_format");
+        let hub_json = r#"{
+  "schema": 1,
+  "app": "hub",
+  "version": "BETA 0.181",
+  "db_path": "/Users/x/.local/history.db",
+  "instance_id": "3f2a9c1d",
+  "contracts": {
+    "cfab_render": 3,
+    "dcc_activity": 1,
+    "cfab_project_index": 1
+  },
+  "pid": 25485,
+  "started_at": 1789720294.25,
+  "heartbeat_at": 1789720324.25
+}"#;
+        std::fs::write(dir.join("hub.json"), hub_json).unwrap();
+
+        match read_beacon_in_dir(&dir, "hub") {
+            BeaconRead::Found(beacon) => {
+                assert_eq!(beacon.app, "hub");
+                assert_eq!(beacon.instance_id.as_deref(), Some("3f2a9c1d"));
+                assert_eq!(beacon.contracts.get("cfab_render"), Some(&3));
+            }
+            other => panic!("latarnia Huba nie do odczytania: {:?}", other),
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
     }

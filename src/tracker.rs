@@ -19,7 +19,7 @@ fn write_demon_timeflow_beacon() {
         let db_path = base.join("TIMEFLOW").join("timeflow_dashboard.db");
         let now = chrono::Utc::now().timestamp() as f64;
         let mut contracts = std::collections::HashMap::new();
-        contracts.insert("cfab_render".to_string(), 2);
+        contracts.insert("cfab_render".to_string(), timeflow_shared::cfab_integration::announced_render_contract());
 
         let beacon = timeflow_shared::cfab_integration::Beacon {
             schema: 1,
