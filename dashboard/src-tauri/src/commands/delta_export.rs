@@ -1,6 +1,6 @@
 use super::helpers::build_table_hashes;
 use super::types::{
-    ApplicationRow, AssignmentAutoRunRow, AssignmentFeedbackRow, ClientRow, CostRow, ManualSession, TodoRow,
+    ApplicationRow, AssignmentAutoRunRow, AssignmentFeedbackRow, CfabRenderCostRow, ClientRow, CostRow, ManualSession, TodoRow,
     Project, SessionRow, Tombstone,
 };
 use crate::commands::error::CommandError;
@@ -27,6 +27,8 @@ pub struct TableHashes {
     pub project_costs: String,
     #[serde(default)]
     pub todos: String,
+    #[serde(default)]
+    pub cfab_render_cost: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -51,6 +53,8 @@ pub struct DeltaData {
     pub assignment_feedback: Vec<AssignmentFeedbackRow>,
     #[serde(default)]
     pub assignment_auto_runs: Vec<AssignmentAutoRunRow>,
+    #[serde(default)]
+    pub cfab_render_cost: Vec<CfabRenderCostRow>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -374,6 +378,34 @@ pub fn build_delta_archive(
         assignment_feedback.len(), assignment_auto_runs.len()
     );
 
+    // CFAB Render Cost (delta — only rows ingested after `since`)
+    let cfab_render_cost: Vec<CfabRenderCostRow> = match conn.prepare(
+        "SELECT hub_instance_id, ledger_id, project_id, working_path, render_seconds, ended_at, rbh, coefficient, value, ingested_at, assigned_by, thumbnail_path
+         FROM cfab_render_cost WHERE ingested_at > ?1"
+    ) {
+        Ok(mut stmt) => stmt
+            .query_map([since.as_str()], |row| {
+                Ok(CfabRenderCostRow {
+                    hub_instance_id: row.get(0)?,
+                    ledger_id: row.get(1)?,
+                    project_id: row.get(2)?,
+                    working_path: row.get(3)?,
+                    render_seconds: row.get(4)?,
+                    ended_at: row.get(5)?,
+                    rbh: row.get(6)?,
+                    coefficient: row.get(7)?,
+                    value: row.get(8)?,
+                    ingested_at: row.get(9)?,
+                    assigned_by: row.get(10)?,
+                    thumbnail_path: row.get(11)?,
+                })
+            })
+            .map_err(|e| CommandError::Other(e.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| CommandError::Other(e.to_string()))?,
+        Err(_) => Vec::new(),
+    };
+
     let default_name = format!(
         "timeflow-delta-export-{}.json",
         chrono::Local::now().format("%Y%m%d-%H%M%S")
@@ -397,6 +429,7 @@ pub fn build_delta_archive(
             tombstones,
             assignment_feedback,
             assignment_auto_runs,
+            cfab_render_cost,
         },
     };
 

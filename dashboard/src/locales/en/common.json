@@ -301,7 +301,18 @@
       "sections_label": "sections",
       "edit_templates": "Edit templates",
       "generate": "Generate"
-    }
+    },
+    "profitability_title": "Project Profitability",
+    "profitability_item": "Item",
+    "profitability_quantity": "Quantity",
+    "profitability_value": "Value",
+    "profitability_work_hours": "Work Hours",
+    "profitability_render_rbh": "Renderings (RBH)",
+    "profitability_additional_costs": "Additional Costs",
+    "profitability_total": "Total",
+    "profitability_estimate": "Estimate",
+    "profitability_delta": "Delta (actual − estimate)",
+    "profitability_iterations": "Total {{count}} render iterations."
   },
   "online_sync_indicator": {
     "labels": {

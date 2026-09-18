@@ -3,9 +3,7 @@
 //! Specyfikacja: docs/synergia-timeflow/04-koszty-wyceny-raporty.md § R5.
 
 use std::collections::HashMap;
-use std::fs;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::io::Read;
 
 use chrono::Utc;
 use rusqlite::Connection;

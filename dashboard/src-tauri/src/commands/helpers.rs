@@ -129,6 +129,7 @@ pub(crate) fn build_table_hashes(conn: &rusqlite::Connection) -> super::delta_ex
         manual_sessions: compute_table_hash(conn, "manual_sessions"),
         assignment_feedback: compute_table_hash(conn, "assignment_feedback"),
         assignment_auto_runs: compute_table_hash(conn, "assignment_auto_runs"),
+        cfab_render_cost: compute_table_hash(conn, "cfab_render_cost"),
     }
 }
 

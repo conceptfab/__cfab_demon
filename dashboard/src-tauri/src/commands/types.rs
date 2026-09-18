@@ -928,3 +928,21 @@ pub struct ClientSummary {
     #[serde(default)]
     pub daily_seconds: Vec<i64>,
 }
+
+
+/// Wiersz kosztu renderingu CFAB (R5 — sync między maszynami).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CfabRenderCostRow {
+    pub hub_instance_id: String,
+    pub ledger_id: i64,
+    pub project_id: Option<i64>,
+    pub working_path: Option<String>,
+    pub render_seconds: Option<f64>,
+    pub ended_at: Option<f64>,
+    pub rbh: f64,
+    pub coefficient: f64,
+    pub value: f64,
+    pub ingested_at: String,
+    pub assigned_by: Option<String>,
+    pub thumbnail_path: Option<String>,
+}

@@ -4,6 +4,7 @@ import { ReportViewBoostsSection } from '@/pages/report-view/ReportViewBoostsSec
 import { ReportViewCommentsSection } from '@/pages/report-view/ReportViewCommentsSection';
 import { ReportViewLimitSection } from '@/pages/report-view/ReportViewLimitSection';
 import { ReportViewRenderGallerySection } from '@/pages/report-view/ReportViewRenderGallerySection';
+import { ReportViewProfitabilitySection } from '@/pages/report-view/ReportViewProfitabilitySection';
 import { ReportViewFinancialsSection } from '@/pages/report-view/ReportViewFinancialsSection';
 import { ReportViewFooterSection } from '@/pages/report-view/ReportViewFooterSection';
 import { ReportViewHeaderSection } from '@/pages/report-view/ReportViewHeaderSection';
@@ -24,6 +25,7 @@ export function ReportViewDocument({ controller }: ReportViewDocumentProps) {
         <ReportViewHeaderSection {...controller} />
         <ReportViewStatsSection {...controller} />
         <ReportViewFinancialsSection {...controller} />
+        <ReportViewProfitabilitySection {...controller} />
         <ReportViewRenderGallerySection {...controller} />
         <ReportViewLimitSection {...controller} />
         <ReportViewTopAppsSection {...controller} />

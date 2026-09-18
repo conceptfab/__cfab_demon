@@ -301,7 +301,18 @@
       "sections_label": "sekcji",
       "edit_templates": "Edytuj szablony",
       "generate": "Generuj"
-    }
+    },
+    "profitability_title": "Rentowność projektu",
+    "profitability_item": "Pozycja",
+    "profitability_quantity": "Ilość",
+    "profitability_value": "Wartość",
+    "profitability_work_hours": "Godziny pracy",
+    "profitability_render_rbh": "Renderingi (RBH)",
+    "profitability_additional_costs": "Koszty dodatkowe",
+    "profitability_total": "Razem",
+    "profitability_estimate": "Wycena (estymacja)",
+    "profitability_delta": "Różnica (wykonanie − wycena)",
+    "profitability_iterations": "Łącznie {{count}} iteracji renderingu."
   },
   "online_sync_indicator": {
     "labels": {
