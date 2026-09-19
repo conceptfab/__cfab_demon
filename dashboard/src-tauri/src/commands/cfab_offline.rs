@@ -257,11 +257,12 @@ pub async fn import_cfabx_package(
                     tx.execute(
                         "INSERT INTO cfab_render_cost (
                             hub_instance_id, ledger_id, project_id, working_path, render_seconds,
-                            ended_at, rbh, coefficient, value, ingested_at, assigned_by
-                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'manual')
+                            ended_at, rbh, coefficient, value, ingested_at, assigned_by, updated_at
+                        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'manual', ?10)
                         ON CONFLICT(hub_instance_id, ledger_id) DO UPDATE SET
                             project_id = excluded.project_id,
-                            assigned_by = 'manual'",
+                            assigned_by = 'manual',
+                            updated_at = excluded.updated_at",
                         rusqlite::params![p.hub_instance_id, p.source_id, proj_id, path, sec, ended, rbh, coeff, value, now],
                     ).map_err(|e| e.to_string())?;
 

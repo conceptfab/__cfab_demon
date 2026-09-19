@@ -30,9 +30,10 @@ pub(crate) mod m29_cfab_render;
 pub(crate) mod m30_cfab_render_instance;
 pub(crate) mod m31_cfab_path_index_and_manual;
 pub(crate) mod m32_cfab_thumbnails_and_project_summary;
+pub(crate) mod m33_cfab_render_cost_updated_at;
 pub(crate) mod tombstone_triggers;
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 32;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 33;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -157,6 +158,9 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     }
     if current_version < 32 {
         m32_cfab_thumbnails_and_project_summary::run(&tx)?;
+    }
+    if current_version < 33 {
+        m33_cfab_render_cost_updated_at::run(&tx)?;
     }
 
     tx.execute(

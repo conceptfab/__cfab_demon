@@ -284,9 +284,7 @@ fn clear_synchronized_tables(tx: &rusqlite::Transaction<'_>) -> Result<(), Strin
            );",
     )
     .map_err(|e| format!("Failed to clear tables before sync import: {}", e))?;
-    for sql in tombstone_triggers::CREATE_ALL_TOMBSTONE_TRIGGERS_SQL {
-        tx.execute(sql, []).map_err(|e| e.to_string())?;
-    }
+    timeflow_shared::sync::triggers::create_all_tombstone_triggers(tx)?;
     Ok(())
 }
 
@@ -674,12 +672,7 @@ fn import_archive_into_tx(
     }
 
     // Re-arm tombstone triggers (disabled for the whole import — see step 0).
-    {
-        use crate::db_migrations::tombstone_triggers;
-        for sql in tombstone_triggers::CREATE_ALL_TOMBSTONE_TRIGGERS_SQL {
-            tx.execute(sql, []).map_err(|e| e.to_string())?;
-        }
-    }
+    timeflow_shared::sync::triggers::create_all_tombstone_triggers(tx)?;
 
     Ok(summary)
 }

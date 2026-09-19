@@ -240,6 +240,25 @@ pub fn apply_tombstones(
                             .map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str))
                             .unwrap_or(false)
                     }
+                    "cfab_render_cost" => {
+                        // sync_key = "hub_instance_id|ledger_id"
+                        if let Some((hub, ledger)) = sync_key.split_once('|') {
+                            let local_updated: Option<String> = tx
+                                .query_row(
+                                    "SELECT updated_at FROM cfab_render_cost \
+                                     WHERE hub_instance_id = ?1 AND ledger_id = CAST(?2 AS INTEGER)",
+                                    rusqlite::params![hub, ledger],
+                                    |row| row.get(0),
+                                )
+                                .ok();
+                            local_updated
+                                .as_deref()
+                                .map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str))
+                                .unwrap_or(false)
+                        } else {
+                            false
+                        }
+                    }
                     _ => false,
                 };
                 if skip_tombstone {
@@ -281,6 +300,14 @@ pub fn apply_tombstones(
                              WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
                             [sync_key],
                         ) { log::warn!("tombstone FK cleanup applications for project '{}': {}", sync_key, e); }
+                        // cfab_render_cost.project_id jest NOT NULL — nie ma jak go wyzerować
+                        // jak w sesjach, więc rendery znikają razem z projektem. Tabela może
+                        // nie istnieć (baza sprzed m29), dlatego błąd jest tylko logowany.
+                        if let Err(e) = tx.execute(
+                            "DELETE FROM cfab_render_cost \
+                             WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
+                            [sync_key],
+                        ) { log::warn!("tombstone FK cleanup cfab_render_cost for project '{}': {}", sync_key, e); }
                         let _ = tx.execute("DELETE FROM projects WHERE name = ?1", [sync_key]);
                     }
                     "applications" => {
@@ -342,6 +369,17 @@ pub fn apply_tombstones(
                     "todos" => {
                         // Brak FK — zadanie nie ma zależnych rekordów do posprzątania.
                         let _ = tx.execute("DELETE FROM todos WHERE uid = ?1", [sync_key]);
+                    }
+                    "cfab_render_cost" => {
+                        // sync_key = "hub_instance_id|ledger_id" (klucz z m30).
+                        // Odpowiada `detach_cfab_render_in_conn` po stronie peera.
+                        if let Some((hub, ledger)) = sync_key.split_once('|') {
+                            let _ = tx.execute(
+                                "DELETE FROM cfab_render_cost \
+                                 WHERE hub_instance_id = ?1 AND ledger_id = CAST(?2 AS INTEGER)",
+                                rusqlite::params![hub, ledger],
+                            );
+                        }
                     }
                     _ => { log::warn!("Tombstone for unknown table: {}", table_name); }
                 }
@@ -1803,5 +1841,461 @@ mod todos_merge_tests {
             .query_row("SELECT COUNT(*) FROM todos", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 0);
+    }
+}
+
+// ── Rendery CFAB (m29/m30 + `updated_at` z m33) ──
+
+/// Współczynnik i stawka projektu WEDŁUG LOKALNYCH ustawień — payload ich nie niesie.
+/// Fallbacki 1:1 z `cfab_render.rs`: brak wiersza ustawień → 0.2, brak stawki → 0.0.
+fn local_render_money(tx: &rusqlite::Transaction<'_>, project_id: i64) -> (f64, f64) {
+    let coefficient: f64 = tx
+        .query_row(
+            "SELECT coefficient FROM cfab_render_project_settings WHERE project_id = ?1",
+            [project_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0.2);
+    let rate: f64 = tx
+        .query_row(
+            "SELECT COALESCE(hourly_rate, 0.0) FROM projects WHERE id = ?1",
+            [project_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0.0);
+    (coefficient, rate)
+}
+
+/// Scala czas renderów CFAB przypisanych do projektów.
+///
+/// Zakres jest wąski i celowy: payload niesie WYŁĄCZNIE czas renderu (`render_seconds`,
+/// `ended_at`), jego tożsamość (`hub_instance_id` + `ledger_id`, unikalne od m30) oraz
+/// nazwę projektu, do którego został przypisany. Kwoty (`coefficient`, `rbh`, `value`)
+/// liczymy TUTAJ z lokalnych ustawień projektu — ustawienia CFAB są per maszyna, więc
+/// kwota policzona stawką peera byłaby u nas kłamstwem.
+///
+/// Rozstrzyganie konfliktu: LWW po `updated_at`. Ten sam render przypisany do dwóch
+/// różnych projektów na dwóch maszynach zbiega do przypisania nowszego w czasie.
+///
+/// Wiersz, którego projektu nie znamy po nazwie, jest pomijany — nie zgadujemy
+/// przypisania. `merge_projects` idzie przed tą funkcją, więc w normalnym przebiegu
+/// projekt peera już istnieje lokalnie.
+pub fn merge_cfab_render_cost(
+    tx: &rusqlite::Transaction<'_>,
+    archive: &serde_json::Value,
+    hooks: &MergeHooks<'_>,
+) -> Result<(), String> {
+    let Some(rows) = archive
+        .pointer("/data/cfab_render_cost")
+        .and_then(|v| v.as_array())
+    else {
+        return Ok(());
+    };
+
+    // Baza sprzed integracji CFAB (m29) nie ma gdzie tego zapisać — payload nowszego
+    // peera nie może wysadzić merge'u całej reszty.
+    let table_exists: bool = tx
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cfab_render_cost'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !table_exists {
+        if !rows.is_empty() {
+            (hooks.log)(&format!(
+                "  Pomijam {} renderow CFAB — brak tabeli cfab_render_cost (baza sprzed m29)",
+                rows.len()
+            ));
+        }
+        return Ok(());
+    }
+
+    let mut inserted = 0u32;
+    let mut updated = 0u32;
+    let mut skipped_no_project = 0u32;
+
+    for r in rows {
+        let hub_instance_id = json_str(r, "hub_instance_id");
+        let ledger_id = json_i64(r, "ledger_id");
+        if hub_instance_id.is_empty() || ledger_id == 0 {
+            continue;
+        }
+        let sync_key = format!("{hub_instance_id}|{ledger_id}");
+        let updated_at = json_str(r, "updated_at");
+
+        if local_tombstone_covers(tx, "cfab_render_cost", &sync_key, updated_at) {
+            continue;
+        }
+
+        let project_name = json_str_opt(r, "project_name").unwrap_or_default();
+        if project_name.is_empty() {
+            skipped_no_project += 1;
+            continue;
+        }
+        let local_project_id: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM projects WHERE name = ?1",
+                [&project_name],
+                |row| row.get(0),
+            )
+            .ok();
+        let Some(project_id) = local_project_id else {
+            skipped_no_project += 1;
+            continue;
+        };
+
+        let render_seconds = json_f64(r, "render_seconds");
+        let ended_at = json_f64(r, "ended_at");
+        let working_path = json_str_opt(r, "working_path").unwrap_or_default();
+
+        let (coefficient, rate) = local_render_money(tx, project_id);
+        let rbh = render_seconds / 3600.0;
+        let value = rbh * coefficient * rate;
+
+        let local_ts: Option<String> = tx
+            .query_row(
+                "SELECT updated_at FROM cfab_render_cost WHERE hub_instance_id = ?1 AND ledger_id = ?2",
+                rusqlite::params![hub_instance_id, ledger_id],
+                |row| row.get(0),
+            )
+            .ok();
+
+        match local_ts {
+            Some(lt) if normalize_ts(&lt) >= normalize_ts(updated_at) => { /* local wins */ }
+            Some(lt) => {
+                log_merge_conflict(tx, "cfab_render_cost", &sync_key, &lt, updated_at, "remote");
+                // Aktualizujemy przypisanie i czas; kwoty przeliczone lokalnie.
+                // Kolumny per-maszyna (ingested_at, machine_name) zostają nietknięte.
+                tx.execute(
+                    "UPDATE cfab_render_cost
+                     SET project_id = ?1, render_seconds = ?2, ended_at = ?3, rbh = ?4,
+                         coefficient = ?5, value = ?6, updated_at = ?7
+                     WHERE hub_instance_id = ?8 AND ledger_id = ?9",
+                    rusqlite::params![
+                        project_id, render_seconds, ended_at, rbh, coefficient, value,
+                        updated_at, hub_instance_id, ledger_id
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+                updated += 1;
+            }
+            None => {
+                // `ingested_at` = moment wejścia wiersza DO TEJ bazy, więc bierzemy
+                // `updated_at` z payloadu, a nie czas ingestu peera.
+                tx.execute(
+                    "INSERT INTO cfab_render_cost (
+                        hub_instance_id, ledger_id, project_id, working_path, render_seconds,
+                        ended_at, rbh, coefficient, value, ingested_at, assigned_by, updated_at
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'sync', ?10)",
+                    rusqlite::params![
+                        hub_instance_id, ledger_id, project_id, working_path, render_seconds,
+                        ended_at, rbh, coefficient, value, updated_at
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+                inserted += 1;
+            }
+        }
+    }
+
+    if inserted > 0 || updated > 0 || skipped_no_project > 0 {
+        (hooks.log)(&format!(
+            "  Rendery CFAB: +{inserted} nowych, {updated} zaktualizowanych, {skipped_no_project} pominietych (nieznany projekt)"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod cfab_render_merge_tests {
+    use super::*;
+
+    fn make_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory");
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+            CREATE TABLE projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                hourly_rate REAL,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+            );
+            CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_id INTEGER,
+                project_id INTEGER,
+                start_time TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE manual_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL DEFAULT 0,
+                start_time TEXT,
+                title TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE applications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                executable_name TEXT NOT NULL UNIQUE,
+                project_id INTEGER,
+                updated_at TEXT
+            );
+            CREATE TABLE cfab_render_cost (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hub_instance_id TEXT NOT NULL DEFAULT 'legacy',
+                ledger_id INTEGER NOT NULL,
+                project_id INTEGER NOT NULL,
+                working_path TEXT NOT NULL,
+                render_seconds REAL NOT NULL,
+                ended_at REAL NOT NULL,
+                rbh REAL NOT NULL,
+                coefficient REAL NOT NULL,
+                value REAL NOT NULL,
+                ingested_at TEXT NOT NULL,
+                machine_name TEXT,
+                assigned_by TEXT NOT NULL DEFAULT 'auto',
+                assigned_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00',
+                UNIQUE (hub_instance_id, ledger_id)
+            );
+            CREATE TABLE cfab_render_project_settings (
+                project_id INTEGER PRIMARY KEY,
+                coefficient REAL NOT NULL DEFAULT 0.2,
+                include_in_billing INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE tombstones (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL,
+                record_id INTEGER,
+                deleted_at TEXT,
+                sync_key TEXT,
+                UNIQUE(table_name, sync_key)
+            );
+            CREATE TABLE sync_merge_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT,
+                record_key TEXT,
+                resolution TEXT,
+                local_updated_at TEXT,
+                remote_updated_at TEXT,
+                winner TEXT
+            );",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn seed_render_project(conn: &rusqlite::Connection, name: &str, rate: f64, coefficient: f64) -> i64 {
+        conn.execute(
+            "INSERT INTO projects (name, hourly_rate, updated_at) VALUES (?1, ?2, '2026-01-01 00:00:00')",
+            rusqlite::params![name, rate],
+        )
+        .unwrap();
+        let id: i64 = conn
+            .query_row("SELECT id FROM projects WHERE name = ?1", [name], |r| r.get(0))
+            .unwrap();
+        conn.execute(
+            "INSERT INTO cfab_render_project_settings (project_id, coefficient, updated_at)
+             VALUES (?1, ?2, '2026-01-01 00:00:00')",
+            rusqlite::params![id, coefficient],
+        )
+        .unwrap();
+        id
+    }
+
+    fn render_payload(project_name: &str, seconds: f64, updated_at: &str) -> serde_json::Value {
+        serde_json::json!({
+            "data": {
+                "cfab_render_cost": [{
+                    "hub_instance_id": "inst-A",
+                    "ledger_id": 42,
+                    "project_name": project_name,
+                    "working_path": "/work/P/shot.hip",
+                    "render_seconds": seconds,
+                    "ended_at": 1_773_000_000.0_f64,
+                    "updated_at": updated_at,
+                }]
+            }
+        })
+    }
+
+    fn run_render_merge(conn: &mut rusqlite::Connection, archive: &serde_json::Value) {
+        let hooks = MergeHooks { log: &|_| {}, diag: false };
+        let tx = conn.transaction().unwrap();
+        apply_tombstones(&tx, archive, &hooks).unwrap();
+        merge_cfab_render_cost(&tx, archive, &hooks).unwrap();
+        tx.commit().unwrap();
+    }
+
+    #[test]
+    fn render_from_peer_is_inserted_with_locally_computed_value() {
+        let mut conn = make_db();
+        // Stawka 100/h, współczynnik 0.25 — LOKALNE ustawienia tej maszyny.
+        let pid = seed_render_project(&conn, "Projekt A", 100.0, 0.25);
+
+        run_render_merge(&mut conn, &render_payload("Projekt A", 7200.0, "2026-03-01 10:00:00"));
+
+        let (got_pid, seconds, rbh, coeff, value, assigned_by): (i64, f64, f64, f64, f64, String) = conn
+            .query_row(
+                "SELECT project_id, render_seconds, rbh, coefficient, value, assigned_by
+                 FROM cfab_render_cost WHERE hub_instance_id = 'inst-A' AND ledger_id = 42",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+            )
+            .unwrap();
+        assert_eq!(got_pid, pid, "render trafia do projektu rozwiazanego po nazwie");
+        assert_eq!(seconds, 7200.0, "czas renderu przenosi sie 1:1");
+        assert!((rbh - 2.0).abs() < 1e-9);
+        assert!((coeff - 0.25).abs() < 1e-9, "wspolczynnik z LOKALNYCH ustawien");
+        assert!((value - 50.0).abs() < 1e-9, "2h * 0.25 * 100 = 50 (lokalna stawka)");
+        assert_eq!(assigned_by, "sync");
+    }
+
+    #[test]
+    fn peer_money_never_overrides_local_settings() {
+        let mut conn = make_db();
+        seed_render_project(&conn, "Projekt A", 200.0, 0.5);
+        // Payload celowo niesie kwoty peera — muszą zostać zignorowane.
+        let mut archive = render_payload("Projekt A", 3600.0, "2026-03-01 10:00:00");
+        archive["data"]["cfab_render_cost"][0]["value"] = serde_json::json!(999.0);
+        archive["data"]["cfab_render_cost"][0]["coefficient"] = serde_json::json!(0.01);
+
+        run_render_merge(&mut conn, &archive);
+
+        let (coeff, value): (f64, f64) = conn
+            .query_row(
+                "SELECT coefficient, value FROM cfab_render_cost WHERE ledger_id = 42",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!((coeff - 0.5).abs() < 1e-9);
+        assert!((value - 100.0).abs() < 1e-9, "1h * 0.5 * 200 = 100, nie 999 od peera");
+    }
+
+    #[test]
+    fn reassignment_resolves_by_last_writer_wins() {
+        let mut conn = make_db();
+        seed_render_project(&conn, "Projekt A", 100.0, 0.2);
+        let pid_b = seed_render_project(&conn, "Projekt B", 100.0, 0.2);
+
+        run_render_merge(&mut conn, &render_payload("Projekt A", 3600.0, "2026-03-01 10:00:00"));
+        // Peer przepisal ten sam render na inny projekt PÓŹNIEJ → wygrywa.
+        run_render_merge(&mut conn, &render_payload("Projekt B", 3600.0, "2026-03-02 10:00:00"));
+
+        let got_pid: i64 = conn
+            .query_row("SELECT project_id FROM cfab_render_cost WHERE ledger_id = 42", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(got_pid, pid_b, "nowsze przypisanie wygrywa");
+
+        // Starszy payload nie może cofnąć przypisania.
+        run_render_merge(&mut conn, &render_payload("Projekt A", 3600.0, "2026-02-01 10:00:00"));
+        let still_b: i64 = conn
+            .query_row("SELECT project_id FROM cfab_render_cost WHERE ledger_id = 42", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(still_b, pid_b, "starszy payload jest ignorowany (LWW)");
+    }
+
+    #[test]
+    fn unknown_project_is_skipped_not_guessed() {
+        let mut conn = make_db();
+        seed_render_project(&conn, "Projekt A", 100.0, 0.2);
+
+        run_render_merge(&mut conn, &render_payload("Projekt Nieznany", 3600.0, "2026-03-01 10:00:00"));
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cfab_render_cost", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "nie zgadujemy przypisania dla nieznanego projektu");
+    }
+
+    #[test]
+    fn detach_tombstone_deletes_render_and_blocks_resurrection() {
+        let mut conn = make_db();
+        seed_render_project(&conn, "Projekt A", 100.0, 0.2);
+        run_render_merge(&mut conn, &render_payload("Projekt A", 3600.0, "2026-03-01 10:00:00"));
+
+        // Peer odpiął render (detach) o 12:00.
+        let tomb = serde_json::json!({
+            "data": {
+                "tombstones": [{
+                    "table_name": "cfab_render_cost",
+                    "record_id": 1,
+                    "sync_key": "inst-A|42",
+                    "deleted_at": "2026-03-01 12:00:00"
+                }]
+            }
+        });
+        run_render_merge(&mut conn, &tomb);
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cfab_render_cost", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "tombstone kasuje odpiety render");
+
+        // Pełny snapshot od peera nadal zawiera wiersz sprzed usunięcia — nie wolno go wskrzesić.
+        run_render_merge(&mut conn, &render_payload("Projekt A", 3600.0, "2026-03-01 10:00:00"));
+        let after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cfab_render_cost", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(after, 0, "starszy wiersz nie wskrzesza usunietego renderu");
+    }
+
+    #[test]
+    fn render_newer_than_tombstone_survives() {
+        let mut conn = make_db();
+        seed_render_project(&conn, "Projekt A", 100.0, 0.2);
+        run_render_merge(&mut conn, &render_payload("Projekt A", 3600.0, "2026-03-05 10:00:00"));
+
+        // Tombstone STARSZY niż lokalny wiersz → usunięcie jest przedawnione.
+        let tomb = serde_json::json!({
+            "data": {
+                "tombstones": [{
+                    "table_name": "cfab_render_cost",
+                    "record_id": 1,
+                    "sync_key": "inst-A|42",
+                    "deleted_at": "2026-03-01 12:00:00"
+                }]
+            }
+        });
+        run_render_merge(&mut conn, &tomb);
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cfab_render_cost", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "render nowszy niz tombstone zostaje");
+    }
+
+    #[test]
+    fn project_tombstone_removes_its_renders() {
+        let mut conn = make_db();
+        seed_render_project(&conn, "Projekt A", 100.0, 0.2);
+        run_render_merge(&mut conn, &render_payload("Projekt A", 3600.0, "2026-03-01 10:00:00"));
+
+        let tomb = serde_json::json!({
+            "data": {
+                "tombstones": [{
+                    "table_name": "projects",
+                    "record_id": 1,
+                    "sync_key": "Projekt A",
+                    "deleted_at": "2026-04-01 12:00:00"
+                }]
+            }
+        });
+        run_render_merge(&mut conn, &tomb);
+
+        let renders: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cfab_render_cost", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(renders, 0, "rendery znikaja razem z projektem (project_id NOT NULL)");
+    }
+
+    #[test]
+    fn missing_cfab_table_does_not_break_merge() {
+        let mut conn = make_db();
+        conn.execute_batch("DROP TABLE cfab_render_cost;").unwrap();
+        // Baza sprzed m29 nie może wysadzić merge'u payloadu od nowszego peera.
+        run_render_merge(&mut conn, &render_payload("Projekt A", 3600.0, "2026-03-01 10:00:00"));
     }
 }

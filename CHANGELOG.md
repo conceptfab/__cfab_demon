@@ -11,6 +11,14 @@ P4 = cleanup, P5 = docs/tests.
 
 ### Fixed
 
+- **P2 — `CREATE TRIGGER` na nieistniejącej tabeli wysadzał merge:** triggery tombstone
+  zakłada teraz `timeflow_shared::sync::triggers::create_all_tombstone_triggers`, które
+  pomija tabele sprzed odpowiedniej migracji (dashboard jest właścicielem migracji, a
+  demon może dotknąć bazy przed jego pierwszym startem po upgrade'cie).
+- **P2 — ingest renderów mógł paść na `UNIQUE`,** gdy wiersz o tym samym
+  `(hub_instance_id, ledger_id)` przyszedł synchronizacją z innej maszyny czytającej
+  ten sam hub (lokalny ACK go nie zna, bo ACK jest per maszyna): `INSERT` w
+  `ingest_cfab_render_into` ma teraz `ON CONFLICT DO NOTHING`.
 - **P1 — strona „Renderingi" przestała się otwierać:** sekcja wymiany offline dostawała
   nieistniejącą funkcję odświeżania (`fetchData` zamiast `loadData`), więc cały widok
   kończył się ekranem „Something went wrong".
@@ -19,6 +27,26 @@ P4 = cleanup, P5 = docs/tests.
 
 ### Added
 
+- **P1 — synchronizacja czasu renderów przypisanych do projektów (LAN + online).**
+  Do tej pory `cfab_render_cost` nie była w ogóle objęta synchronizacją: payload
+  (`lan_server::build_delta_for_pull`) jej nie zawierał, a merge (`sync_common::merge_incoming_data`)
+  nie miał gałęzi CFAB, więc rendery zostawały na maszynie, która je zaingestowała.
+  - migracja **m33**: `updated_at` w `cfab_render_cost` (+ indeks, backfill z
+    `COALESCE(assigned_at, ingested_at)`) — tabela nie miała żadnego znacznika zmiany,
+    bez którego nie ma ani okna delty, ani LWW; `updated_at` ustawiają teraz wszystkie
+    ścieżki zapisu (ingest, assign, reassign, przeliczenie współczynnika, import `.cfabx`),
+  - payload niesie WYŁĄCZNIE czas renderu (`render_seconds`, `ended_at`), tożsamość
+    (`hub_instance_id` + `ledger_id`) i nazwę projektu; kwoty (`coefficient`, `rbh`,
+    `value`) liczy odbiorca ze swoich ustawień, bo ustawienia CFAB per projekt są
+    per maszyna (`merge_cfab_render_cost`),
+  - konflikt przypisania rozstrzyga LWW po `updated_at`; wiersz o nieznanej lokalnie
+    nazwie projektu jest pomijany, nie zgadywany,
+  - odpięcie renderu (`detach`) propaguje się przez tombstone
+    (`trg_cfab_render_cost_tombstone`, `sync_key = "hub_instance_id|ledger_id"`),
+    ze strażnikiem „rekord nowszy niż tombstone"; tombstone projektu kasuje też jego
+    rendery (`project_id` jest `NOT NULL`, nie ma jak go wyzerować jak w sesjach),
+  - `table_hash_sql("cfab_render_cost")` w shared — przy okazji naprawia puste hashe
+    i `warn: unknown table 'cfab_render_cost'` z `helpers.rs::build_table_hashes`.
 - **Synergia CFAB Hub × TIMEFLOW, etapy A–D** (plan `docs/superpowers/plans/` w repo Huba):
   migracja m30 (klucz `(hub_instance_id, ledger_id)` w `cfab_render_ack` i `cfab_render_cost`),
   ingest kontraktów 1–3, latarnie integracji w `Application Support/CFAB/integration/`,

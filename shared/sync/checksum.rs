@@ -97,6 +97,17 @@ pub fn table_hash_sql(table: &str) -> Option<&'static str> {
                 uid || '|' || project_name || '|' || cost_date || '|' || amount || '|' || \
                 COALESCE(comment,'') || '|' || updated_at, ';'), '') \
              FROM (SELECT * FROM project_costs ORDER BY uid)",
+        // Rendery CFAB: hash liczymy TYLKO z tego, co synchronizujemy (czas renderu +
+        // projekt + `updated_at`). Kwoty i kolumny per-maszyna (`value`, `coefficient`,
+        // `ingested_at`, `machine_name`) są celowo poza hashem — są wyliczane/ustawiane
+        // lokalnie, więc w hashu trwale rozjeżdżałyby zgodne bazy.
+        "cfab_render_cost" =>
+            "SELECT COALESCE(group_concat( \
+                hub_instance_id || '|' || ledger_id || '|' || COALESCE(proj_name,'') || '|' || \
+                render_seconds || '|' || updated_at, ';'), '') \
+             FROM (SELECT c.hub_instance_id, c.ledger_id, c.render_seconds, c.updated_at, \
+                          (SELECT p.name FROM projects p WHERE p.id = c.project_id) AS proj_name \
+                   FROM cfab_render_cost c ORDER BY c.hub_instance_id, c.ledger_id)",
         _ => return None,
     })
 }
@@ -129,6 +140,7 @@ mod table_hash_sql_tests {
         for t in [
             "projects", "clients", "applications", "sessions", "manual_sessions",
             "assignment_feedback", "assignment_auto_runs", "project_costs", "todos",
+            "cfab_render_cost",
         ] {
             assert!(table_hash_sql(t).is_some(), "brak SQL dla {t}");
         }

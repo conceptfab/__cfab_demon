@@ -60,6 +60,10 @@ pub struct TableHashes {
     // od peerów sprzed m26 (pomijają to pole).
     #[serde(default)]
     pub project_costs: String,
+    // m29/m33 rendery CFAB. `#[serde(default)]` utrzymuje parsowalność archiwów
+    // od peerów sprzed synchronizacji renderów (pomijają to pole).
+    #[serde(default)]
+    pub cfab_render_cost: String,
     // m26 zadania. `#[serde(default)]` utrzymuje parsowalność archiwów od peerów
     // sprzed fazy 2 (pomijają to pole).
     #[serde(default)]
@@ -849,6 +853,7 @@ fn build_table_hashes(conn: &rusqlite::Connection) -> TableHashes {
         assignment_auto_runs: compute_table_hash(conn, "assignment_auto_runs"),
         project_costs: compute_table_hash(conn, "project_costs"),
         todos: compute_table_hash(conn, "todos"),
+        cfab_render_cost: compute_table_hash(conn, "cfab_render_cost"),
     }
 }
 
@@ -1775,6 +1780,7 @@ fn build_delta_for_pull(
     crate::sync_common::ensure_project_merge_columns(conn)?;
     crate::sync_common::ensure_project_client_columns(conn)?;
     crate::sync_common::ensure_m26_entity_tables(conn)?;
+    crate::sync_common::ensure_cfab_render_sync_columns(conn)?;
 
     // Normalize ISO timestamp for SQLite comparison
     let since_norm = since.replace('T', " ");
@@ -1842,6 +1848,24 @@ fn build_delta_for_pull(
          sessions_scanned, sessions_suggested, sessions_assigned, error, rolled_back_at, \
          rollback_reverted, rollback_skipped FROM assignment_auto_runs ORDER BY started_at")?;
 
+    // Rendery CFAB: SAM CZAS RENDERU I PROJEKT, do którego jest przypisany (m29/m30,
+    // delta po `updated_at` z m33). `project_name` jedzie z wiersza, bo `project_id`
+    // jest LOKALNY — odbiorca rozwiązuje projekt po nazwie, dokładnie jak w sesjach.
+    // Wiersz bez projektu nie istnieje: „nieprzypisany render" to pozycja w ledgerze
+    // huba, której w tej tabeli JESZCZE nie ma.
+    //
+    // Czego NIE ma w payloadzie i dlaczego: `coefficient`, `rbh` i `value` to pieniądze
+    // wyliczane ze współczynnika i stawki projektu, a ustawienia CFAB per projekt są
+    // per maszyna. Przesłanie kwoty policzonej stawką peera nadpisałoby lokalną prawdę,
+    // więc odbiorca liczy je sam z własnych ustawień (patrz `merge_cfab_render_cost`).
+    let cfab_render_cost = fetch_all_rows_params(conn,
+        "SELECT c.hub_instance_id, c.ledger_id, \
+                (SELECT p.name FROM projects p WHERE p.id = c.project_id) AS project_name, \
+                c.working_path, c.render_seconds, c.ended_at, c.updated_at \
+         FROM cfab_render_cost c WHERE c.updated_at >= ?1 ORDER BY c.hub_instance_id, c.ledger_id",
+        &[&since_ref as &dyn rusqlite::types::ToSql],
+    ).unwrap_or_default();
+
     let table_hashes = build_table_hashes(conn);
 
     let archive = serde_json::json!({
@@ -1859,6 +1883,7 @@ fn build_delta_for_pull(
             "tombstones": tombstones,
             "assignment_feedback": assignment_feedback,
             "assignment_auto_runs": assignment_auto_runs,
+            "cfab_render_cost": cfab_render_cost,
         }
     });
 
@@ -1919,6 +1944,7 @@ impl PartialEq for TableHashes {
             && self.manual_sessions == other.manual_sessions
             && self.project_costs == other.project_costs
             && self.todos == other.todos
+            && self.cfab_render_cost == other.cfab_render_cost
     }
 }
 

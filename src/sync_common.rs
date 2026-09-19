@@ -342,6 +342,42 @@ pub(crate) fn ensure_m26_entity_tables(conn: &rusqlite::Connection) -> Result<()
     .map_err(|e| format!("ensure_m26_entity_tables: {e}"))
 }
 
+/// Daemon-side defensive schema guard dla synchronizacji renderów CFAB (m33).
+/// Dashboard jest właścicielem migracji, ale demon może dotknąć bazy zaraz po
+/// upgrade'cie, przed pierwszym startem dashboardu. Idempotentne: "duplicate column"
+/// jest oczekiwane i cicho pomijane, każdy inny błąd przerywa merge, żeby nie
+/// scalać danych na połamanym schemacie (wzorem `ensure_project_merge_columns`).
+pub(crate) fn ensure_cfab_render_sync_columns(conn: &rusqlite::Connection) -> Result<(), String> {
+    // Tabela powstaje w m29; gdy jej nie ma (baza sprzed integracji CFAB), nie ma
+    // czego pilnować — merge renderów po prostu nie znajdzie celu i zostanie no-opem.
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cfab_render_cost'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !table_exists {
+        return Ok(());
+    }
+
+    if let Err(e) = conn.execute_batch(
+        "ALTER TABLE cfab_render_cost ADD COLUMN updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00';",
+    ) {
+        let msg = e.to_string();
+        if !msg.contains("duplicate column") {
+            return Err(format!("ensure_cfab_render_sync_columns: {msg}"));
+        }
+    }
+
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_cfab_render_cost_updated_at
+            ON cfab_render_cost (updated_at);",
+    )
+    .map_err(|e| format!("ensure_cfab_render_sync_columns index: {e}"))
+}
+
 // ── Merge ──
 
 pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) -> Result<(), String> {
@@ -351,6 +387,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     ensure_project_merge_columns(conn)?;
     ensure_project_client_columns(conn)?;
     ensure_m26_entity_tables(conn)?;
+    ensure_cfab_render_sync_columns(conn)?;
     const MAX_PAYLOAD_SIZE: usize = 200 * 1024 * 1024; // 200 MB
     if slave_data.len() > MAX_PAYLOAD_SIZE {
         return Err(format!(
@@ -400,6 +437,9 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     timeflow_shared::sync::merge::merge_clients(&tx, &archive, &hooks)?;
     timeflow_shared::sync::merge::merge_project_costs(&tx, &archive, &hooks)?;
     timeflow_shared::sync::merge::merge_todos(&tx, &archive, &hooks)?;
+    // Po projektach: rendery są przypisane do projektu po nazwie, więc projekt peera
+    // musi już istnieć lokalnie.
+    timeflow_shared::sync::merge::merge_cfab_render_cost(&tx, &archive, &hooks)?;
     let mut id_maps = timeflow_shared::sync::merge::build_id_maps(&tx, &archive)?;
     timeflow_shared::sync::merge::merge_applications(&tx, &archive, &hooks, &mut id_maps)?;
 
@@ -645,9 +685,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
 
     // Restore tombstone triggers before committing so the production schema
     // is intact for subsequent write operations.
-    for sql in crate::tombstone_triggers::CREATE_ALL_TOMBSTONE_TRIGGERS_SQL {
-        tx.execute(sql, []).map_err(|e| e.to_string())?;
-    }
+    timeflow_shared::sync::triggers::create_all_tombstone_triggers(&tx)?;
 
     tx.commit().map_err(|e| {
         log::error!("Transaction commit failed: {}", e);
@@ -861,10 +899,7 @@ pub fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String>
             batch.push_str(";\n");
         }
         batch.push_str("DELETE FROM sessions WHERE app_id NOT IN (SELECT id FROM applications);\n");
-        for sql in crate::tombstone_triggers::CREATE_ALL_TOMBSTONE_TRIGGERS_SQL {
-            batch.push_str(sql);
-            batch.push('\n');
-        }
+        batch.push_str(&timeflow_shared::sync::triggers::create_all_tombstone_triggers_sql_for(conn));
         batch.push_str("COMMIT;");
         if let Err(e) = conn.execute_batch(&batch) {
             let _ = conn.execute_batch("ROLLBACK;");
@@ -2831,9 +2866,10 @@ mod tests {
              );",
         )
         .expect("schema");
-        for sql in crate::tombstone_triggers::CREATE_ALL_TOMBSTONE_TRIGGERS_SQL {
-            conn.execute(sql, []).expect("trigger");
-        }
+        // Tolerancyjna instalacja: ta baza testowa nie ma wszystkich tabel
+        // synchronizowanych (m.in. cfab_render_cost), a produkcja też może ich
+        // nie mieć przed migracją dashboardu.
+        timeflow_shared::sync::triggers::create_all_tombstone_triggers(&conn).expect("trigger");
         // Orphan session: app_id 999 has no applications row. Disable FK
         // enforcement so the insert succeeds while foreign_key_check still
         // reports the violation (mirrors how orphans arise in production):

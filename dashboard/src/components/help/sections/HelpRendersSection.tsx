@@ -19,6 +19,7 @@ export function HelpRendersSection() {
         t18n('help_page.renders_feature_offline'),
         t18n('help_page.renders_feature_cost'),
         t18n('help_page.renders_feature_thumbnails'),
+        t18n('help_page.renders_feature_sync'),
       ]}
     >
       <HelpDetailsBlock
@@ -42,6 +43,15 @@ export function HelpRendersSection() {
           t18n('help_page.renders_detail_offline_1'),
           t18n('help_page.renders_detail_offline_2'),
           t18n('help_page.renders_detail_offline_3'),
+        ]}
+      />
+      <HelpDetailsBlock
+        title={t18n('help_page.renders_detail_sync_title')}
+        items={[
+          t18n('help_page.renders_detail_sync_1'),
+          t18n('help_page.renders_detail_sync_2'),
+          t18n('help_page.renders_detail_sync_3'),
+          t18n('help_page.renders_detail_sync_4'),
         ]}
       />
     </SectionHelp>

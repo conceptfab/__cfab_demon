@@ -824,17 +824,20 @@ pub fn ingest_cfab_render_into(
 
     let tx = tf.transaction().map_err(|e| e.to_string())?;
 
+    let ingested_at = chrono::Utc::now().to_rfc3339();
+
+    // `updated_at` (m33) niesie zmianę do synchronizacji — bez niego peer nigdy nie
+    // zobaczy przeliczonej wartości, bo delta filtruje właśnie po tej kolumnie.
     let updated = tx
         .execute(
             "UPDATE cfab_render_cost
              SET coefficient = ?1,
-                 value = (render_seconds / 3600.0) * ?1 * ?2
+                 value = (render_seconds / 3600.0) * ?1 * ?2,
+                 updated_at = ?4
              WHERE project_id = ?3 AND (ABS(coefficient - ?1) > 1e-9 OR ABS(value - (render_seconds / 3600.0) * ?1 * ?2) > 1e-9)",
-            rusqlite::params![coefficient, rate, project_id],
+            rusqlite::params![coefficient, rate, project_id, ingested_at],
         )
         .map_err(|e| e.to_string())?;
-
-    let ingested_at = chrono::Utc::now().to_rfc3339();
     let mut ingested = 0usize;
 
     for row in hub_rows {
@@ -859,10 +862,16 @@ pub fn ingest_cfab_render_into(
         let rbh = row.render_seconds / 3600.0;
         let value = rbh * coefficient * rate;
         tx.execute(
+            // DO NOTHING, nie goły INSERT: wiersz o tym samym (hub_instance_id, ledger_id)
+            // mógł przyjść synchronizacją z innej maszyny, która czyta ten sam hub. Lokalny
+            // ACK go wtedy nie zna (ack jest per-maszyna), więc bez tej klauzuli ingest
+            // wpadałby na UNIQUE i przerywał całą transakcję. O treść wiersza rozstrzyga
+            // merge po `updated_at`, nie ponowny ingest.
             "INSERT INTO cfab_render_cost (
                 hub_instance_id, ledger_id, project_id, working_path, render_seconds,
-                ended_at, rbh, coefficient, value, ingested_at, machine_name, thumbnail_path
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                ended_at, rbh, coefficient, value, ingested_at, machine_name, thumbnail_path, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?10)
+            ON CONFLICT(hub_instance_id, ledger_id) DO NOTHING",
             rusqlite::params![
                 row.instance,
                 row.ledger_id,
@@ -1314,15 +1323,16 @@ pub fn assign_cfab_render_in_conn(
     tx.execute(
         "INSERT INTO cfab_render_cost (
             hub_instance_id, ledger_id, project_id, working_path, render_seconds,
-            ended_at, rbh, coefficient, value, ingested_at, machine_name, assigned_by, assigned_at, thumbnail_path
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'manual', ?10, ?12)
+            ended_at, rbh, coefficient, value, ingested_at, machine_name, assigned_by, assigned_at, thumbnail_path, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'manual', ?10, ?12, ?10)
         ON CONFLICT(hub_instance_id, ledger_id) DO UPDATE SET
             project_id = excluded.project_id,
             coefficient = excluded.coefficient,
             value = excluded.value,
             assigned_by = 'manual',
             assigned_at = excluded.assigned_at,
-            thumbnail_path = COALESCE(excluded.thumbnail_path, cfab_render_cost.thumbnail_path)",
+            thumbnail_path = COALESCE(excluded.thumbnail_path, cfab_render_cost.thumbnail_path),
+            updated_at = excluded.updated_at",
         rusqlite::params![
             hub_row.instance,
             hub_row.ledger_id,
@@ -1390,7 +1400,8 @@ pub fn reassign_cfab_render_in_conn(
     let tx = tf.transaction().map_err(|e| e.to_string())?;
     tx.execute(
         "UPDATE cfab_render_cost
-         SET project_id = ?1, coefficient = ?2, value = ?3, assigned_by = 'manual', assigned_at = ?4
+         SET project_id = ?1, coefficient = ?2, value = ?3, assigned_by = 'manual', assigned_at = ?4,
+             updated_at = ?4
          WHERE hub_instance_id = ?5 AND ledger_id = ?6",
         rusqlite::params![new_project_id, coefficient, value, now, hub_instance_id, ledger_id],
     )
@@ -1689,6 +1700,14 @@ mod tests {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            );
+            CREATE TABLE tombstones (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL,
+                record_id INTEGER,
+                record_uuid TEXT,
+                deleted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                sync_key TEXT
             );",
         )
         .unwrap();
@@ -1696,6 +1715,7 @@ mod tests {
         crate::db_migrations::m30_cfab_render_instance::run(&conn).unwrap();
         crate::db_migrations::m31_cfab_path_index_and_manual::run(&conn).unwrap();
         crate::db_migrations::m32_cfab_thumbnails_and_project_summary::run(&conn).unwrap();
+        crate::db_migrations::m33_cfab_render_cost_updated_at::run(&conn).unwrap();
         conn
     }
 
@@ -2638,6 +2658,16 @@ mod tests {
         detach_cfab_render_in_conn(&mut tf, "hub-abc", 10).unwrap();
         let all3 = get_all_cfab_renders_in_conn(&tf, None, None, None, None, None).unwrap();
         assert_eq!(all3.total, 0);
+
+        // Odpięcie musi zostawić tombstone, inaczej pełny sync wskrzesi render z peera.
+        let sync_key: String = tf
+            .query_row(
+                "SELECT sync_key FROM tombstones WHERE table_name = 'cfab_render_cost'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(sync_key, "hub-abc|10");
 
         // Now it shows up in unassigned again, and this time matched_project_id is 1 because of remembered rule!
         let unassigned3 = get_unassigned_cfab_renders_in_conn(&tf, &hub_path).unwrap();

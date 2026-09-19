@@ -2581,6 +2581,7 @@
     "renders_feature_offline": "Wymiana danych na maszynach offline (bez sieci) przez paczki .cfabx oraz pliki potwierdzenia .cfabx-ack.",
     "renders_feature_cost": "Przeliczanie czasu renderu (RBH) na wartość kosztową według stawki godzinowej i współczynnika projektu.",
     "renders_feature_thumbnails": "Miniatury ukończonych klatek i sekwencji prezentowane w sekcji galerii raportu PDF projektu.",
+    "renders_feature_sync": "Synchronizacja czasu renderów przypisanych do projektów między urządzeniami (LAN i online).",
     "renders_detail_beacon_title": "Wykrywanie instancji Huba",
     "renders_detail_beacon_1": "CFAB 4D Hub i TIMEFLOW komunikują się przez wspólny katalog integracji, zapisując stan działania w hub.json i timeflow.json.",
     "renders_detail_beacon_2": "Nie jest wymagane połączenie sieciowe ani wpisywanie adresów IP - integracja działa lokalnie i bezpiecznie w trybie tylko do odczytu.",
@@ -2591,7 +2592,12 @@
     "renders_detail_offline_title": "Wymiana offline (.cfabx / .cfabx-ack)",
     "renders_detail_offline_1": "Na stacjach renderujących bez TIMEFLOW można wyeksportować paczkę .cfabx zawierającą propozycje renderów i sumy kontrolne SHA-256.",
     "renders_detail_offline_2": "W zakładce Renderingi można podejrzeć zawartość paczki, skorygować przypisania i zaimportować koszty do bazy TIMEFLOW.",
-    "renders_detail_offline_3": "Po imporcie generowany jest plik zwrotny .cfabx-ack z migawką projektów, który po wczytaniu w Hubie archiwizuje rozliczone zadania."
+    "renders_detail_offline_3": "Po imporcie generowany jest plik zwrotny .cfabx-ack z migawką projektów, który po wczytaniu w Hubie archiwizuje rozliczone zadania.",
+    "renders_detail_sync_title": "Synchronizacja renderów między urządzeniami",
+    "renders_detail_sync_1": "Renderingi przypisane do projektu synchronizują się razem z resztą danych - tym samym mechanizmem co sesje, przez LAN i sync online. Nie trzeba uruchamiać niczego osobno.",
+    "renders_detail_sync_2": "Przenoszony jest czas renderu i projekt, do którego jest przypisany. Wartość kosztową każde urządzenie liczy samo ze swojej stawki godzinowej i współczynnika projektu, więc lokalne ustawienia rozliczeń nie są nadpisywane.",
+    "renders_detail_sync_3": "Gdy ten sam rendering przypiszesz do innego projektu na dwóch urządzeniach, wygrywa zmiana wykonana później. Odpięcie renderu (Odepnij) również się propaguje - nie wraca przy kolejnej synchronizacji.",
+    "renders_detail_sync_4": "Renderingi z sekcji Nieprzypisane nie są synchronizowane - dopóki nie mają projektu, są tylko pozycją w ledgerze lokalnego Huba. Miniatury pozostają lokalne na maszynie, która renderowała."
   },
   "sync_progress": {
     "title": "Synchronizacja LAN",

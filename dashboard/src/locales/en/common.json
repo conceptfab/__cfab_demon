@@ -2581,6 +2581,7 @@
     "renders_feature_offline": "Air-gapped / offline machine data exchange using .cfabx packages and .cfabx-ack receipts.",
     "renders_feature_cost": "Conversion of render time (RBH) into monetary cost based on hourly rate and project coefficient.",
     "renders_feature_thumbnails": "Thumbnails of rendered frames presented in the project PDF report gallery section.",
+    "renders_feature_sync": "Synchronization of render time assigned to projects across devices (LAN and online).",
     "renders_detail_beacon_title": "Hub Instance Discovery",
     "renders_detail_beacon_1": "CFAB 4D Hub and TIMEFLOW communicate via shared integration directory, writing runtime status to hub.json and timeflow.json.",
     "renders_detail_beacon_2": "No network connection or IP configuration required - works locally and safely in read-only mode.",
@@ -2591,7 +2592,12 @@
     "renders_detail_offline_title": "Offline Exchange (.cfabx / .cfabx-ack)",
     "renders_detail_offline_1": "On render nodes without TIMEFLOW, export a .cfabx package containing render proposals and SHA-256 integrity checksums.",
     "renders_detail_offline_2": "In the Renderings tab, preview package contents, adjust project assignments, and import costs into TIMEFLOW.",
-    "renders_detail_offline_3": "Importing produces a .cfabx-ack confirmation file with project snapshot that archives accounted jobs in Hub."
+    "renders_detail_offline_3": "Importing produces a .cfabx-ack confirmation file with project snapshot that archives accounted jobs in Hub.",
+    "renders_detail_sync_title": "Render synchronization across devices",
+    "renders_detail_sync_1": "Renders assigned to a project synchronize together with the rest of your data - the same mechanism as sessions, over LAN and online sync. Nothing separate to run.",
+    "renders_detail_sync_2": "What travels is the render time and the project it is assigned to. Each device computes the monetary value itself from its own hourly rate and project coefficient, so local billing settings are never overwritten.",
+    "renders_detail_sync_3": "If you assign the same render to different projects on two devices, the later change wins. Detaching a render also propagates - it does not come back on the next sync.",
+    "renders_detail_sync_4": "Renders in the Unassigned section are not synchronized - until they have a project they are only an entry in the local Hub ledger. Thumbnails stay local to the machine that rendered them."
   },
   "sync_progress": {
     "title": "LAN Synchronization",
