@@ -880,7 +880,9 @@
     "cfab_ingest_zero": "0 new rows",
     "cfab_ingest_zero_updated": "0 new rows ({{count}} updated)",
     "cfab_integration_disabled": "CFAB Hub integration is off. Turn it on in Settings → Integration.",
-    "cfab_include_in_hours_limit": "Include rendering time in project hours limit"
+    "cfab_include_in_hours_limit": "Include rendering time in project hours limit",
+    "cfab_summary": "Summary",
+    "cfab_renders_count": "renders"
   },
   "costs": {
     "section_title": "Additional costs",
@@ -1816,7 +1818,11 @@
     "limit_over": "Over limit",
     "limit_manual_note": "Including {{hours}} from manual sessions (no multiplier).",
     "renders": "Render Results",
-    "renders_count": "Renders count"
+    "renders_count": "Renders count",
+    "renders_total_time": "Total time",
+    "renders_rbh": "RBH",
+    "renders_value": "Value",
+    "renders_file": "File / Scene"
   },
   "clients_page": {
     "title": "Clients",
@@ -2378,7 +2384,7 @@
     "project_page_detail_what_it_does": "What it does: ProjectPage combines the project timeline, recent comments, manual sessions, data compaction, time reset, and report generation in one view.",
     "project_page_detail_when_to_use": "When to use: open this view when you want to review one project end-to-end instead of jumping between multiple screens.",
     "project_page_detail_limitations": "Limitations and consequences: reset time and compaction affect only the current project, and the visible timeline depends on the selected range and available data.",
-    "cfab_hub_render_feature": "CFAB Hub renders — Hub records render time. On the project page you load it with the button; quotes and reports include it only after you turn the toggle on. Coefficient × RBH × project rate. The renders list always shows values, regardless of the toggle.",
+    "cfab_hub_render_feature": "CFAB Hub renders — Hub records render time. On the project page you load data with the button, and the table includes a total summary (time, RBH, value). PDF reports include the render summary in a dedicated section (thumbnails or table breakdown). Estimates and billing include the amount when the toggle is enabled.",
     "cfab_hub_render_detail_title": "CFAB Hub — renders",
     "cfab_hub_render_detail_what_it_does": "What it does: Hub records render time. On the project page you load the data with the button. The Renders card always shows values.",
     "cfab_hub_render_detail_when_to_use": "When to use: load data after a finished render; turn the toggle on when the cost should enter quotes and PDF reports. Set the Hub database path in Settings → Integration.",

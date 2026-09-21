@@ -372,6 +372,8 @@ export interface CfabRenderThumbnail {
   render_seconds: number;
   ended_at: number;
   thumbnail_path: string;
+  rbh?: number;
+  value?: number;
 }
 
 export interface ProjectReportData {

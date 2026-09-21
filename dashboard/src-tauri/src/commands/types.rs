@@ -342,6 +342,10 @@ pub struct CfabRenderThumbnail {
     pub render_seconds: f64,
     pub ended_at: f64,
     pub thumbnail_path: String,
+    #[serde(default)]
+    pub rbh: f64,
+    #[serde(default)]
+    pub value: f64,
 }
 
 #[derive(Serialize)]

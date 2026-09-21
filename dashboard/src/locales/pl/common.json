@@ -880,7 +880,9 @@
     "cfab_ingest_zero": "0 nowych wierszy",
     "cfab_ingest_zero_updated": "0 nowych wierszy (zaktualizowano {{count}})",
     "cfab_integration_disabled": "Integracja z CFAB Hub jest wyłączona. Włącz ją w Ustawienia → Integracja.",
-    "cfab_include_in_hours_limit": "Wliczaj czas renderowania do limitu godzin projektu"
+    "cfab_include_in_hours_limit": "Wliczaj czas renderowania do limitu godzin projektu",
+    "cfab_summary": "Podsumowanie",
+    "cfab_renders_count": "renderów"
   },
   "costs": {
     "section_title": "Koszty dodatkowe",
@@ -1816,7 +1818,11 @@
     "limit_over": "Ponad limit",
     "limit_manual_note": "W tym {{hours}} z sesji ręcznych (bez mnożnika).",
     "renders": "Wyniki renderowania",
-    "renders_count": "Liczba renderów"
+    "renders_count": "Liczba renderów",
+    "renders_total_time": "Łączny czas",
+    "renders_rbh": "RBH",
+    "renders_value": "Wartość",
+    "renders_file": "Plik / Scena"
   },
   "clients_page": {
     "title": "Klienci",
@@ -2378,7 +2384,7 @@
     "project_page_detail_what_it_does": "Co robi: ProjectPage zbiera w jednym widoku timeline projektu, ostatnie komentarze, sesje ręczne, kompaktowanie danych, reset czasu i generowanie raportu.",
     "project_page_detail_when_to_use": "Kiedy użyć: otwórz ten widok, gdy chcesz przeanalizować jeden projekt end-to-end zamiast przeskakiwać między zakładkami.",
     "project_page_detail_limitations": "Ograniczenia i konsekwencje: akcje resetu czasu i kompaktowania dotyczą tylko bieżącego projektu, a zakres timeline zależy od wybranego okresu i dostępnych danych.",
-    "cfab_hub_render_feature": "Renderingi z CFAB Hub — Hub zapisuje czas renderu. Na stronie projektu wczytujesz dane przyciskiem; wyceny i raporty doliczają je dopiero po włączeniu przełącznika. Współczynnik × RBH × stawka projektu. Lista renderingów zawsze pokazuje wartości, niezależnie od przełącznika.",
+    "cfab_hub_render_feature": "Renderingi z CFAB Hub — Hub zapisuje czas renderu. Na stronie projektu wczytujesz dane przyciskiem, a tabela zawiera łączne podsumowanie (czas, RBH, wartość). Raporty PDF uwzględniają podsumowanie renderingów w dedykowanej sekcji (miniatury lub wykaz tabelaryczny). Wyceny i rozliczenia doliczają kwotę po włączeniu przełącznika.",
     "cfab_hub_render_detail_title": "CFAB Hub — renderingi",
     "cfab_hub_render_detail_what_it_does": "Co robi: Hub zapisuje czas renderu. Na stronie projektu wczytujesz dane przyciskiem. Lista na karcie Renderingi zawsze pokazuje wartości.",
     "cfab_hub_render_detail_when_to_use": "Kiedy użyć: wczytaj dane po zakończonym renderze; włącz przełącznik, gdy koszt ma wejść do wycen i raportów PDF. Ścieżkę bazy Huba ustawiasz w Ustawienia → Integracja.",

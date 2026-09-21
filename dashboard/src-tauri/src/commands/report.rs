@@ -22,15 +22,21 @@ pub(crate) fn load_report_cfab_renders(
     project_id: i64,
     date_range: &DateRange,
 ) -> Result<Vec<CfabRenderThumbnail>, String> {
+    let has_table = conn
+        .prepare("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cfab_render_cost'")
+        .and_then(|mut stmt| stmt.query_row([], |r| r.get::<_, i64>(0)))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if !has_table {
+        return Ok(Vec::new());
+    }
+
     let has_thumb_col = conn
         .prepare("SELECT COUNT(*) FROM pragma_table_info('cfab_render_cost') WHERE name='thumbnail_path'")
         .and_then(|mut stmt| stmt.query_row([], |r| r.get::<_, i64>(0)))
         .map(|c| c > 0)
         .unwrap_or(false);
-
-    if !has_thumb_col {
-        return Ok(Vec::new());
-    }
 
     let start_unix = match chrono::NaiveDate::parse_from_str(&date_range.start, "%Y-%m-%d") {
         Ok(d) => d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc().timestamp() as f64).unwrap_or(0.0),
@@ -41,18 +47,23 @@ pub(crate) fn load_report_cfab_renders(
         Err(_) => f64::MAX,
     };
 
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT hub_instance_id, ledger_id, working_path, render_seconds, ended_at, thumbnail_path
-             FROM cfab_render_cost
-             WHERE project_id = ?1
-               AND ended_at >= ?2
-               AND ended_at <= ?3
-               AND thumbnail_path IS NOT NULL
-               AND TRIM(thumbnail_path) != ''
-             ORDER BY ended_at DESC, id DESC",
-        )
-        .map_err(|e| e.to_string())?;
+    let sql = if has_thumb_col {
+        "SELECT hub_instance_id, ledger_id, working_path, render_seconds, ended_at, COALESCE(thumbnail_path, ''), rbh, value
+         FROM cfab_render_cost
+         WHERE project_id = ?1
+           AND ended_at >= ?2
+           AND ended_at <= ?3
+         ORDER BY ended_at DESC, id DESC"
+    } else {
+        "SELECT hub_instance_id, ledger_id, working_path, render_seconds, ended_at, '', rbh, value
+         FROM cfab_render_cost
+         WHERE project_id = ?1
+           AND ended_at >= ?2
+           AND ended_at <= ?3
+         ORDER BY ended_at DESC, id DESC"
+    };
+
+    let mut stmt = conn.prepare_cached(sql).map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map(rusqlite::params![project_id, start_unix, end_unix], |row| {
@@ -63,6 +74,8 @@ pub(crate) fn load_report_cfab_renders(
                 render_seconds: row.get(3)?,
                 ended_at: row.get(4)?,
                 thumbnail_path: row.get(5)?,
+                rbh: row.get(6)?,
+                value: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -713,9 +726,15 @@ mod tests {
         };
 
         let renders = load_report_cfab_renders(&conn, 1, &range).expect("renders");
-        assert_eq!(renders.len(), 1, "Only rows with non-empty thumbnail_path are included");
-        assert_eq!(renders[0].thumbnail_path, "/thumb/shot1.jpg");
-        assert_eq!(renders[0].ledger_id, 1);
+        assert_eq!(renders.len(), 2, "All renders in date range are included");
+        assert_eq!(renders[0].thumbnail_path, "");
+        assert_eq!(renders[0].ledger_id, 2);
+        assert_eq!(renders[0].rbh, 1.0);
+        assert_eq!(renders[0].value, 20.0);
+        assert_eq!(renders[1].thumbnail_path, "/thumb/shot1.jpg");
+        assert_eq!(renders[1].ledger_id, 1);
+        assert_eq!(renders[1].rbh, 0.5);
+        assert_eq!(renders[1].value, 10.0);
     }
 
 }

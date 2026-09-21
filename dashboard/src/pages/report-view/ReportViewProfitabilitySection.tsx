@@ -24,8 +24,8 @@ export function ReportViewProfitabilitySection({
   if (!showSection) return null;
 
   const workSeconds =
-    (report.sessions?.reduce((acc, s) => acc + (s.duration || 0), 0) || 0) +
-    (report.manual_sessions?.reduce((acc, s) => acc + (s.duration || 0), 0) || 0);
+    (report.sessions?.reduce((acc, s) => acc + (s.duration_seconds || 0), 0) || 0) +
+    (report.manual_sessions?.reduce((acc, s) => acc + (s.duration_seconds || 0), 0) || 0);
   const hourlyRate = report.project?.hourly_rate ?? 0;
   const workHours = workSeconds / 3600;
   const workCost = workHours * hourlyRate;

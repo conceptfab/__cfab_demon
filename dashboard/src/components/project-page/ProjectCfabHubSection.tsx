@@ -1,4 +1,5 @@
-import { RefreshCw } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,23 @@ export function ProjectCfabHubSection({
 }: ProjectCfabHubSectionProps) {
   const { t } = useTranslation();
   const days = state.days ?? [];
+  const totalRenderSeconds = days.reduce((acc, d) => acc + d.render_seconds, 0);
+  const totalRbh = days.reduce((acc, d) => acc + d.rbh, 0);
+  const totalValue = days.reduce((acc, d) => acc + d.value, 0);
+  const totalRowsCount = days.reduce((acc, d) => acc + (d.rows?.length ?? 0), 0);
+
+  const [isRendersOpen, setIsRendersOpen] = useState(() => {
+    const saved = localStorage.getItem('timeflow_cfab_renders_open');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const toggleRendersOpen = () => {
+    setIsRendersOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem('timeflow_cfab_renders_open', String(next));
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -101,6 +119,22 @@ export function ProjectCfabHubSection({
           {settingsError && (
             <p className="text-xs text-destructive">{settingsError}</p>
           )}
+          {days.length > 0 && (
+            <div className="flex flex-wrap items-baseline justify-between gap-4 rounded-lg border border-border/40 bg-secondary/20 px-4 py-3">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  {t('project_page.cfab_summary')}
+                </span>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({totalRowsCount} {t('project_page.cfab_renders_count')})
+                </span>
+              </div>
+              <p className="font-mono text-sm font-semibold text-emerald-400">
+                {formatDurationRaw(totalRenderSeconds)} · {formatRbh(totalRbh)}{' '}
+                {t('project_page.cfab_rbh')} · {formatMoney(totalValue, currencyCode)}
+              </p>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-4 rounded-lg border border-border/40 bg-secondary/20 px-4 py-3">
             <Label htmlFor="cfab-include-billing" className="text-sm">
               {t('project_page.cfab_include_in_billing')}
@@ -128,9 +162,25 @@ export function ProjectCfabHubSection({
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-            {t('project_page.cfab_renders_title')}
-          </CardTitle>
+          <button
+            type="button"
+            onClick={toggleRendersOpen}
+            className="flex items-center gap-2 text-left group cursor-pointer focus-visible:outline-none"
+          >
+            {isRendersOpen ? (
+              <ChevronDown className="size-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            ) : (
+              <ChevronRight className="size-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            )}
+            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground group-hover:text-foreground transition-colors">
+              {t('project_page.cfab_renders_title')}
+            </CardTitle>
+            {days.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                ({totalRowsCount})
+              </span>
+            )}
+          </button>
           <Button
             variant="outline"
             size="sm"
@@ -143,67 +193,91 @@ export function ProjectCfabHubSection({
             {t('project_page.cfab_ingest')}
           </Button>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {!integrationEnabled && (
-            <p className="text-xs text-muted-foreground">
-              {t('project_page.cfab_integration_disabled')}
-            </p>
-          )}
-          {loadError && (
-            <p className="text-xs text-destructive">{loadError}</p>
-          )}
-          {ingestError && (
-            <p className="text-xs text-destructive">{ingestError}</p>
-          )}
-          {ingestInfo && (
-            <p className="text-xs text-muted-foreground">{ingestInfo}</p>
-          )}
-          {ingesting && days.length === 0 && !ingestError && (
-            <p className="py-4 text-center text-sm italic text-muted-foreground">
-              {t('project_page.cfab_loading')}
-            </p>
-          )}
-          {!ingesting && days.length === 0 && (
-            <p className="py-4 text-center text-sm italic text-muted-foreground">
-              {t('project_page.cfab_empty')}
-            </p>
-          )}
-          {days.map((day) => (
-            <div key={day.date} className="space-y-2">
-              <div className="flex items-baseline justify-between gap-3 border-b border-border/40 pb-1">
-                <p className="text-sm font-medium">{day.date}</p>
-                <p className="font-mono text-xs text-emerald-400">
-                  {formatDurationRaw(day.render_seconds)} · {formatRbh(day.rbh)}{' '}
-                  {t('project_page.cfab_rbh')} · {formatMoney(day.value, currencyCode)}
+        {isRendersOpen && (
+          <CardContent className="space-y-4">
+            {!integrationEnabled && (
+              <p className="text-xs text-muted-foreground">
+                {t('project_page.cfab_integration_disabled')}
+              </p>
+            )}
+            {loadError && (
+              <p className="text-xs text-destructive">{loadError}</p>
+            )}
+            {ingestError && (
+              <p className="text-xs text-destructive">{ingestError}</p>
+            )}
+            {ingestInfo && (
+              <p className="text-xs text-muted-foreground">{ingestInfo}</p>
+            )}
+            {ingesting && days.length === 0 && !ingestError && (
+              <p className="py-4 text-center text-sm italic text-muted-foreground">
+                {t('project_page.cfab_loading')}
+              </p>
+            )}
+            {!ingesting && days.length === 0 && (
+              <p className="py-4 text-center text-sm italic text-muted-foreground">
+                {t('project_page.cfab_empty')}
+              </p>
+            )}
+            {days.map((day) => (
+              <div key={day.date} className="space-y-2">
+                <div className="flex items-baseline justify-between gap-3 border-b border-border/40 pb-1">
+                  <p className="text-sm font-medium">{day.date}</p>
+                  <p className="font-mono text-xs text-emerald-400">
+                    {formatDurationRaw(day.render_seconds)} · {formatRbh(day.rbh)}{' '}
+                    {t('project_page.cfab_rbh')} · {formatMoney(day.value, currencyCode)}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  {(day.rows ?? []).map((row) => (
+                    <div
+                      key={`${row.hub_instance_id}:${row.ledger_id}`}
+                      className="grid grid-cols-1 gap-1 rounded-md px-2 py-1.5 text-xs hover:bg-secondary/20 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center sm:gap-3"
+                    >
+                      <p
+                        className="truncate font-mono"
+                        title={row.working_path}
+                      >
+                        {row.working_path}
+                      </p>
+                      <span className="font-mono text-muted-foreground">
+                        {formatDurationRaw(row.render_seconds)}
+                      </span>
+                      <span className="font-mono text-muted-foreground">
+                        {formatRbh(row.rbh)}
+                      </span>
+                      <span className="font-mono text-emerald-400">
+                        {formatMoney(row.value, currencyCode)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {days.length > 0 && (
+              <div className="flex flex-wrap items-baseline justify-between gap-3 border-t border-border/60 pt-3 mt-4">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    {t('project_page.cfab_summary')}
+                  </span>
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    ({days.reduce((acc, d) => acc + (d.rows?.length ?? 0), 0)}{' '}
+                    {t('project_page.cfab_renders_count')})
+                  </span>
+                </div>
+                <p className="font-mono text-xs sm:text-sm font-semibold text-emerald-400">
+                  {formatDurationRaw(days.reduce((acc, d) => acc + d.render_seconds, 0))} ·{' '}
+                  {formatRbh(days.reduce((acc, d) => acc + d.rbh, 0))}{' '}
+                  {t('project_page.cfab_rbh')} ·{' '}
+                  {formatMoney(
+                    days.reduce((acc, d) => acc + d.value, 0),
+                    currencyCode,
+                  )}
                 </p>
               </div>
-              <div className="space-y-1">
-                {(day.rows ?? []).map((row) => (
-                  <div
-                    key={`${row.hub_instance_id}:${row.ledger_id}`}
-                    className="grid grid-cols-1 gap-1 rounded-md px-2 py-1.5 text-xs hover:bg-secondary/20 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center sm:gap-3"
-                  >
-                    <p
-                      className="truncate font-mono"
-                      title={row.working_path}
-                    >
-                      {row.working_path}
-                    </p>
-                    <span className="font-mono text-muted-foreground">
-                      {formatDurationRaw(row.render_seconds)}
-                    </span>
-                    <span className="font-mono text-muted-foreground">
-                      {formatRbh(row.rbh)}
-                    </span>
-                    <span className="font-mono text-emerald-400">
-                      {formatMoney(row.value, currencyCode)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </CardContent>
+            )}
+          </CardContent>
+        )}
       </Card>
     </div>
   );
