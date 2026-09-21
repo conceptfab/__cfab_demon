@@ -80,10 +80,13 @@ export function TimelineChartView({
           payload={payload}
           chartDataByDate={chartDataByDate}
           xTickFormatter={xTickFormatter}
+          boostedLabel={boostedLabel}
+          manualLabel={manualLabel}
+          onBarClick={onBarClick}
         />
       );
     },
-    [chartDataByDate, xTickFormatter],
+    [chartDataByDate, xTickFormatter, boostedLabel, manualLabel, onBarClick],
   );
 
   const renderTooltip = useCallback(
