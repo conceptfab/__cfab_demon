@@ -27,6 +27,11 @@ P4 = cleanup, P5 = docs/tests.
 
 ### Added
 
+- **P3 — „Zatwierdź propozycję" w sekcji Nieprzypisane renderingi:** wiersz z propozycją
+  projektu ma przycisk przypisujący go jednym kliknięciem, a po zaznaczeniu kilku wierszy
+  „Zatwierdź propozycje (N)" przypisuje każdy do jego własnego proponowanego projektu
+  (bez zapisu reguły folderu). Błędy przypisania, zmiany projektu i odłączenia pokazują
+  się teraz jako toast zamiast znikać w konsoli.
 - **P1 — synchronizacja czasu renderów przypisanych do projektów (LAN + online).**
   Do tej pory `cfab_render_cost` nie była w ogóle objęta synchronizacją: payload
   (`lan_server::build_delta_for_pull`) jej nie zawierał, a merge (`sync_common::merge_incoming_data`)

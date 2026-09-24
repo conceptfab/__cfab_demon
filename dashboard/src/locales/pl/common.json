@@ -2593,7 +2593,7 @@
     "renders_detail_beacon_2": "Nie jest wymagane połączenie sieciowe ani wpisywanie adresów IP - integracja działa lokalnie i bezpiecznie w trybie tylko do odczytu.",
     "renders_detail_assignment_title": "Przypisywanie do projektów",
     "renders_detail_assignment_1": "TIMEFLOW utrzymuje indeks folderów i automatycznie wiąże rendering ze ścieżki sceny z odpowiednim projektem.",
-    "renders_detail_assignment_2": "Renderingi wykonane w nowych folderach trafiają do sekcji Nieprzypisane, skąd można je jednym kliknięciem przypisać do projektu.",
+    "renders_detail_assignment_2": "Renderingi z nowych folderów trafiają do sekcji Nieprzypisane. Gdy TIMEFLOW rozpozna projekt, przy wierszu widać Propozycję — przycisk Zatwierdź propozycję przypisuje render jednym kliknięciem (po zaznaczeniu kilku wierszy każdy trafia do własnego proponowanego projektu). Przypisz do projektu... pozwala wybrać inny projekt.",
     "renders_detail_assignment_3": "Opcja Zapamiętaj regułę folder -> projekt sprawia, że wszystkie przyszłe renderingi z tego katalogu trafią automatycznie do wybranego projektu.",
     "renders_detail_offline_title": "Wymiana offline (.cfabx / .cfabx-ack)",
     "renders_detail_offline_1": "Na stacjach renderujących bez TIMEFLOW można wyeksportować paczkę .cfabx zawierającą propozycje renderów i sumy kontrolne SHA-256.",
@@ -2972,6 +2972,11 @@
     "cancel": "Anuluj",
     "save": "Zapisz",
     "actions": "Akcje",
-    "selected_count": "Zaznaczono: {{count}}"
+    "selected_count": "Zaznaczono: {{count}}",
+    "accept_suggestion": "Zatwierdź propozycję",
+    "accept_suggestions_selected": "Zatwierdź propozycje ({{count}})",
+    "accept_done": "Przypisano renderingi: {{count}}",
+    "assign_error": "Nie udało się przypisać renderu do projektu.",
+    "detach_error": "Nie udało się odłączyć renderu."
   }
 }

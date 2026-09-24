@@ -4,11 +4,9 @@ import {
   Clock,
   Coins,
   Cpu,
-  RefreshCw,
   FolderOpen,
   Unlink,
-  AlertCircle,
-  FileCode,
+  Check,
 } from "lucide-react";
 import { RendersOfflineSection } from "@/components/renders/RendersOfflineSection";
 import { RendersIntegrationStatus } from "@/components/renders/RendersIntegrationStatus";
@@ -26,7 +24,13 @@ import {
 } from "@/lib/tauri/cfab-render";
 import { getProjects } from "@/lib/tauri/projects";
 import type { ProjectWithStats } from "@/lib/db-types";
-import { formatDurationRaw, formatMoney, formatDateTime } from "@/lib/utils";
+import {
+  formatDurationRaw,
+  formatMoney,
+  formatDateTime,
+  getErrorMessage,
+} from "@/lib/utils";
+import { useToast } from "@/components/ui/toast-notification";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +44,7 @@ import {
 
 export function RendersPage() {
   const { t } = useTranslation();
+  const { showError, showInfo } = useToast();
 
   const [loading, setLoading] = useState(false);
   const [unassigned, setUnassigned] = useState<CfabUnassignedRenderRow[]>([]);
@@ -133,9 +138,34 @@ export function RendersPage() {
       }
       setAssignModalOpen(false);
       setSelectedUnassignedKeys(new Set());
-      await loadData();
     } catch (err) {
-      console.error("Failed to assign renders:", err);
+      showError(getErrorMessage(err, t("renders_page.assign_error")));
+    } finally {
+      await loadData();
+    }
+  };
+
+  // Każdy wiersz trafia do własnego proponowanego projektu; bez nowej reguły folderu,
+  // bo propozycja już wynika z indeksu ścieżek.
+  const acceptSuggestions = async (rows: CfabUnassignedRenderRow[]) => {
+    const withSuggestion = rows.filter((r) => r.matched_project_id != null);
+    if (withSuggestion.length === 0) return;
+    setLoading(true);
+    try {
+      for (const row of withSuggestion) {
+        await assignCfabRender(
+          row.hub_instance_id,
+          row.ledger_id,
+          row.matched_project_id as number,
+          false
+        );
+      }
+      setSelectedUnassignedKeys(new Set());
+      showInfo(t("renders_page.accept_done", { count: withSuggestion.length }));
+    } catch (err) {
+      showError(getErrorMessage(err, t("renders_page.assign_error")));
+    } finally {
+      await loadData();
     }
   };
 
@@ -150,7 +180,7 @@ export function RendersPage() {
       setReassignModalOpen(false);
       await loadData();
     } catch (err) {
-      console.error("Failed to reassign render:", err);
+      showError(getErrorMessage(err, t("renders_page.assign_error")));
     }
   };
 
@@ -160,7 +190,7 @@ export function RendersPage() {
       await detachCfabRender(row.hub_instance_id, row.ledger_id);
       await loadData();
     } catch (err) {
-      console.error("Failed to detach render:", err);
+      showError(getErrorMessage(err, t("renders_page.detach_error")));
     }
   };
 
@@ -169,6 +199,10 @@ export function RendersPage() {
       selectedUnassignedKeys.has(`${r.hub_instance_id}:${r.ledger_id}`)
     );
   }, [unassigned, selectedUnassignedKeys]);
+
+  const selectedWithSuggestionCount = selectedRowsList.filter(
+    (r) => r.matched_project_id != null
+  ).length;
 
   return (
     <div className={mobileLayout.pageStack}>
@@ -211,14 +245,30 @@ export function RendersPage() {
               <Badge variant="secondary">{unassigned.length}</Badge>
             </div>
             {selectedUnassignedKeys.size > 0 && (
-              <Button
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => openAssignModalForRows(selectedRowsList)}
-              >
-                {t("renders_page.assign_to_project")} (
-                {selectedUnassignedKeys.size})
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedWithSuggestionCount > 0 && (
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={loading}
+                    onClick={() => acceptSuggestions(selectedRowsList)}
+                  >
+                    <Check className="size-3.5" />
+                    {t("renders_page.accept_suggestions_selected", {
+                      count: selectedWithSuggestionCount,
+                    })}
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => openAssignModalForRows(selectedRowsList)}
+                >
+                  {t("renders_page.assign_to_project")} (
+                  {selectedUnassignedKeys.size})
+                </Button>
+              </div>
             )}
           </CardTitle>
         </CardHeader>
@@ -313,14 +363,27 @@ export function RendersPage() {
                           )}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-6 px-2 text-[11px]"
-                            onClick={() => openAssignModalForRows([row])}
-                          >
-                            {t("renders_page.assign_to_project")}
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            {row.matched_project_id != null && (
+                              <Button
+                                size="sm"
+                                className="h-6 px-2 text-[11px]"
+                                disabled={loading}
+                                onClick={() => acceptSuggestions([row])}
+                              >
+                                <Check className="size-3.5" />
+                                {t("renders_page.accept_suggestion")}
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 px-2 text-[11px]"
+                              onClick={() => openAssignModalForRows([row])}
+                            >
+                              {t("renders_page.assign_to_project")}
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -515,7 +578,7 @@ export function RendersPage() {
             <DialogTitle>{t("renders_page.assign_to_project")}</DialogTitle>
             <DialogDescription>
               {assignTargetRows.length === 1
-                ? assignTargetRows[0].working_path
+                ? assignTargetRows[0]?.working_path
                 : t("renders_page.selected_count", {
                     count: assignTargetRows.length,
                   })}

@@ -2593,7 +2593,7 @@
     "renders_detail_beacon_2": "No network connection or IP configuration required - works locally and safely in read-only mode.",
     "renders_detail_assignment_title": "Project Assignment",
     "renders_detail_assignment_1": "TIMEFLOW maintains a path index and automatically maps scene paths to the correct project.",
-    "renders_detail_assignment_2": "Renders from unindexed folders appear in the Unassigned section for quick manual assignment.",
+    "renders_detail_assignment_2": "Renders from new folders land in the Unassigned section. When TIMEFLOW recognises the project, the row shows a Suggestion — Accept suggestion assigns the render in one click (with several rows selected, each goes to its own suggested project). Assign to project... lets you pick a different project.",
     "renders_detail_assignment_3": "The Remember rule folder -> project option routes all future renders from that directory automatically.",
     "renders_detail_offline_title": "Offline Exchange (.cfabx / .cfabx-ack)",
     "renders_detail_offline_1": "On render nodes without TIMEFLOW, export a .cfabx package containing render proposals and SHA-256 integrity checksums.",
@@ -2972,6 +2972,11 @@
     "cancel": "Cancel",
     "save": "Save",
     "actions": "Actions",
-    "selected_count": "Selected: {{count}}"
+    "selected_count": "Selected: {{count}}",
+    "accept_suggestion": "Accept suggestion",
+    "accept_suggestions_selected": "Accept suggestions ({{count}})",
+    "accept_done": "Renders assigned: {{count}}",
+    "assign_error": "Failed to assign the render to a project.",
+    "detach_error": "Failed to detach the render."
   }
 }
