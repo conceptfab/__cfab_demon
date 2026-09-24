@@ -5,8 +5,8 @@
 ## 1) Język i styl pracy
 - Komunikuj się po polsku.
 - Pisz zwięźle i precyzyjnie (bez długich wstępów).
-- Gdy zmiana dotyka >2 plików lub niesie ryzyko regresji: najpierw plan w max 5 punktach, potem implementacja.
-- Jeśli brakuje kluczowych danych (ścieżki, API, wymagania): zadaj maks. 3 pytania doprecyzowujące i wstrzymaj implementację.
+- Gdy zmiana dotyka >2 plików lub niesie ryzyko regresji: najpierw krótki plan, potem implementacja.
+- Jeśli brakuje kluczowych danych (ścieżki, API, wymagania): zadaj tylko te pytania, bez których nie da się ruszyć, i wstrzymaj implementację.
 
 ## 2) Zasady produktu i brandingu
 - Nazwa produktu w UI, komunikatach, tytułach, logach aplikacji: zawsze `TIMEFLOW` (wielkie litery).
@@ -42,21 +42,19 @@ Checklist (przed zakończeniem zadania z nową funkcją):
 - Jeśli dotykasz UI: dbaj o stany (loading/empty/error) tam gdzie ma to sens.
 - Jeśli dotykasz logiki: dodaj/aktualizuj testy lub chociaż opisz scenariusze manualne (gdy testów brak).
 
-## 5) Uruchamianie, testy i komendy (uzupełnij w repo)
-Wklej tutaj realne komendy dla projektu (Claude ma je wykonywać/zakładać):
-
-- Instalacja: `<npm|pnpm|bun> install`
-- Dev: `<...>`
-- Build: `<...>`
-- Test: `<...>`
-- Lint/format: `<...>`
+## 5) Uruchamianie, testy i komendy
+- Instalacja (dashboard): `cd dashboard && npm install`
+- Dev: `python dashboard_dev.py` (dashboard Tauri), `python demon_dev.py` (demon)
+- Build: `python build_all.py` (demon + dashboard → `dist/`)
+- Test: `cargo test` (root, workspace Rust) oraz `cd dashboard && npm test` (vitest)
+- Lint/typecheck: `cd dashboard && npm run lint && npm run typecheck`
 - React Doctor (audyt jakości): `npx -y react-doctor@latest . --verbose` — uruchamiaj z **roota repo**. Config jest w dwóch miejscach: `dashboard/doctor.config.json` (skan z `dashboard/`) oraz `doctor.config.json` w roocie (skan z roota, np. przez skill `/react-doctor`). Oba wyciszają te same false-positives → poprawny wynik to **100/100**. Jeśli kiedyś wyjdzie ~49/100 z błędami „security" na plikach `.py` — to znak, że config się nie załadował (sprawdź, czy istnieje root `doctor.config.json`).
 
 Zasada:
-- Przed zakończeniem zadania: uruchom (lub załóż uruchomienie) linta i testy, jeśli są skonfigurowane.
+- Przed zakończeniem zadania: uruchom linta i testy, jeśli są skonfigurowane.
 - Gdy nie da się uruchomić komend w środowisku: wypisz dokładnie, co należy uruchomić lokalnie i jakiego wyniku oczekujesz.
 
 ## Format odpowiedzi (gdy prosisz o zmianę w kodzie)
-- 1–2 zdania: co zmieniasz i dlaczego.
+- Na początku, krótko: co zmieniasz i dlaczego.
 - Lista plików, które zmieniasz (jeśli >1).
 - Kroki testu: jak sprawdzić (manualnie lub testami).
