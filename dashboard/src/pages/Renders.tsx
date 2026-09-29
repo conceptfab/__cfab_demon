@@ -694,4 +694,3 @@ export function RendersPage() {
   );
 }
 
-export default RendersPage;

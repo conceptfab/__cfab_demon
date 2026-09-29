@@ -2,7 +2,7 @@
 // Reads lan_peers.json (written by demon discovery), runs sync with a peer via HTTP.
 
 use super::delta_export::TableHashes;
-use super::helpers::{build_table_hashes, timeflow_data_dir};
+use super::helpers::{build_table_hashes, run_blocking, timeflow_data_dir};
 use crate::commands::error::CommandError;
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
@@ -109,7 +109,11 @@ pub async fn get_lan_peers() -> Result<Vec<LanPeer>, CommandError> {
 
 /// Insert or update a peer in lan_peers.json (used after manual ping).
 #[tauri::command]
-pub fn upsert_lan_peer(peer: LanPeer) -> Result<(), CommandError> {
+pub async fn upsert_lan_peer(peer: LanPeer) -> Result<(), CommandError> {
+    run_blocking(move || upsert_lan_peer_blocking(peer)).await
+}
+
+fn upsert_lan_peer_blocking(peer: LanPeer) -> Result<(), CommandError> {
     let path = timeflow_data_dir()?.join("lan_peers.json");
     let mut file = if path.exists() {
         let content =
@@ -141,26 +145,54 @@ pub fn upsert_lan_peer(peer: LanPeer) -> Result<(), CommandError> {
 }
 
 /// Read the last N lines from logs/lan_sync.log.
+/// Polled by the LAN sync card every 0.5–2 s, so it runs off the main thread
+/// and reads only the tail of the file instead of the whole log.
 #[tauri::command]
-pub fn get_lan_sync_log(lines: Option<usize>) -> Result<String, CommandError> {
-    let dir = timeflow_data_dir()?;
-    // Try new location first, fall back to legacy
-    let path = {
-        let new_path = dir.join("logs").join("lan_sync.log");
-        if new_path.exists() {
-            new_path
-        } else {
-            dir.join("lan_sync.log")
+pub async fn get_lan_sync_log(lines: Option<usize>) -> Result<String, CommandError> {
+    run_blocking(move || {
+        let dir = timeflow_data_dir()?;
+        // Try new location first, fall back to legacy
+        let path = {
+            let new_path = dir.join("logs").join("lan_sync.log");
+            if new_path.exists() {
+                new_path
+            } else {
+                dir.join("lan_sync.log")
+            }
+        };
+        if !path.exists() {
+            return Ok(String::new());
         }
-    };
-    if !path.exists() {
-        return Ok(String::new());
+        read_last_lines(&path, lines.unwrap_or(50)).map_err(|e| CommandError::Other(e.to_string()))
+    })
+    .await
+}
+
+/// Returns the last `max_lines` lines of a text file, reading backwards in
+/// chunks so the cost depends on the requested tail, not on the file size.
+fn read_last_lines(path: &std::path::Path, max_lines: usize) -> std::io::Result<String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    const CHUNK: u64 = 16 * 1024;
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let mut start = len;
+    let mut buf: Vec<u8> = Vec::new();
+    // Stop once the buffer holds more than `max_lines` line breaks (the extra
+    // one guarantees the first kept line is complete).
+    while start > 0 && buf.iter().filter(|&&b| b == b'\n').count() <= max_lines {
+        let read_from = start.saturating_sub(CHUNK);
+        let mut chunk = vec![0u8; (start - read_from) as usize];
+        file.seek(SeekFrom::Start(read_from))?;
+        file.read_exact(&mut chunk)?;
+        chunk.extend_from_slice(&buf);
+        buf = chunk;
+        start = read_from;
     }
-    let content = std::fs::read_to_string(&path).map_err(|e| CommandError::Other(e.to_string()))?;
-    let max = lines.unwrap_or(50);
+    let content = String::from_utf8_lossy(&buf);
     let all: Vec<&str> = content.lines().collect();
-    let start = if all.len() > max { all.len() - max } else { 0 };
-    Ok(all[start..].join("\n"))
+    let first = all.len().saturating_sub(max_lines);
+    Ok(all[first..].join("\n"))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -372,7 +404,8 @@ pub async fn scan_lan_subnet() -> Result<Vec<PingLanPeerResult>, CommandError> {
                     last_seen: chrono::Utc::now().to_rfc3339(),
                     dashboard_running: true,
                     timeflow_version: peer.version.clone(),
-                });
+                })
+                .await;
                 found.push(peer);
             }
         }
@@ -722,5 +755,42 @@ mod tests {
         assert!(ensure_private_peer("192.168.1.50").is_ok());
         assert!(ensure_private_peer("10.0.0.2").is_ok());
         assert!(ensure_private_peer("not-an-ip").is_err());
+    }
+
+    fn temp_log(tag: &str, content: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("tf_lanlog_{}_{}.log", tag, nanos));
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn read_last_lines_matches_full_read_across_chunks() {
+        // ~40 KB > kilka chunków po 16 KB; linie o różnej długości.
+        let content: String = (0..2000)
+            .map(|i| format!("line {} {}\n", i, "x".repeat(i % 37)))
+            .collect();
+        let path = temp_log("chunks", &content);
+        for max in [0usize, 1, 50, 1999, 2000, 5000] {
+            let all: Vec<&str> = content.lines().collect();
+            let expected = all[all.len().saturating_sub(max)..].join("\n");
+            assert_eq!(read_last_lines(&path, max).unwrap(), expected, "max={max}");
+        }
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn read_last_lines_handles_small_and_unterminated_files() {
+        let path = temp_log("small", "a\nb\nc");
+        assert_eq!(read_last_lines(&path, 2).unwrap(), "b\nc");
+        assert_eq!(read_last_lines(&path, 10).unwrap(), "a\nb\nc");
+        std::fs::remove_file(&path).ok();
+
+        let empty = temp_log("empty", "");
+        assert_eq!(read_last_lines(&empty, 5).unwrap(), "");
+        std::fs::remove_file(&empty).ok();
     }
 }

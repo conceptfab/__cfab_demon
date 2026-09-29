@@ -188,11 +188,24 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
     {
         let db = rusqlite_open(&path_str).map_err(|e| e.to_string())?;
         maybe_vacuum_on_startup(&db)?;
-        maybe_auto_backup(&db);
         maybe_auto_optimize(&db);
         if let Err(e) = repair_ghost_project_names(&db) {
             log::warn!("Startup repair skipped: {}", e);
         }
+    }
+
+    // Auto-backup (checkpoint + VACUUM INTO całej bazy) nie może opóźniać
+    // pokazania okna — `initialize` działa w setup() na głównym wątku.
+    // VACUUM INTO tylko czyta źródło, więc w WAL nie blokuje zapisów UI.
+    let backup_path = path_str.clone();
+    let spawn_result = std::thread::Builder::new()
+        .name("db-auto-backup".into())
+        .spawn(move || match rusqlite_open(&backup_path) {
+            Ok(db) => maybe_auto_backup(&db),
+            Err(e) => log::error!("Auto-backup skipped — cannot open database: {}", e),
+        });
+    if let Err(e) = spawn_result {
+        log::error!("Auto-backup thread spawn failed: {}", e);
     }
 
     let active_pool = Arc::new(ConnectionPool::new(DB_POOL_MAX_IDLE_CONNECTIONS));

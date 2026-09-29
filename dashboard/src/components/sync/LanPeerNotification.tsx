@@ -13,6 +13,7 @@ import { pollLanSyncUntilComplete } from '@/lib/lan-sync-poll';
 import type { LanPeer } from '@/lib/lan-sync-types';
 import { useDataStore } from '@/store/data-store';
 import { SyncProgressOverlay } from './SyncProgressOverlay';
+import { isDocumentVisible } from './job-pool-helpers';
 import { logger } from '@/lib/logger';
 import { getErrorMessage } from '@/lib/utils';
 import {
@@ -137,6 +138,9 @@ export function LanPeerNotification() {
 
   useEffect(() => {
     const poll = async () => {
+      // Toast i tak nie jest widoczny przy ukrytym oknie — nie odpytuj w tle;
+      // po powrocie okna listener visibilitychange odświeża od razu.
+      if (!isDocumentVisible()) return;
       try {
         // Sync wymaga sparowania. Powiadomienie pokazujemy tylko dla peerów,
         // którzy są jednocześnie świeżo widoczni w LAN ORAZ znajdują się na
@@ -181,10 +185,16 @@ export function LanPeerNotification() {
       }
     };
 
+    const onVisibilityChange = () => {
+      if (isDocumentVisible()) void poll();
+    };
+
     void poll();
     pollRef.current = window.setInterval(poll, POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       if (pollRef.current !== null) clearInterval(pollRef.current);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
 

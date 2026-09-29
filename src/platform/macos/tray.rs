@@ -513,6 +513,11 @@ pub fn run(
     let mut last_state_update = Instant::now() - TRAY_STATE_INTERVAL;
 
     loop {
+        // Ręczna pętla nie ma puli drenowanej przez NSApplication.run — bez tego
+        // obiekty autoreleased (NSDate, NSEvent, NSImage z set_icon) żyłyby do
+        // końca procesu. Pula obejmuje całą iterację łącznie z pompką zdarzeń.
+        let _pool = AutoreleasePoolGuard::new();
+
         if stop_signal.load(Ordering::Relaxed) {
             break;
         }
@@ -663,6 +668,25 @@ pub fn run(
     log::info!("Daemon tray loop exited");
     drop(tray_icon);
     action
+}
+
+/// RAII dla `objc_autoreleasePoolPush/Pop` — pula jest drenowana przy wyjściu
+/// z zakresu, także przez `break`/`continue`. Nie-`Send` (surowy wskaźnik), więc
+/// push i pop zawsze dzieją się na tym samym wątku.
+struct AutoreleasePoolGuard(*mut std::ffi::c_void);
+
+impl AutoreleasePoolGuard {
+    fn new() -> Self {
+        // SAFETY: push/pop są sparowane przez Drop w porządku LIFO zakresów.
+        Self(unsafe { objc2::ffi::objc_autoreleasePoolPush() })
+    }
+}
+
+impl Drop for AutoreleasePoolGuard {
+    fn drop(&mut self) {
+        // SAFETY: wskaźnik pochodzi z objc_autoreleasePoolPush na tym wątku.
+        unsafe { objc2::ffi::objc_autoreleasePoolPop(self.0) }
+    }
 }
 
 fn pump_ns_app(app: &NSApplication, mode: &objc2_foundation::NSRunLoopMode) {

@@ -1,14 +1,20 @@
 // macOS process snapshot — cienka obwoluta nad `sysinfo`.
 // Uwaga: sysinfo::System jest stanowe (refresh + odczyt), tutaj tworzymy
 // świeżą instancję na każde wywołanie dla symetrii z Windowsem.
+// Odświeżamy tylko ścieżkę exe — PID, rodzic i nazwa są pobierane zawsze,
+// a domyślny `refresh_processes` liczyłby też pamięć, CPU i I/O dysku
+// dla każdego procesu w systemie, czego tu nie używamy.
 
-use sysinfo::{ProcessesToUpdate, System};
+use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 
 use crate::platform::process_info::ProcessEntryInfo;
 
 pub fn collect_process_entries() -> Option<Vec<ProcessEntryInfo>> {
     let mut sys = System::new();
-    sys.refresh_processes(ProcessesToUpdate::All);
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        ProcessRefreshKind::new().with_exe(UpdateKind::OnlyIfNotSet),
+    );
 
     let entries = sys
         .processes()

@@ -138,12 +138,20 @@ pub(crate) fn query_project_costs(
     Ok(rows)
 }
 
+/// Full table hashes + delta export — heavy DB work, kept off the main thread.
 #[tauri::command]
-pub fn build_delta_archive(
+pub async fn build_delta_archive(
     app: tauri::AppHandle,
     since: String,
 ) -> Result<(DeltaArchive, String), CommandError> {
-    let conn = db::get_connection(&app)?;
+    super::helpers::run_blocking(move || build_delta_archive_blocking(&app, since)).await
+}
+
+fn build_delta_archive_blocking(
+    app: &tauri::AppHandle,
+    since: String,
+) -> Result<(DeltaArchive, String), CommandError> {
+    let conn = db::get_connection(app)?;
     let machine_id = super::helpers::get_machine_id();
 
     // Normalize ISO 8601 (with 'T' separator) to SQLite datetime format (with space)

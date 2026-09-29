@@ -14,6 +14,8 @@ use objc2_foundation::{NSNotification, NSObject};
 use crate::platform::foreground_signal::ForegroundSignal;
 
 const FALLBACK_POLL_INTERVAL: Duration = Duration::from_secs(2);
+/// Polling wykrywa zmianę najpóźniej po interwale (+ zapas na jitter snu).
+const FALLBACK_DEDUP_WINDOW: Duration = Duration::from_millis(2_500);
 
 pub fn start(stop_signal: Arc<AtomicBool>) -> (Arc<ForegroundSignal>, thread::JoinHandle<()>) {
     let signal = Arc::new(ForegroundSignal::new());
@@ -30,7 +32,9 @@ pub fn start(stop_signal: Arc<AtomicBool>) -> (Arc<ForegroundSignal>, thread::Jo
         while !stop_signal.load(Ordering::Relaxed) {
             let current_pid = current_frontmost_pid();
             if current_pid.is_some() && current_pid != last_pid {
-                signal_clone.notify();
+                // Observer zwykle zgłosił już tę zmianę w momencie przełączenia —
+                // fallback tylko budzi trackera, bez nadpisywania znacznika czasu.
+                signal_clone.notify_fallback(FALLBACK_DEDUP_WINDOW);
                 last_pid = current_pid;
             }
 
@@ -49,12 +53,13 @@ pub fn start(stop_signal: Arc<AtomicBool>) -> (Arc<ForegroundSignal>, thread::Jo
 fn current_frontmost_pid() -> Option<i32> {
     // SAFETY: NSWorkspace.sharedWorkspace() + frontmostApplication() można
     // wołać z dowolnego wątku. Retained automatycznie obsługuje refcount.
-    unsafe {
+    // Pula per wywołanie — wątek watchera nie ma własnej, drenowanej puli.
+    objc2::rc::autoreleasepool(|_| unsafe {
         let workspace = NSWorkspace::sharedWorkspace();
         workspace
             .frontmostApplication()
             .map(|app| app.processIdentifier())
-    }
+    })
 }
 
 fn install_workspace_observer(signal: Arc<ForegroundSignal>) -> Option<Retained<NSObject>> {

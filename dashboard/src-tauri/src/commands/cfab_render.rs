@@ -1091,12 +1091,16 @@ pub async fn get_cfab_hub_peer(app: AppHandle) -> Result<CfabHubPeerInfo, String
 }
 
 #[tauri::command]
-pub fn probe_cfab_hub_db(path: Option<String>) -> Result<String, String> {
-    let resolved = match path.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
-        Some(override_path) => PathBuf::from(override_path),
-        None => hub_db_path(),
-    };
-    Ok(probe_hub_db(&resolved).to_string())
+pub async fn probe_cfab_hub_db(path: Option<String>) -> Result<String, String> {
+    // Otwiera obcą bazę SQLite (może leżeć na dysku sieciowym) — poza głównym wątkiem.
+    super::helpers::run_blocking(move || {
+        let resolved = match path.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+            Some(override_path) => PathBuf::from(override_path),
+            None => hub_db_path(),
+        };
+        Ok(probe_hub_db(&resolved).to_string())
+    })
+    .await
 }
 
 #[tauri::command]

@@ -93,7 +93,9 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
 
     // SAFETY: NSWorkspace.sharedWorkspace() można wołać z dowolnego wątku.
     // Retained<NSRunningApplication> zarządza refcountem automatycznie.
-    let (pid, localized_name, bundle_id) = unsafe {
+    // Wątek trackera nie ma własnej puli — bez autoreleasepool obiekty
+    // autoreleased z AppKit kumulowałyby się aż do końca procesu.
+    let (pid, localized_name, bundle_id) = objc2::rc::autoreleasepool(|_| unsafe {
         let workspace = NSWorkspace::sharedWorkspace();
         let app = workspace.frontmostApplication()?;
         let pid = app.processIdentifier() as u32;
@@ -105,8 +107,8 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
             .bundleIdentifier()
             .map(|s| s.to_string())
             .unwrap_or_default();
-        (pid, localized, bundle)
-    };
+        Some((pid, localized, bundle))
+    })?;
 
     if pid == 0 {
         return None;
@@ -218,6 +220,36 @@ extern "C" {
 
 use crate::title_parser::collect_descendants;
 
+#[repr(C)]
+struct MachTimebaseInfo {
+    numer: u32,
+    denom: u32,
+}
+
+extern "C" {
+    fn mach_timebase_info(info: *mut MachTimebaseInfo) -> c_int;
+}
+
+/// `pti_total_user`/`pti_total_system` są w tickach `mach_absolute_time`, nie w ns.
+/// Na Intelu timebase = 1/1, ale na Apple Silicon 125/3 (≈41,67 ns/tick) — bez
+/// przeliczenia udział CPU byłby zaniżony ~41× i próg tła nigdy by nie zadziałał.
+fn mach_timebase() -> (u64, u64) {
+    static TIMEBASE: std::sync::OnceLock<(u64, u64)> = std::sync::OnceLock::new();
+    *TIMEBASE.get_or_init(|| {
+        let mut info = MachTimebaseInfo { numer: 0, denom: 0 };
+        let rc = unsafe { mach_timebase_info(&mut info) };
+        if rc != 0 || info.numer == 0 || info.denom == 0 {
+            (1, 1)
+        } else {
+            (u64::from(info.numer), u64::from(info.denom))
+        }
+    })
+}
+
+fn mach_ticks_to_ns(ticks: u64, (numer, denom): (u64, u64)) -> u64 {
+    (u128::from(ticks) * u128::from(numer) / u128::from(denom)).min(u128::from(u64::MAX)) as u64
+}
+
 fn cpu_time_for_pid(pid: u32) -> Option<u64> {
     let mut info = ProcTaskInfo::default();
     let size = std::mem::size_of::<ProcTaskInfo>() as c_int;
@@ -232,7 +264,8 @@ fn cpu_time_for_pid(pid: u32) -> Option<u64> {
     };
 
     if read == size {
-        Some(info.pti_total_user.saturating_add(info.pti_total_system))
+        let ticks = info.pti_total_user.saturating_add(info.pti_total_system);
+        Some(mach_ticks_to_ns(ticks, mach_timebase()))
     } else {
         None
     }
@@ -317,9 +350,28 @@ pub fn measure_cpu_for_app(
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_app_pids, cpu_fraction_since, ProcessSnapshot, CpuSnapshot};
+    use super::{
+        collect_app_pids, cpu_fraction_since, mach_ticks_to_ns, mach_timebase, ProcessSnapshot,
+        CpuSnapshot,
+    };
     use std::collections::HashMap;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn mach_ticks_convert_with_apple_silicon_timebase() {
+        // Apple Silicon: 125/3 ns na tick → 24 000 000 ticków = 1 s.
+        assert_eq!(mach_ticks_to_ns(24_000_000, (125, 3)), 1_000_000_000);
+        // Intel: timebase 1/1 — bez zmiany.
+        assert_eq!(mach_ticks_to_ns(1_000, (1, 1)), 1_000);
+        // Brak przepełnienia przy dużych wartościach.
+        assert_eq!(mach_ticks_to_ns(u64::MAX, (125, 3)), u64::MAX);
+    }
+
+    #[test]
+    fn mach_timebase_is_valid() {
+        let (numer, denom) = mach_timebase();
+        assert!(numer > 0 && denom > 0);
+    }
 
     fn snapshot_with_paths() -> ProcessSnapshot {
         let mut exe_pids: HashMap<String, Vec<u32>> = HashMap::new();

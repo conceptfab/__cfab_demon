@@ -171,6 +171,20 @@ where
     .map_err(|e| format!("Blocking DB task join error: {}", e))?
 }
 
+/// Runs blocking I/O (files, foreign DBs) off the main thread. Synchronous
+/// Tauri commands execute on the main (UI) thread, so any disk/network work
+/// must go through an async command and this helper.
+pub(crate) async fn run_blocking<T, E, F>(operation: F) -> Result<T, E>
+where
+    T: Send + 'static,
+    E: From<String> + Send + 'static,
+    F: FnOnce() -> Result<T, E> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(operation)
+        .await
+        .map_err(|e| E::from(format!("Blocking task join error: {}", e)))?
+}
+
 pub(crate) async fn run_app_blocking<T, F>(app: AppHandle, operation: F) -> Result<T, String>
 where
     T: Send + 'static,

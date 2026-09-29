@@ -296,23 +296,28 @@ pub fn get_folder_size(work_folder: &str, full_name: &str) -> Option<f64> {
     if !path.is_dir() {
         return None;
     }
-    let mut total: u64 = 0;
-    if let Ok(entries) = fs::read_dir(&path) {
-        for entry in entries.flatten() {
-            total += dir_size_recursive(&entry.path());
-        }
-    }
-    Some(total as f64 / (1024.0 * 1024.0 * 1024.0))
+    Some(dir_size(&path) as f64 / (1024.0 * 1024.0 * 1024.0))
 }
 
-fn dir_size_recursive(path: &Path) -> u64 {
-    if path.is_file() {
-        return path.metadata().map(|m| m.len()).unwrap_or(0);
-    }
+/// Suma rozmiarów plików w drzewie katalogów. Iteracyjnie (bez rekursji stosu)
+/// i bez podążania za symlinkami — pętla linków w folderze projektu dawałaby
+/// nieskończoną rekursję i przepełnienie stosu (release = panic abort).
+fn dir_size(root: &Path) -> u64 {
     let mut total = 0u64;
-    if let Ok(entries) = fs::read_dir(path) {
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
-            total += dir_size_recursive(&entry.path());
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                pending.push(entry.path());
+            } else if file_type.is_file() {
+                total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+            }
         }
     }
     total
@@ -404,6 +409,33 @@ mod tests {
 
     fn mkdir(work: &Path, name: &str) {
         fs::create_dir_all(work.join(name)).expect("create project dir");
+    }
+
+    #[test]
+    fn folder_size_sums_nested_files() {
+        let work = unique_work_folder("size");
+        mkdir(&work, "PRJ/a/b");
+        fs::write(work.join("PRJ/top.bin"), vec![0u8; 100]).unwrap();
+        fs::write(work.join("PRJ/a/b/deep.bin"), vec![0u8; 50]).unwrap();
+
+        assert_eq!(dir_size(&work.join("PRJ")), 150);
+        assert!(get_folder_size(work.to_str().unwrap(), "missing").is_none());
+
+        fs::remove_dir_all(&work).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn folder_size_does_not_follow_symlink_loops() {
+        let work = unique_work_folder("size_loop");
+        mkdir(&work, "PRJ/sub");
+        fs::write(work.join("PRJ/sub/file.bin"), vec![0u8; 10]).unwrap();
+        // Pętla: PRJ/sub/loop -> PRJ
+        std::os::unix::fs::symlink(work.join("PRJ"), work.join("PRJ/sub/loop")).unwrap();
+
+        assert_eq!(dir_size(&work.join("PRJ")), 10);
+
+        fs::remove_dir_all(&work).ok();
     }
 
     #[test]
