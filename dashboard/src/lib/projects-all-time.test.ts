@@ -18,6 +18,7 @@ describe('projects-all-time helpers', () => {
 
   it('invalidates cached project extra info for wider project mutations', () => {
     expect(shouldInvalidateProjectExtraInfo('create_project')).toBe(true);
+    expect(shouldInvalidateProjectExtraInfo('pm_create_project')).toBe(true);
     expect(shouldInvalidateProjectExtraInfo('delete_project')).toBe(true);
     expect(shouldInvalidateProjectExtraInfo('compact_project_data')).toBe(true);
     expect(shouldInvalidateProjectExtraInfo('update_project')).toBe(false);
@@ -25,6 +26,7 @@ describe('projects-all-time helpers', () => {
 
   it('refreshes cached projects list for project and assignment mutations', () => {
     expect(shouldRefreshProjectsCache('create_project')).toBe(true);
+    expect(shouldRefreshProjectsCache('pm_create_project')).toBe(true);
     expect(shouldRefreshProjectsCache('assign_session_to_project')).toBe(true);
     expect(shouldRefreshProjectsCache('run_auto_safe_assignment')).toBe(true);
     expect(shouldRefreshProjectsCache('update_project')).toBe(true);

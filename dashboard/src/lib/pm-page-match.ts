@@ -101,14 +101,25 @@ export function findTfProject(
   return bestMatch;
 }
 
+export function normalizePmStatus(status?: string): string {
+  if (!status) return 'active';
+  const s = status.trim().toLowerCase();
+  if (!s) return 'active';
+  if (s === 'aktywny' || s === 'active') return 'active';
+  if (s === 'nieaktywny' || s === 'inactive' || s === 'frozen' || s === 'zamrożony') return 'inactive';
+  if (s === 'archiwalny' || s === 'archived' || s === 'zarchiwizowany' || s === 'excluded') return 'archived';
+  return s;
+}
+
 export function buildTfMatch(
   match: ProjectWithStats | null,
   estimates: Map<number, EstimateProjectRow>,
   hotIds: Set<number>,
+  pmStatus?: string,
 ): PmTfMatch {
   if (!match) {
     return {
-      status: 'archived',
+      status: normalizePmStatus(pmStatus),
       totalSeconds: 0,
       estimatedValue: 0,
       hasRate: false,

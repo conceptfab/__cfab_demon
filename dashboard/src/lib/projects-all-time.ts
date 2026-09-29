@@ -43,6 +43,7 @@ const PROJECTS_EXTRA_INFO_INVALIDATION_REASON_SET = new Set([
   'exclude_project',
   'freeze_project',
   'merge_project',
+  'pm_create_project',
   'restore_project',
   'sync_projects_from_folders',
   'unfreeze_project',

@@ -21,6 +21,7 @@ describe('page refresh reason helpers', () => {
   it('refreshes project folders only for folder-related reasons', () => {
     expect(shouldRefreshProjectsPageFolders('sync_projects_from_folders')).toBe(true);
     expect(shouldRefreshProjectsPageFolders('add_project_folder')).toBe(true);
+    expect(shouldRefreshProjectsPageFolders('pm_create_project')).toBe(true);
     expect(shouldRefreshProjectsPageFolders('background_auto_import')).toBe(false);
   });
 

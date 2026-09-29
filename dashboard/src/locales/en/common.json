@@ -2456,7 +2456,7 @@
     "rounding_detail_limitations": "Limitations: source data is never modified; rounding is presentation only. Views that only have an aggregated total, such as the Dashboard counter, cannot truly split per session and therefore round the aggregate. The minimum session duration threshold applies consistently across project time views, so very short sessions below the threshold are treated as noise.",
     "pm_2": "PM",
     "pm_description": "Client project management — create, edit, browse projects. Automatic numbering and disk folder structure generation.",
-    "pm_feature_create": "Project creation — enter client, name, description, budget and deadline; the project number is suggested and editable, the code is generated automatically.",
+    "pm_feature_create": "Project creation — enter client, name, description, budget and deadline; the project number is suggested and editable, the code is generated automatically. The new project is automatically registered as active in TIMEFLOW.",
     "pm_feature_numbering": "Project numbering — the number is suggested automatically as the highest in the given year + 1 (covering both the project list and folders on disk); in the create dialog you can confirm or change it, and a number that is already taken is blocked.",
     "pm_feature_folders": "Folder tree — when a project is created, a directory with subfolders is created on disk according to the selected template.",
     "pm_feature_templates": "Folder templates — the default template matches the original PM. You can create custom templates with any structure. The {name} placeholder in folder names is replaced with the project name.",

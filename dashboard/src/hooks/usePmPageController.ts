@@ -49,7 +49,7 @@ export function usePmPageController() {
         const matchMap: Record<string, PmTfMatch> = {};
         const enriched = prj.map((p) => {
           const tfProject = findTfProject(p, tfProjectIndex);
-          const m = buildTfMatch(tfProject, estimates, hotIds);
+          const m = buildTfMatch(tfProject, estimates, hotIds, p.prj_status);
           matchMap[p.prj_code] = m;
           return { ...p, prj_status: m.status };
         });

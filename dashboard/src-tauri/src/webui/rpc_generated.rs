@@ -187,7 +187,7 @@ pub fn dispatch_generated(
         "persist_language_for_daemon" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::persist_language_for_daemon(from_arg(args, "code")?))?) })()),
         "persist_session_settings_for_daemon" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::persist_session_settings_for_daemon(from_arg(args, "min_session_duration_seconds")?))?) })()),
         "ping_lan_peer" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::ping_lan_peer(from_arg(args, "ip")?, from_arg(args, "port")?))?) })()),
-        "pm_create_project" => Some((|| -> Result<Value, String> { ok(crate::commands::pm_create_project(from_arg(args, "project")?)?) })()),
+        "pm_create_project" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::pm_create_project(app.clone(), from_arg(args, "project")?))?) })()),
         "pm_delete_project" => Some((|| -> Result<Value, String> { ok(crate::commands::pm_delete_project(from_arg(args, "index")?)?) })()),
         "pm_delete_template" => Some((|| -> Result<Value, String> { ok(crate::commands::pm_delete_template(from_arg(args, "id")?)?) })()),
         "pm_detect_work_folder" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::pm_detect_work_folder(app.clone()))?) })()),

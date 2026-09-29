@@ -24,6 +24,7 @@ const PROJECTS_PAGE_FOLDERS_REASON_SET = new Set([
   'add_project_folder',
   'clear_all_data',
   'create_project_from_folder',
+  'pm_create_project',
   'remove_project_folder',
   'restore_database_from_file',
   'set_demo_mode',

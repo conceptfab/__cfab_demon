@@ -212,7 +212,7 @@ pub(crate) fn create_project_if_missing(
 
 /// Creates a project if it doesn't exist, with an assigned folder path.
 /// Returns the project name if created, None if already existed or skipped.
-fn create_project_if_missing_with_folder(
+pub(crate) fn create_project_if_missing_with_folder(
     conn: &rusqlite::Connection,
     name: &str,
     folder_path: &str,

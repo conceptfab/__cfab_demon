@@ -1,21 +1,21 @@
 // @public-api — Tauri command bindings; knip cannot detect dynamic invoke() usage
-import { invoke } from './core';
+import { invoke, invokeMutation } from './core';
 import type { PmProject, PmNewProject, PmSettings, PmFolderTemplate, PmClientColors } from '../pm-types';
 
 export const getPmProjects = () =>
   invoke<PmProject[]>('pm_get_projects');
 
 export const createPmProject = (project: PmNewProject) =>
-  invoke<PmProject>('pm_create_project', { project });
+  invokeMutation<PmProject>('pm_create_project', { project });
 
 export const suggestProjectNumber = () =>
   invoke<string>('pm_suggest_project_number');
 
 export const updatePmProject = (index: number, project: PmProject) =>
-  invoke<void>('pm_update_project', { index, project });
+  invokeMutation<void>('pm_update_project', { index, project });
 
 export const deletePmProject = (index: number) =>
-  invoke<void>('pm_delete_project', { index });
+  invokeMutation<void>('pm_delete_project', { index });
 
 export const getPmSettings = () =>
   invoke<PmSettings>('pm_get_settings');

@@ -64,11 +64,54 @@ pub fn pm_get_projects() -> Result<Vec<pm_manager::PmProject>, CommandError> {
 }
 
 #[tauri::command]
-pub fn pm_create_project(
+pub async fn pm_create_project(
+    app: AppHandle,
     project: pm_manager::PmNewProject,
 ) -> Result<pm_manager::PmProject, CommandError> {
     let folder = load_work_folder()?;
-    pm_manager::create_project(&folder, project).map_err(CommandError::Other)
+    let pm_proj = pm_manager::create_project(&folder, project).map_err(CommandError::Other)?;
+
+    let full_name = pm_proj.prj_full_name.clone();
+    let project_folder_path = std::path::Path::new(&folder)
+        .join(&full_name)
+        .to_string_lossy()
+        .to_string();
+    let client_name = if pm_proj.prj_client.trim().is_empty() {
+        None
+    } else {
+        Some(pm_proj.prj_client.trim().to_string())
+    };
+
+    let app_clone = app.clone();
+    let work_folder_clone = folder.clone();
+    let _ = run_db_blocking(app_clone, move |conn| {
+        let norm_work_folder = std::fs::canonicalize(&work_folder_clone)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or(work_folder_clone);
+        let added_at = chrono::Local::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR IGNORE INTO project_folders (path, added_at) VALUES (?1, ?2)",
+            rusqlite::params![norm_work_folder, added_at],
+        )
+        .ok();
+
+        super::projects::create_project_if_missing_with_folder(
+            conn,
+            &full_name,
+            &project_folder_path,
+        )?;
+        if let Some(ref client) = client_name {
+            conn.execute(
+                "UPDATE projects SET client_name = ?1 WHERE lower(name) = lower(?2)",
+                rusqlite::params![client, full_name],
+            )
+            .ok();
+        }
+        Ok(())
+    })
+    .await;
+
+    Ok(pm_proj)
 }
 
 #[tauri::command]
