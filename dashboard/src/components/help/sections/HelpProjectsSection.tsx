@@ -29,6 +29,7 @@ export function HelpProjectsSection() {
         t18n('help_page.project_time_is_consistent_across_project_views_estima'),
         t18n('help_page.project_page_daily_timeline_comments_manual_sessions'),
         t18n('help_page.saved_view_persist_your_preferred_sorting_and_presentati'),
+        t18n('help_page.project_status_filters_feature'),
         t18n('help_page.project_data_compaction_action_in_the_project_view_that'),
         t18n('help_page.recent_comments_card_in_the_project_view_showing_latest'),
         t18n('help_page.project_manual_sessions_dedicated_card_in_the_project_vi'),

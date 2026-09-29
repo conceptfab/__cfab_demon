@@ -48,6 +48,13 @@ import {
   SORT_STORAGE_KEY,
   VIEW_MODE_STORAGE_KEY,
 } from '@/pages/projects/projects-page-constants';
+import type { ProjectStatusFilter } from '@/components/projects/projects-list-types';
+import {
+  computeProjectStatusCounts,
+  filterProjectsByStatus,
+  loadSavedStatusFilter,
+  STATUS_FILTER_STORAGE_KEY,
+} from '@/components/projects/projects-page-filters';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { useUIStore } from '@/store/ui-store';
@@ -119,6 +126,13 @@ export function useProjectsPageController() {
     return localStorage.getItem(FOLDERS_STORAGE_KEY) !== 'false';
   });
 
+  const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>(loadSavedStatusFilter);
+
+  const statusCounts = useMemo(
+    () => computeProjectStatusCounts(projects),
+    [projects],
+  );
+
   const projectListScopeKey = useMemo(
     () =>
       [
@@ -126,6 +140,7 @@ export function useProjectsPageController() {
         sortBy,
         viewMode,
         useFolders,
+        statusFilter,
         projects.length,
         excludedProjects.length,
         detectedProjects.length,
@@ -136,6 +151,7 @@ export function useProjectsPageController() {
       sortBy,
       viewMode,
       useFolders,
+      statusFilter,
       projects.length,
       excludedProjects.length,
       detectedProjects.length,
@@ -449,9 +465,14 @@ export function useProjectsPageController() {
     [excludedProjects, sortBy, estimates],
   );
 
+  const statusFilteredProjects = useMemo(
+    () => filterProjectsByStatus(sortedProjects, statusFilter),
+    [sortedProjects, statusFilter],
+  );
+
   const filteredProjects = useMemo(
-    () => filterProjectList(sortedProjects, deferredSearch),
-    [sortedProjects, deferredSearch],
+    () => filterProjectList(statusFilteredProjects, deferredSearch),
+    [statusFilteredProjects, deferredSearch],
   );
 
   const filteredExcludedProjects = useMemo(
@@ -512,6 +533,7 @@ export function useProjectsPageController() {
     localStorage.setItem(SORT_STORAGE_KEY, sortBy);
     localStorage.setItem(FOLDERS_STORAGE_KEY, String(useFolders));
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+    localStorage.setItem(STATUS_FILTER_STORAGE_KEY, statusFilter);
     setFolderInfo(t('projects.messages.view_settings_saved'));
     if (folderInfoTimeoutRef.current !== null) {
       window.clearTimeout(folderInfoTimeoutRef.current);
@@ -797,6 +819,9 @@ export function useProjectsPageController() {
     toggleFolders,
     viewMode,
     setViewMode,
+    statusFilter,
+    setStatusFilter,
+    statusCounts,
     handleSaveDefaults,
     setCreateDialogOpen,
     projectFolders,

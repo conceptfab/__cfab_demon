@@ -376,6 +376,7 @@ def build_dashboard_macos(dist: Path) -> None:
             "aarch64-apple-darwin",
             "--bundles",
             bundles,
+            "--ignore-version-mismatches",
         ],
         cwd=DASHBOARD_DIR,
     )

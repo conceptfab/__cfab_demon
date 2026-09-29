@@ -14,8 +14,15 @@ export type ProjectsByFolder = {
   outside: ProjectWithStats[];
 };
 
+export type ProjectStatusFilter = 'all' | 'active' | 'frozen';
+
+export type ProjectStatusCounts = {
+  all: number;
+  active: number;
+  frozen: number;
+};
+
 export type ProjectsListProps = {
-  projectCount: number;
   excludedCount: number;
   projectsAllTimeLoading: boolean;
   duplicateGroupCount: number;
@@ -30,6 +37,9 @@ export type ProjectsListProps = {
   onViewModeChange: (mode: 'detailed' | 'compact') => void;
   onSaveDefaults: () => void;
   onCreateProject: () => void;
+  statusFilter: ProjectStatusFilter;
+  onStatusFilterChange: (filter: ProjectStatusFilter) => void;
+  statusCounts: ProjectStatusCounts;
   projectFolders: ProjectFolder[];
   projectsByFolder: ProjectsByFolder;
   filteredProjects: ProjectWithStats[];

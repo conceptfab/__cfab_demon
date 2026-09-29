@@ -22,9 +22,9 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 log = { workspace = true }
 chrono = { workspace = true }
-tauri = { version = "2", features = [] }
+tauri = { version = "~2.11.0", features = [] }
 tauri-plugin-log = "2"
-tauri-plugin-dialog = "2"
+tauri-plugin-dialog = "~2.7.0"
 include_dir = "0.7"
 # Web UI auth: OS entropy for tokens/codes and hashing of persisted tokens.
 getrandom = { workspace = true }

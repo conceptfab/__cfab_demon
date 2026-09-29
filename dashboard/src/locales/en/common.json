@@ -621,6 +621,13 @@
     }
   },
   "projects": {
+    "filters": {
+      "all": "All",
+      "active": "Active",
+      "frozen": "Frozen",
+      "no_projects": "No projects yet.",
+      "no_matching": "No projects match the current filter or search."
+    },
     "errors": {
       "project_name_required": "Project name is required.",
       "project_folder_required": "Project folder is required to identify tracked files.",
@@ -2186,7 +2193,8 @@
     "project_card_projectpage_full_project_view_data_compacti": "Project card (ProjectPage) – full project view: data compaction, time reset, inline name edit, timeline with comments, manual sessions, and report generation.",
     "project_time_is_consistent_across_project_views_estima": "Consistent project time – the Sessions list, project lists, ProjectPage, estimates, and reports all use the same deduplicated clock time for overlapping sessions.",
     "project_page_daily_timeline_comments_manual_sessions": "ProjectPage workflow – the project detail view combines the daily timeline, recent comments, manual sessions, compaction, and direct report generation in one place.",
-    "saved_view_persist_your_preferred_sorting_and_presentati": "Saved View – persist your preferred sorting and presentation mode for lists/timeline so it comes back when you reopen the screen.",
+    "saved_view_persist_your_preferred_sorting_and_presentati": "Saved View – persist your preferred filter settings (All / Active / Frozen), sorting, and presentation mode so it comes back when you reopen the screen.",
+    "project_status_filters_feature": "Project status filters – quickly switch between all, active, and frozen projects; each option shows its project count. While a status filter or search is active, empty folders are hidden.",
     "project_data_compaction_action_in_the_project_view_that": "Project data compaction – action in the project view that reduces data size without losing time summaries.",
     "recent_comments_card_in_the_project_view_showing_latest": "Recent Comments – card in the project view showing latest session comments with date and app context.",
     "project_manual_sessions_dedicated_card_in_the_project_vi": "Project manual sessions – dedicated card in the project view for adding, editing, and deleting manual sessions assigned to this project.",

@@ -1,3 +1,4 @@
+import { type ReactNode, useMemo } from 'react';
 import {
   CircleDollarSign,
   Clock,
@@ -5,6 +6,7 @@ import {
   Plus,
   Save,
   Search,
+  Snowflake,
   Type,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -14,10 +16,30 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatPathForDisplay } from '@/lib/utils';
 import { ProjectsListSlot } from '@/components/projects/ProjectsListSlot';
-import type { ProjectsListProps } from '@/components/projects/projects-list-types';
+import type {
+  ProjectStatusFilter,
+  ProjectsListProps,
+} from '@/components/projects/projects-list-types';
+
+const STATUS_FILTER_OPTIONS: {
+  value: ProjectStatusFilter;
+  activeClassName: string;
+  icon: ReactNode;
+}[] = [
+  { value: 'all', activeClassName: 'text-foreground', icon: null },
+  {
+    value: 'active',
+    activeClassName: 'text-emerald-500 dark:text-emerald-400',
+    icon: <span className="size-1.5 rounded-full bg-emerald-500" />,
+  },
+  {
+    value: 'frozen',
+    activeClassName: 'text-sky-500 dark:text-sky-400',
+    icon: <Snowflake className="size-3" />,
+  },
+];
 
 export function ProjectsList({
-  projectCount,
   excludedCount,
   projectsAllTimeLoading,
   duplicateGroupCount,
@@ -32,6 +54,9 @@ export function ProjectsList({
   onViewModeChange,
   onSaveDefaults,
   onCreateProject,
+  statusFilter,
+  onStatusFilterChange,
+  statusCounts,
   projectFolders,
   projectsByFolder,
   filteredProjects,
@@ -39,16 +64,45 @@ export function ProjectsList({
 }: ProjectsListProps) {
   const { t } = useTranslation();
 
+  // Hide empty folders only while the list is narrowed (status filter or search).
+  const isNarrowed = statusFilter !== 'all' || search.trim() !== '';
+  const visibleFolderSections = useMemo(
+    () =>
+      isNarrowed
+        ? projectsByFolder.sections.filter((section) => section.projects.length > 0)
+        : projectsByFolder.sections,
+    [projectsByFolder.sections, isNarrowed],
+  );
+
   return (
     <>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col">
-          <p className="text-sm text-muted-foreground">
-            {projectCount} {t('projects_page.projects')}
-            {excludedCount > 0
-              ? ` (${excludedCount} ${t('projects_page.excluded')})`
-              : ''}
-          </p>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-md border border-border/40 bg-secondary/40 p-0.5 text-xs">
+              {STATUS_FILTER_OPTIONS.map(({ value, activeClassName, icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={statusFilter === value}
+                  onClick={() => onStatusFilterChange(value)}
+                  className={`inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 font-medium transition-colors ${
+                    statusFilter === value
+                      ? `bg-background shadow-sm ${activeClassName}`
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {icon}
+                  {t(`projects.filters.${value}`)} ({statusCounts[value]})
+                </button>
+              ))}
+            </div>
+            {excludedCount > 0 && (
+              <span className="text-xs text-muted-foreground">
+                ({excludedCount} {t('projects_page.excluded')})
+              </span>
+            )}
+          </div>
           {projectsAllTimeLoading && (
             <p className="text-xs text-muted-foreground">
               {t('ui.app.loading')}
@@ -199,9 +253,15 @@ export function ProjectsList({
         </div>
       </div>
 
-      {useFolders && projectFolders.length > 0 ? (
+      {filteredProjects.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground">
+          {statusCounts.all === 0
+            ? t('projects.filters.no_projects')
+            : t('projects.filters.no_matching')}
+        </div>
+      ) : useFolders && projectFolders.length > 0 ? (
         <div className="space-y-5">
-          {projectsByFolder.sections.map((section) => (
+          {visibleFolderSections.map((section) => (
             <div key={section.rootPath} className="space-y-2">
               <p
                 className="text-xs font-medium text-muted-foreground"

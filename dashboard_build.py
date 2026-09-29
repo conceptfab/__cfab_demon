@@ -114,7 +114,10 @@ def main() -> None:
     if npm is None:
         print("\n   BLAD: nie znaleziono `npm` w PATH. Zainstaluj Node.js / dodaj do PATH.")
         sys.exit(1)
-    result = subprocess.run([npm, "run", "tauri", "build"], check=False)
+    result = subprocess.run(
+        [npm, "run", "tauri", "build", "--", "--ignore-version-mismatches"],
+        check=False,
+    )
     if result.returncode != 0:
         sys.exit(result.returncode)
 

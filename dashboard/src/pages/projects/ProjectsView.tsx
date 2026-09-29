@@ -39,6 +39,9 @@ export function ProjectsView({ controller }: ProjectsViewProps) {
     toggleFolders,
     viewMode,
     setViewMode,
+    statusFilter,
+    setStatusFilter,
+    statusCounts,
     handleSaveDefaults,
     setCreateDialogOpen,
     projectFolders,
@@ -97,7 +100,6 @@ export function ProjectsView({ controller }: ProjectsViewProps) {
   return (
     <div className={mobileLayout.pageStack}>
       <ProjectsList
-        projectCount={projects.length}
         excludedCount={excludedProjects.length}
         projectsAllTimeLoading={projectsAllTimeLoading}
         duplicateGroupCount={duplicateProjectsView.groupCount}
@@ -112,6 +114,9 @@ export function ProjectsView({ controller }: ProjectsViewProps) {
         onViewModeChange={setViewMode}
         onSaveDefaults={handleSaveDefaults}
         onCreateProject={() => setCreateDialogOpen(true)}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        statusCounts={statusCounts}
         projectFolders={projectFolders}
         projectsByFolder={projectsByFolder}
         filteredProjects={filteredProjects}

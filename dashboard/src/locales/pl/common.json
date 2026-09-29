@@ -621,6 +621,13 @@
     }
   },
   "projects": {
+    "filters": {
+      "all": "Wszystkie",
+      "active": "Aktywne",
+      "frozen": "Zamrożone",
+      "no_projects": "Brak projektów.",
+      "no_matching": "Brak projektów pasujących do wybranego filtra lub wyszukiwania."
+    },
     "errors": {
       "project_name_required": "Nazwa projektu jest wymagana.",
       "project_folder_required": "Folder projektu jest wymagany do identyfikacji śledzonych plików.",
@@ -2186,7 +2193,8 @@
     "project_card_projectpage_full_project_view_data_compacti": "Karta projektu (ProjectPage) – pełny widok projektu: kompaktowanie danych, reset czasu, edycja nazwy inline, timeline z komentarzami, sesje ręczne oraz generowanie raportu.",
     "project_time_is_consistent_across_project_views_estima": "Spójny czas projektu – lista Sesji, listy projektów, ProjectPage, wyceny i raporty korzystają z tego samego czasu zegarowego z deduplikacją nakładających się sesji.",
     "project_page_daily_timeline_comments_manual_sessions": "Widok ProjectPage – szczegóły projektu łączą dzienny timeline, ostatnie komentarze, sesje ręczne, kompaktowanie danych i bezpośrednie generowanie raportu w jednym miejscu.",
-    "saved_view_persist_your_preferred_sorting_and_presentati": "Zapisany widok (Save View) – możesz utrwalić preferowany układ sortowania i prezentacji list/timeline, aby wracał po ponownym otwarciu ekranu.",
+    "saved_view_persist_your_preferred_sorting_and_presentati": "Zapisany widok (Save View) – możesz utrwalić preferowany układ filtrów (Wszystkie / Aktywne / Zamrożone), sortowania i prezentacji list/timeline, aby wracał po ponownym otwarciu ekranu.",
+    "project_status_filters_feature": "Filtry statusu projektów – szybkie przełączanie między wszystkimi, aktywnymi i zamrożonymi projektami; każda opcja pokazuje liczbę projektów. Gdy aktywny jest filtr statusu lub wyszukiwanie, puste foldery są ukrywane.",
     "project_data_compaction_action_in_the_project_view_that": "Kompaktowanie danych projektu – akcja w widoku projektu redukująca rozmiar danych bez utraty podsumowań czasowych.",
     "recent_comments_card_in_the_project_view_showing_latest": "Ostatnie komentarze (Recent Comments) – karta w widoku projektu pokazująca ostatnie komentarze sesji z kontekstem daty i aplikacji.",
     "project_manual_sessions_dedicated_card_in_the_project_vi": "Sesje ręczne projektu – dedykowana karta w widoku projektu do dodawania, edycji i usuwania sesji ręcznych przypisanych do tego projektu.",
